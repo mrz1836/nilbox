@@ -6560,17 +6560,22 @@ own Reveal in Finder, so Finder shows the file its line names, then the workspac
 Open in Terminal and Upgrade dependencies… at its foot; it reads nothing more. `ScriptsView`
 reads the page through `lib/useManifests.ts` (`listManifests`, with refresh for Read again,
 following `manifests:progress`) each time the tab shows while Scripts is on, whichever page is
-open, for the rail's count of the clones in Stale (`staleCount`), and keeps one sheet open at a
-time: a release request or a run it opens
-closes the upgrade sheet. **Upgrade…** opens `DepsUpgradeSheet.tsx`, which reads the prompt
-library, the agents, and the profiles; offers the prompts for repositories (`promptApplies` with
-kind '', which offers nothing else): the two starters, `deps-minor` as Minor and patch, chosen,
-and `deps-major` as Majors too, while the library keeps them, and the user's others under
-Another prompt, each with an Edit that closes the sheet for the Prompts tab; resolves and plans
-the launch with `ResolveRepo` and `PreviewRepo` (`repoLaunchRequest`) as the prompt, agent, or
-profile changes, the plan naming the worktree and its base in the sheet's sentence and showing a
-refusal, such as every name for today's worktree being taken, before Start, which waits while
-either fails; shows the launch options' own settings (`LaunchFields`, from `LaunchMenu.tsx`,
+open, for the rail's count of the clones in Stale (`staleCount`), and keeps one sheet or dialog
+open at a time: a release request or a run it opens closes the Upgrade dialog. **Upgrade…** opens
+`DepsUpgradeSheet.tsx`, a dialog in the launch options' own frame (`LaunchFrame`, which
+`LaunchDialog` holds an item's launch options in too), as tall as what it holds, which reads the
+prompt library, the agents, and the profiles; offers the prompts for repositories
+(`promptApplies` with kind '', which offers nothing else), in its first section, headed as the
+launch options' are: the two starters, `deps-minor` as Minor and patch, chosen, and `deps-major`
+as Majors too, while the library keeps them, and the user's others under Another prompt, each
+with an Edit that closes the dialog and opens that prompt on the Prompts tab (App's
+`openPromptsAt` hands `PromptsView` a `PromptRequest`, which it opens as a library click would,
+asking first over unsaved changes, and `PromptLibrary` scrolls the open prompt into sight);
+resolves and plans the launch with `ResolveRepo` and `PreviewRepo` (`repoLaunchRequest`) as the
+prompt, agent, or profile changes, the plan naming the worktree and its base in the dialog's
+sentence and showing a refusal, such as every name for today's worktree being taken, before
+Start, which waits for both and while either fails; shows the launch options' own settings
+(`LaunchFields`, from `LaunchMenu.tsx`,
 the worktree's sentence in place of its choice) and their preview (`LaunchPreviewSection`);
 starts with `LaunchRepo`, a hold opening the launch hold dialog, whose Start another starts
 beside the session (a session with no item named by its repository alone, never `#0`); and

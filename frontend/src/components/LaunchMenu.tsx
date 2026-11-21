@@ -47,7 +47,9 @@ export interface LaunchMenuProps {
   onCancel: () => void
 }
 
-const sectionTitle = 'px-2 pb-1 text-caption font-semibold tracking-wide text-muted uppercase'
+// launchSectionTitle heads each section of the launch options, as Agent and Profile, and
+// the upgrade's choice in the Deps page's dialog.
+export const launchSectionTitle = 'px-2 pb-1 text-caption font-semibold tracking-wide text-muted uppercase'
 
 // saveButtonClass is the footer's save buttons: small, but outlined, so they read as
 // buttons beside the dialog's own. Each may shrink, its name cut short, so a long
@@ -130,7 +132,7 @@ export function LaunchFields({
     <>
       {agents.length > 1 && (
         <div className="px-1.5 pt-2">
-          <p id={`${id}-agent-title`} className={sectionTitle}>
+          <p id={`${id}-agent-title`} className={launchSectionTitle}>
             Agent
           </p>
           <div role="radiogroup" aria-labelledby={`${id}-agent-title`} className="flex gap-1.5 px-2 pb-1">
@@ -169,7 +171,7 @@ export function LaunchFields({
       )}
 
       <div className={first ? 'px-1.5 pt-2' : 'mt-1 border-t border-border px-1.5 pt-2'}>
-        <p id={`${id}-profile-title`} className={sectionTitle}>
+        <p id={`${id}-profile-title`} className={launchSectionTitle}>
           Profile
         </p>
         <div role="radiogroup" aria-labelledby={`${id}-profile-title`} className="flex flex-wrap gap-1.5 px-2 pb-1">
@@ -429,7 +431,7 @@ export function LaunchMenu({
           prompt={
             <>
               <div className="flex items-baseline justify-between">
-                <label htmlFor={`${id}-prompt`} className={sectionTitle}>
+                <label htmlFor={`${id}-prompt`} className={launchSectionTitle}>
                   Prompt
                 </label>
                 <button type="button" onClick={onManagePrompts} className={quietButtonClass}>

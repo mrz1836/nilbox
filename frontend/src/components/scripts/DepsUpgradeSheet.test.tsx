@@ -255,7 +255,7 @@ describe('DepsUpgradeSheet', () => {
     await userEvent.click(s.getByRole('button', { name: 'Edit “Go only”' }))
 
     expect(onClose).toHaveBeenCalledOnce()
-    expect(onOpenPrompts).toHaveBeenCalledOnce()
+    expect(onOpenPrompts).toHaveBeenCalledExactlyOnceWith(23)
   })
 
   it('leaves out a starter the user deleted, and starts with the one left', async () => {
@@ -293,17 +293,17 @@ describe('DepsUpgradeSheet', () => {
     await userEvent.click(dialog().getByRole('button', { name: 'Open the Prompts page' }))
 
     expect(onClose).toHaveBeenCalledOnce()
-    expect(onOpenPrompts).toHaveBeenCalledOnce()
+    expect(onOpenPrompts).toHaveBeenCalledExactlyOnceWith(undefined)
   })
 
-  it('opens the Prompts page from a starter’s Edit, closing the sheet', async () => {
+  it('opens a starter on the Prompts page from its Edit, closing the dialog', async () => {
     const { onClose, onOpenPrompts } = renderSheet()
     const s = await sheet()
 
     await userEvent.click(s.getByRole('button', { name: 'Edit “Upgrade majors too”' }))
 
     expect(onClose).toHaveBeenCalledOnce()
-    expect(onOpenPrompts).toHaveBeenCalledOnce()
+    expect(onOpenPrompts).toHaveBeenCalledExactlyOnceWith(22)
   })
 
   it('says why the launch settings couldn’t load', async () => {
@@ -466,7 +466,7 @@ describe('DepsUpgradeSheet', () => {
     expect(s.queryByRole('button', { name: 'Start upgrade' })).not.toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
 
-    await userEvent.click(s.getByRole('button', { name: 'Close' }))
+    await userEvent.click(s.getByRole('button', { name: 'Done' }))
 
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -594,9 +594,19 @@ describe('DepsUpgradeSheet', () => {
     const s = await sheet()
 
     await userEvent.click(s.getByRole('button', { name: 'Cancel' }))
-    await userEvent.click(s.getByRole('button', { name: 'Close the upgrade sheet' }))
+    await userEvent.click(s.getByRole('button', { name: 'Close' }))
 
     expect(onClose).toHaveBeenCalledTimes(2)
     expect(platform.launchRepo).not.toHaveBeenCalled()
+  })
+
+  it('is a dialog the size of what it holds, named for the upgrade and the clone, as the launch options are', async () => {
+    renderSheet()
+    await sheet()
+
+    const shell = screen.getByRole('dialog', { name: 'Upgrade dependencies' })
+    expect(shell).toHaveAccessibleDescription('acme-org/api-server · ~/projects/api-server')
+    expect(shell).toHaveClass('max-w-[34rem]', 'max-h-[calc(100%-3rem)]')
+    expect(shell).not.toHaveClass('h-[calc(100%-3rem)]')
   })
 })

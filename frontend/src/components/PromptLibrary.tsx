@@ -1,4 +1,4 @@
-import { useId, useState, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, type Ref } from 'react'
 
 import { formatCount } from '../lib/format'
 import { routinePlaces, routinesUsing, usagePlaces } from '../lib/launch'
@@ -207,6 +207,17 @@ export function PromptLibrary({
   const q = query.trim().toLowerCase()
   const filtered =
     q === '' ? prompts : prompts.filter((p) => p.nickname.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+  // listRef is the scrolling list, in which the open prompt is kept in sight.
+  const listRef = useRef<HTMLElement>(null)
+  const openId = selection?.kind === 'prompt' ? selection.id : null
+
+  // A prompt opened from elsewhere, as the Deps page's Edit opens one, may be far down the
+  // list: it scrolls into sight, while one already in sight stays where it is.
+  useEffect(() => {
+    if (openId !== null) {
+      listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [openId])
 
   return (
     <aside aria-label="Prompt library" className="flex w-60 shrink-0 flex-col border-r border-border">
@@ -249,7 +260,11 @@ export function PromptLibrary({
           dense={false}
         />
       </div>
-      <nav aria-label={replies ? 'Review replies' : 'Prompts'} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <nav
+        ref={listRef}
+        aria-label={replies ? 'Review replies' : 'Prompts'}
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+      >
         {selection?.kind === 'new' && (
           <div className="mb-1 rounded-md bg-raised px-2.5 py-2">
             <p className="text-sm font-medium italic">{newNickname.trim() === '' ? `New ${noun}` : newNickname}</p>

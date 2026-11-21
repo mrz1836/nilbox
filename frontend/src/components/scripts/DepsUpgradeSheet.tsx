@@ -18,29 +18,31 @@ import {
   type ManifestKind,
   type ManifestsClone,
   type ManifestTool,
+  type Prompt,
   type RepoLaunchRequest,
   type WorktreePlan,
 } from '../../platform'
-import { buttonClass, ErrorText, fieldClass, iconButtonClass, linkClass, primaryButtonClass } from '../controls'
+import { buttonClass, ErrorText, fieldClass, linkClass, primaryButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AlertIcon, InfoIcon, TerminalIcon, XIcon } from '../icons'
+import { AlertIcon, BoxIcon, InfoIcon, TerminalIcon } from '../icons'
+import { LaunchFrame } from '../LaunchDialog'
 import { LaunchHoldDialog } from '../LaunchHoldDialog'
-import { LaunchFields } from '../LaunchMenu'
+import { LaunchFields, launchSectionTitle } from '../LaunchMenu'
 import { LaunchPreviewSection, type LaunchSubject } from '../LaunchPreviewSection'
-import { Sheet } from '../Sheet'
 import { Spinner } from '../Spinner'
 
 export interface DepsUpgradeSheetProps {
   // clone is the clone to upgrade, as the Deps page lists it.
   clone: ManifestsClone
-  // onOpenPrompts opens the Prompts tab, where the upgrade's prompts are edited.
-  onOpenPrompts: () => void
-  // onClose closes the sheet; an upgrade it started goes on in the terminal.
+  // onOpenPrompts opens the Prompts tab, where the upgrade's prompts are edited: on the
+  // prompt promptId, when an Edit names one.
+  onOpenPrompts: (promptId?: number) => void
+  // onClose closes the dialog; an upgrade it started goes on in the terminal.
   onClose: () => void
 }
 
-// upgrades are the two upgrades the sheet offers, each the starter prompt for it, which the
-// library holds under the starter's key until the user deletes it: what the sheet calls it,
+// upgrades are the two upgrades the dialog offers, each the starter prompt for it, which the
+// library holds under the starter's key until the user deletes it: what the dialog calls it,
 // and what it does.
 const upgrades = [
   {
@@ -88,7 +90,7 @@ function worktreeSentence(plan: WorktreePlan | null): string {
 // StartState is where the upgrade's start stands. One the app held back for a session
 // running where it would start ends in held, which keeps the request to send again; one
 // that started ends in started only when its launch worked something around, which the
-// sheet stays open to say.
+// dialog stays open to say.
 type StartState =
   | { kind: 'idle' }
   | { kind: 'starting' }
@@ -97,28 +99,30 @@ type StartState =
   | { kind: 'failed'; message: string }
 
 // DepsUpgradeSheet launches an agent that upgrades one clone's dependencies in a new
-// worktree made from origin's default branch, and opens a pull request with the result. As
-// it opens, it reads the prompt library, the agents, and their profiles, and offers the
-// upgrade's two starters, Minor and patch (chosen) and Majors too, each while the library
-// keeps it, and any other prompt for repositories the user wrote; with none at all, it says
-// so and sends the user to the Prompts page. It resolves the launch with the chosen prompt
-// and plans it, again as the prompt, agent, or profile changes, as the launch options do an
-// item's: the resolution shows each setting's default and what the sheet says of the
+// worktree made from origin's default branch, and opens a pull request with the result. It
+// is a dialog the size of what it holds, in the launch options' own frame (LaunchFrame), as
+// an item's launch options are. As it opens, it reads the prompt library, the agents, and
+// their profiles, and offers the upgrade's two starters, Minor and patch (chosen) and Majors
+// too, each while the library keeps it, each with an Edit that opens it on the Prompts page,
+// and any other prompt for repositories the user wrote; with none at all, it says so and
+// sends the user to the Prompts page. It resolves the launch with the chosen prompt and
+// plans it, again as the prompt, agent, or profile changes, as the launch options do an
+// item's: the resolution shows each setting's default and what the dialog says of the
 // repository first (its notice), and the plan names the worktree it makes. The agent, its
 // profile, model, and effort, plan mode, and Fast mode are the launch options' own
 // (LaunchFields), with a preview of exactly what it runs.
 //
 // A refusal, of the repository, its clone, the prompt, or the worktree, shows as the
-// sheet's error, and Start waits until the choices resolve and plan again. A start held back
-// for a session running where it would start asks first (LaunchHoldDialog), and its Start
-// another starts beside it. A start says nothing once it starts, as a launch from a card
-// says nothing: the sheet closes, and the Deps page's row follows the session. Only what the
-// launch worked around keeps the sheet open, to say it.
+// dialog's error, and Start waits until the choices resolve and plan again. A start held
+// back for a session running where it would start asks first (LaunchHoldDialog), and its
+// Start another starts beside it. A start says nothing once it starts, as a launch from a
+// card says nothing: the dialog closes, and the Deps page's row follows the session. Only
+// what the launch worked around keeps the dialog open, to say it.
 export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeSheetProps) {
   const id = useId()
   const [choices, setChoices] = useState<Choices>(noChoices)
   const [state, setState] = useState<StartState>({ kind: 'idle' })
-  // showing says the sheet is still open, so a start that ends after it closed closes
+  // showing says the dialog is still open, so a start that ends after it closed closes
   // nothing: by then its host may show another.
   const showing = useRef(true)
 
@@ -148,7 +152,7 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
   const promptId = choices.promptId !== 0 ? choices.promptId : (starters[0]?.prompt.id ?? others[0]?.id ?? 0)
   const other = others.find((p) => p.id === promptId)
 
-  // asked is what the sheet resolves and plans as its choices change: the prompt, agent,
+  // asked is what the dialog resolves and plans as its choices change: the prompt, agent,
   // and profile chosen, under which each other setting's default is worked out, as the
   // launch options re-resolve an item's. Each answer is the latest request's alone.
   const asked = repoLaunchRequest(clone.repo, clone.dir, promptId, {
@@ -174,6 +178,7 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
   // agentName names the agent the upgrade starts: the one chosen, else the one resolved.
   const agentName = choices.agent !== '' ? agentLabel(agents, choices.agent) : (resolution?.agent.name ?? '')
   const groups = manifestGroups(clone)
+  const notice = resolution?.notice ?? ''
   // subject is the repository as the launch options see it: trusted, always in a worktree
   // of its own, and planned for its clone with the prompt chosen.
   const subject: LaunchSubject = {
@@ -193,14 +198,15 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
     }
   }
 
-  // openPrompts closes the sheet for the Prompts page, where its prompts are edited.
-  const openPrompts = () => {
+  // openPrompts closes the dialog for the Prompts page, where its prompts are edited, open
+  // on the prompt target when an Edit names one.
+  const openPrompts = (target?: number) => {
     onClose()
-    onOpenPrompts()
+    onOpenPrompts(target)
   }
 
   // run starts the upgrade request asks for. A start held back asks the user first; one
-  // that starts closes the sheet, unless its launch worked something around.
+  // that starts closes the dialog, unless its launch worked something around.
   const run = async (request: RepoLaunchRequest) => {
     setState({ kind: 'starting' })
 
@@ -231,28 +237,127 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
     setState(shown.ok ? { kind: 'idle' } : { kind: 'failed', message: shown.error })
   }
 
-  // body is the prompts to upgrade with, then the launch's own settings, its worktree, and
-  // its preview, once the library has loaded and the launch has resolved.
+  // edit is a prompt's Edit, which opens it on the Prompts page.
+  const edit = (p: Pick<Prompt, 'id' | 'nickname'>) => (
+    <button
+      type="button"
+      onClick={() => {
+        openPrompts(p.id)
+      }}
+      aria-label={`Edit “${p.nickname}”`}
+      title="Edit it on the Prompts page"
+      className={`${linkClass} shrink-0 text-xs`}
+    >
+      Edit
+    </button>
+  )
+
+  // choice is the upgrade to run, the dialog's first section, as the launch options head
+  // theirs: each of the upgrade's starters the library keeps, with what it does, then the
+  // user's other prompts for repositories in a select.
+  const choice = (
+    <div className="px-1.5 pt-2 pb-1">
+      <p id={`${id}-upgrade`} className={launchSectionTitle}>
+        Upgrade
+      </p>
+      <div className="flex flex-col gap-2 px-2 pb-1">
+        {starters.length > 0 && (
+          <div role="radiogroup" aria-labelledby={`${id}-upgrade`} className="flex flex-col gap-2">
+            {starters.map((s) => (
+              <div key={s.starter} className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  id={`${id}-${s.starter}-choice`}
+                  name={`${id}-prompt`}
+                  value={s.prompt.id}
+                  checked={promptId === s.prompt.id}
+                  aria-describedby={`${id}-${s.starter}`}
+                  onChange={() => {
+                    choose({ ...choices, promptId: s.prompt.id })
+                  }}
+                  className="radio mt-0.5"
+                />
+                <div className="min-w-0 flex-1">
+                  {/* The label names the radio alone: a label holds no button, so Edit sits
+                      beside it. */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <label htmlFor={`${id}-${s.starter}-choice`} className="cursor-pointer font-medium select-none">
+                      {s.label}
+                    </label>
+                    {edit(s.prompt)}
+                  </div>
+                  <p id={`${id}-${s.starter}`} className="text-xs text-muted">
+                    {s.about}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {others.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label htmlFor={`${id}-other`} className="shrink-0 text-xs text-muted">
+              {starters.length > 0 ? 'Another prompt' : 'Prompt'}
+            </label>
+            {/* While a starter is chosen, the select shows that none of these is, and a pick
+                in it chooses that prompt instead. */}
+            <select
+              id={`${id}-other`}
+              value={other?.id ?? 0}
+              onChange={(e) => {
+                choose({ ...choices, promptId: Number(e.target.value) })
+              }}
+              className={`${fieldClass} min-w-0 flex-1`}
+            >
+              {other === undefined && (
+                <option value={0} disabled>
+                  Choose a prompt
+                </option>
+              )}
+              {others.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nickname}
+                </option>
+              ))}
+            </select>
+            {other !== undefined && edit(other)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // body is the upgrade to run, then the launch's own settings, its worktree, and its
+  // preview, once the library has loaded and the launch has resolved.
   let body: ReactNode
 
   if (config.data === undefined) {
-    body =
-      config.error === '' ? (
-        <p role="status" className="flex items-center gap-2 text-sm text-muted">
-          <Spinner />
-          Loading the launch settings…
-        </p>
-      ) : (
-        <ErrorBanner>Couldn’t load the launch settings: {config.error}</ErrorBanner>
-      )
+    body = (
+      <div className="px-3.5 py-3">
+        {config.error === '' ? (
+          <p role="status" className="flex items-center gap-2 text-muted">
+            <Spinner />
+            Loading the launch settings…
+          </p>
+        ) : (
+          <ErrorBanner>Couldn’t load the launch settings: {config.error}</ErrorBanner>
+        )}
+      </div>
+    )
   } else if (promptId === 0) {
     body = (
-      <div className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-col gap-2 px-3.5 py-3">
         <p className="flex items-start gap-2 text-warning">
           <AlertIcon className="mt-0.5 size-4 shrink-0" />
           No prompt in your library is for repositories. Write one on the Prompts page to upgrade with it.
         </p>
-        <button type="button" onClick={openPrompts} className={`${linkClass} self-start`}>
+        <button
+          type="button"
+          onClick={() => {
+            openPrompts()
+          }}
+          className={`${linkClass} self-start`}
+        >
           Open the Prompts page
         </button>
       </div>
@@ -260,202 +365,127 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
   } else {
     body = (
       <>
-        {/* The prompts keep to a column a line can be read across, Edit near what it edits,
-            however wide the sheet. */}
-        <div className="flex max-w-3xl flex-col gap-2">
-          {starters.length > 0 && (
-            <div role="radiogroup" aria-label="Upgrade" className="flex flex-col gap-2">
-              {starters.map((s) => (
-                <div key={s.starter} className="flex items-baseline gap-3">
-                  {/* The label holds the radio alone: a label holds no button, so Edit sits
-                      beside it. */}
-                  <label className="flex w-40 shrink-0 cursor-pointer items-center gap-2 text-sm font-medium select-none">
-                    <input
-                      type="radio"
-                      name={`${id}-prompt`}
-                      value={s.prompt.id}
-                      checked={promptId === s.prompt.id}
-                      aria-describedby={`${id}-${s.starter}`}
-                      onChange={() => {
-                        choose({ ...choices, promptId: s.prompt.id })
-                      }}
-                      className="radio"
-                    />
-                    {s.label}
-                  </label>
-                  <p id={`${id}-${s.starter}`} className="min-w-0 flex-1 text-sm text-muted">
-                    {s.about}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={openPrompts}
-                    aria-label={`Edit “${s.prompt.nickname}”`}
-                    title="Edit it on the Prompts page"
-                    className={`${linkClass} shrink-0 text-xs`}
-                  >
-                    Edit
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {others.length > 0 && (
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor={`${id}-other`}
-                className={`w-40 shrink-0 text-sm font-medium ${starters.length > 0 ? 'pl-6' : ''}`}
-              >
-                {starters.length > 0 ? 'Another prompt' : 'Prompt'}
-              </label>
-              {/* While a starter is chosen, the select shows that none of these is, and a
-                  pick in it chooses that prompt instead. */}
-              <select
-                id={`${id}-other`}
-                value={other?.id ?? 0}
-                onChange={(e) => {
-                  choose({ ...choices, promptId: Number(e.target.value) })
-                }}
-                className={`${fieldClass} min-w-0 flex-1`}
-              >
-                {other === undefined && (
-                  <option value={0} disabled>
-                    Choose a prompt
-                  </option>
-                )}
-                {others.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nickname}
-                  </option>
-                ))}
-              </select>
-              {other !== undefined && (
-                <button
-                  type="button"
-                  onClick={openPrompts}
-                  aria-label={`Edit “${other.nickname}”`}
-                  title="Edit it on the Prompts page"
-                  className={`${linkClass} shrink-0 text-xs`}
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {choice}
         {resolution === undefined ? (
           resolved.pending && (
-            <p role="status" className="flex items-center gap-2 text-sm text-muted">
+            <p role="status" className="mt-1 flex items-center gap-2 border-t border-border px-3.5 py-3 text-muted">
               <Spinner />
               Working out the launch settings…
             </p>
           )
         ) : (
-          // The launch options' own settings and preview, as in their dialog, in a card of
-          // their own. The worktree a repository's launch always makes is said in place of
-          // the choice an item's offers.
-          <div className="flex max-w-xl flex-col rounded-lg border border-border text-sm">
-            <LaunchFields
-              subject={subject}
-              resolved={resolution}
-              choices={choices}
-              onChoices={choose}
-              agents={agents}
-              profiles={profiles}
-              resolveError=""
-              worktree={<p className="text-text">{worktreeSentence(planned.data?.worktree ?? null)}</p>}
-            />
+          // The launch options' own settings and preview, under the upgrade as under an
+          // item's prompt. The worktree a repository's launch always makes is said in place
+          // of the choice an item's offers.
+          <>
+            <div className="mt-1 border-t border-border">
+              <LaunchFields
+                subject={subject}
+                resolved={resolution}
+                choices={choices}
+                onChoices={choose}
+                agents={agents}
+                profiles={profiles}
+                resolveError=""
+                worktree={<p className="text-text">{worktreeSentence(planned.data?.worktree ?? null)}</p>}
+              />
+            </div>
             <LaunchPreviewSection subject={subject} choices={{ ...choices, promptId }} label="Preview the launch" />
-          </div>
+          </>
         )}
       </>
     )
   }
 
   return (
-    <Sheet labelledBy={`${id}-title`} onClose={onClose}>
-      <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
-        <div className="min-w-0">
-          <h2 id={`${id}-title`} className="truncate text-base font-semibold">
-            Upgrade dependencies
-          </h2>
-          <p title={`${clone.repo} · ${clone.dir}`} className="mt-0.5 truncate text-xs text-muted">
-            <span className="font-medium text-text">{clone.repo}</span> · {clone.dir}
-          </p>
-        </div>
-        <button
-          type="button"
-          aria-label="Close the upgrade sheet"
-          title="Close"
-          onClick={onClose}
-          className={`${iconButtonClass} -mr-1`}
-        >
-          <XIcon className="size-3.5" />
-        </button>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
-        {state.kind === 'started' ? (
-          <div role="status" className="flex flex-col gap-2 text-sm">
-            <p className="text-text">{`The upgrade started in ${state.result.worktree}.`}</p>
-            <p className="flex items-start gap-1.5 text-warning">
-              <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
-              <span>{state.result.notice}</span>
-            </p>
-          </div>
-        ) : (
-          <>
-            {groups.length > 0 && (
-              <ul aria-label="Manifests" className="flex flex-wrap gap-x-1.5 gap-y-1 text-sm text-text">
-                {groups.map((g, i) => (
-                  <li key={g.kind}>
-                    {i > 0 && (
-                      <span aria-hidden="true" className="mr-1.5 text-muted">
-                        ·
-                      </span>
-                    )}
-                    <span className="font-medium">{kindNames[g.kind]}:</span>{' '}
-                    <span className="font-mono text-xs">{g.paths.join(', ')}</span>
-                    {g.tools.length > 0 && <span className="text-muted">{` (${g.tools.join(', ')})`}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {resolution !== undefined && resolution.notice !== '' && (
-              <p className="flex items-start gap-1.5 text-sm text-muted">
-                <InfoIcon className="mt-0.5 size-3.5 shrink-0" />
-                {resolution.notice}
-              </p>
-            )}
-            {body}
-          </>
-        )}
-      </div>
-      <footer className="flex flex-col gap-2 border-t border-border px-5 py-3">
-        <ErrorText error={error} />
-        <div className="flex flex-wrap items-center justify-end gap-2">
+    <LaunchFrame
+      id={id}
+      label="Upgrade dependencies"
+      title="Upgrade dependencies"
+      about={
+        <>
+          <BoxIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            <span className="font-medium text-text">{clone.repo}</span>
+            {` · ${clone.dir}`}
+          </span>
+        </>
+      }
+      aboutTitle={`${clone.repo} · ${clone.dir}`}
+      onClose={onClose}
+    >
+      {/* No column here takes flex-1, which the desktop's WebKit would draw empty (see
+          LaunchFrame): the choices scroll, and the buttons stay in view under them. */}
+      <div className="flex min-h-0 flex-col text-sm">
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
           {state.kind === 'started' ? (
-            <button type="button" onClick={onClose} className={buttonClass}>
-              Close
-            </button>
+            <div role="status" className="flex flex-col gap-2 px-3.5 py-3">
+              <p className="text-text">{`The upgrade started in ${state.result.worktree}.`}</p>
+              <p className="flex items-start gap-1.5 text-warning">
+                <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                <span>{state.result.notice}</span>
+              </p>
+            </div>
           ) : (
             <>
-              <button type="button" onClick={onClose} className={buttonClass}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!canStart}
-                onClick={() => {
-                  void run(repoLaunchRequest(clone.repo, clone.dir, promptId, choices))
-                }}
-                className={primaryButtonClass}
-              >
-                <TerminalIcon className="size-4" />
-                {starting ? 'Starting the upgrade…' : 'Start upgrade'}
-              </button>
+              {(groups.length > 0 || notice !== '') && (
+                <div className="flex flex-col gap-1.5 px-3.5 pt-3 pb-2">
+                  {groups.length > 0 && (
+                    <ul aria-label="Manifests" className="flex flex-wrap gap-x-1.5 gap-y-1 text-text">
+                      {groups.map((g, i) => (
+                        <li key={g.kind}>
+                          {i > 0 && (
+                            <span aria-hidden="true" className="mr-1.5 text-muted">
+                              ·
+                            </span>
+                          )}
+                          <span className="font-medium">{kindNames[g.kind]}:</span>{' '}
+                          <span className="font-mono text-xs">{g.paths.join(', ')}</span>
+                          {g.tools.length > 0 && <span className="text-muted">{` (${g.tools.join(', ')})`}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {notice !== '' && (
+                    <p className="flex items-start gap-1.5 text-xs text-muted">
+                      <InfoIcon className="mt-0.5 size-3.5 shrink-0" />
+                      {notice}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className={groups.length > 0 || notice !== '' ? 'border-t border-border' : ''}>{body}</div>
             </>
           )}
         </div>
-      </footer>
+        <div className="flex shrink-0 flex-col gap-2 border-t border-border px-3 py-2.5">
+          <ErrorText error={error} />
+          <div className="flex items-center justify-end gap-2">
+            {state.kind === 'started' ? (
+              <button type="button" onClick={onClose} className={buttonClass}>
+                Done
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={onClose} className={`${buttonClass} shrink-0`}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!canStart}
+                  onClick={() => {
+                    void run(repoLaunchRequest(clone.repo, clone.dir, promptId, choices))
+                  }}
+                  className={`${primaryButtonClass} shrink-0`}
+                >
+                  <TerminalIcon className="size-4" />
+                  {starting ? 'Starting the upgrade…' : 'Start upgrade'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
       {state.kind === 'held' && (
         <LaunchHoldDialog
           hold={state.hold}
@@ -473,6 +503,6 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
           }}
         />
       )}
-    </Sheet>
+    </LaunchFrame>
   )
 }

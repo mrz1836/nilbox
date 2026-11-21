@@ -67,6 +67,17 @@ export interface PromptsViewProps {
   // onChanged reloads the prompts and everything that depends on them; it resolves
   // once they are loaded again.
   onChanged: () => Promise<void>
+  // request asks the page to open one prompt, as the Deps page's upgrade dialog's Edit
+  // does: each new request opens it once, asking first while the open prompt has unsaved
+  // changes; null asks nothing.
+  request?: PromptRequest | null
+}
+
+// PromptRequest asks the Prompts page to open the prompt id; seq counts the asks, so the
+// same prompt asked for again opens again.
+export interface PromptRequest {
+  id: number
+  seq: number
 }
 
 // Library is the whole prompt library: its agent prompts and its review replies.
@@ -208,7 +219,16 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 // Leaving a prompt with unsaved changes asks first. The library's groups fold away and
 // stay folded while the page is away; a prompt the page opens on its own is the first in
 // a group left open, and one the user's action opens shows its group again.
-export function PromptsView({ agents, prompts, replies, defaults, variables, items, onChanged }: PromptsViewProps) {
+export function PromptsView({
+  agents,
+  prompts,
+  replies,
+  defaults,
+  variables,
+  items,
+  onChanged,
+  request = null,
+}: PromptsViewProps) {
   const editorRef = useRef<TemplateEditorHandle>(null)
   // previewRef is the filled-in text's scroll region, which ⇧⌘P focuses.
   const previewRef = useRef<HTMLDivElement>(null)
@@ -370,6 +390,23 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
       } else if (selection !== null) {
         open(lists, null, mode)
       }
+    }
+  }
+
+  // requested is the last request to open a prompt the page acted on, so each opens it
+  // once. It is acted on after the library's own choice above, so the prompt asked for is
+  // the one that stays open; one the library doesn't hold yet opens once it reloads.
+  const [requested, setRequested] = useState(0)
+
+  if (request !== null && request.seq !== requested) {
+    setRequested(request.seq)
+
+    const wanted: Selection = { kind: 'prompt', id: request.id }
+
+    if (dirty) {
+      setPending({ kind: 'discard', then: wanted, mode })
+    } else if (!open({ prompts, replies }, wanted, mode)) {
+      setAfterReload(wanted)
     }
   }
 

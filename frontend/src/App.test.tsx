@@ -59,6 +59,8 @@ import {
   details,
   heldOnGitHub,
   heldRun,
+  prompt,
+  prompts,
   review,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp, send } from './test/platform'
@@ -2113,6 +2115,27 @@ describe('the Scripts tab', () => {
     await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
     expect(platform.setDepsSort).toHaveBeenCalledExactlyOnceWith('name')
     expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+  })
+
+  it('opens a prompt on the Prompts page from the Deps upgrade’s Edit, that prompt open', async () => {
+    const upgrade = prompt({
+      id: 21,
+      name: 'Upgrade dependencies',
+      nickname: 'Upgrade deps',
+      appliesTo: 'repo',
+      starterKey: 'deps-minor',
+    })
+    platform.listPrompts.mockResolvedValue([...prompts(), upgrade])
+    platform.getSettings.mockResolvedValue(settings({ integrations: integrationsConfig({ lastPage: 'deps' }) }))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Upgrade acme-org/api-server’s dependencies…' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Upgrade dependencies' }))
+    await userEvent.click(await dialog.findByRole('button', { name: 'Edit “Upgrade deps”' }))
+
+    expect(await screen.findByRole('textbox', { name: 'Nickname' })).toHaveValue('Upgrade deps')
+    expect(screen.queryByRole('dialog', { name: 'Upgrade dependencies' })).not.toBeInTheDocument()
   })
 
   it('still lists Deps in the order picked when it can’t be remembered, and logs why', async () => {

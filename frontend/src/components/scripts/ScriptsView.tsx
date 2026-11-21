@@ -166,9 +166,9 @@ export interface ScriptsViewProps {
   // and onDepsSort stores another.
   depsSort?: DepsSort
   onDepsSort?: (sort: DepsSort) => void
-  // onOpenPrompts opens the Prompts tab, from the upgrade sheet, where the upgrade's
-  // prompts are edited.
-  onOpenPrompts?: () => void
+  // onOpenPrompts opens the Prompts tab, from the upgrade dialog, where the upgrade's
+  // prompts are edited: on the prompt promptId, when an Edit names one.
+  onOpenPrompts?: (promptId?: number) => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at

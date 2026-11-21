@@ -1769,27 +1769,29 @@ and its age, and a **Reveal in Finder** button that shows that manifest. A manif
 one that doesn't parse, or one whose history couldn't be read says so in amber under its line.
 The clone's workspace files follow (*Workspaces: go.work · pnpm-workspace.yaml*), and at its foot
 **Open in Terminal** opens your terminal in the clone, running nothing, and **Upgrade
-dependencies…** opens the sheet.
+dependencies…** opens the Upgrade dialog.
 
-**The Upgrade sheet** starts a coding agent on the repository itself rather than on a pull
-request or an issue. Under its title it names the clone and its manifests by kind (*Go: go.mod,
-tools/go.mod (magex) · JS: frontend/package.json (pnpm)*), and what the app can't tell of the
-repository (below); then:
+**The Upgrade dialog** starts a coding agent on the repository itself rather than on a pull
+request or an issue. It is the launch options' own dialog, as an item's **Launch options…** opens
+it, and only as tall as what it holds. Under its title it names the clone, then its manifests by
+kind (*Go: go.mod, tools/go.mod (magex) · JS: frontend/package.json (pnpm)*) and what the app
+can't tell of the repository (below); then, in the launch options' sections:
 
-- **What it upgrades:** **Minor and patch**, chosen to start with (*Newest versions within each
-  major; the PR lists the majors found.*), or **Majors too** (*Also moves to new majors,
-  refactoring code where needed. Bigger, and it may break things.*), which keeps only the majors
-  whose checks pass after a reasonable fix. Each is a starter in [Prompts](#prompts), for
-  repositories, offered while your library keeps it, and its **Edit** closes the sheet and opens
-  the Prompts tab. **Another prompt** offers any other prompt for repositories you wrote. With no
-  prompt for repositories at all, the sheet says so, with **Open the Prompts page**.
+- **Upgrade:** **Minor and patch**, chosen to start with (*Newest versions within each major; the
+  PR lists the majors found.*), or **Majors too** (*Also moves to new majors, refactoring code
+  where needed. Bigger, and it may break things.*), which keeps only the majors whose checks
+  pass after a reasonable fix. Each is a starter in [Prompts](#prompts), for repositories,
+  offered while your library keeps it, and its **Edit** closes the dialog and opens that prompt
+  on the Prompts tab, scrolled into sight in the library. **Another prompt** offers any other
+  prompt for repositories you wrote. With no prompt for repositories at all, the dialog says so,
+  with **Open the Prompts page**.
 - **The agent, profile, model, and effort,** plan mode, and Codex's Fast mode, exactly as the
   launch menu offers them, starting from the repository's [launch defaults](#launch-defaults) and
   the prompt (both starters start out of plan mode). There is no situation, and no outside
   contributor's override, since a repository's launch is trusted, and nothing is saved as a
   default, where its choices would change every launch on the repository's items too.
 - **Where it runs,** in place of the worktree choice: *Runs in a new worktree, deps-20261121,
-  off origin/main. Your clone isn’t touched.* The sheet plans the launch as it opens, so this
+  off origin/main. Your clone isn’t touched.* The dialog plans the launch as it opens, so this
   names the worktree it would make (`deps-20261121-2` for another the same day, and so on) and
   the branch it starts from, and anything that would refuse the launch, such as every name for
   today's worktree being taken, shows at once. The worktree is always new, on a branch of its
@@ -1800,17 +1802,17 @@ repository (below); then:
 - **The notice** says what the app can't tell: that GitHub hasn't said whether you can push to
   the repository (if you can't, the agent stops at the push and says so), or that the repository
   is a fork, so the pull request opens on the fork itself. A repository GitHub says is archived,
-  disabled, or locked, or where your access is read or triage alone, can't be upgraded: the sheet
-  says why, and **Start upgrade** stays disabled, as it does while the settings are being worked
-  out, or when they or the plan fail.
+  disabled, or locked, or where your access is read or triage alone, can't be upgraded: the
+  dialog says why, and **Start upgrade** stays disabled, as it does while the settings are being
+  worked out or the launch planned, or when either fails.
 - **Start upgrade** starts it. As with any launch, a session already running in the folder it
   would start in holds it back (*A session is already running here*), with **Show in terminal**
-  and **Start another**, which starts beside it. Once the upgrade starts, the sheet closes, as a
+  and **Start another**, which starts beside it. Once the upgrade starts, the dialog closes, as a
   launch from a card says nothing; it stays open only when the launch worked something around,
-  to say so (*The upgrade started in deps-20261121.*, then what it worked around).
+  to say so (*The upgrade started in deps-20261121.*, then what it worked around, and **Done**).
 
-Only one sheet is open over the tab at a time: a release the app opens for you, or a run it
-shows you, takes the upgrade sheet's place.
+Only one sheet or dialog is open over the tab at a time: a release the app opens for you, or a
+run it shows you, takes the Upgrade dialog's place.
 
 **After it starts:**
 

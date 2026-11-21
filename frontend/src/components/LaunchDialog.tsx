@@ -6,13 +6,18 @@ import type { InboxItem } from '../platform'
 import { iconButtonClass, sheetDialogClass } from './controls'
 import { IssueIcon, PullRequestIcon, XIcon } from './icons'
 
-export interface LaunchDialogProps {
+export interface LaunchFrameProps {
   // id is the dialog's ID, which the button that opened it names in aria-controls.
   id: string
+  // label is the dialog's accessible name, as the button that opens it says: "Launch
+  // options".
+  label: string
   // title is the dialog's heading, the launch it makes: "Open in Codex".
   title: string
-  // item is the pull request or issue the launch is for, named under the title.
-  item: InboxItem
+  // about names what the launch is for, under the title, and aboutTitle says it whole, for
+  // its tooltip.
+  about: ReactNode
+  aboutTitle: string
   onClose: () => void
   // children are the launch options, which fill the dialog under its heading.
   children: ReactNode
@@ -30,13 +35,13 @@ function initialFocus(body: HTMLElement | null): HTMLElement | null {
   )
 }
 
-// LaunchDialog holds one item's launch options in the middle of the window, so a row at
-// the top or bottom of a list never cuts them off. It is a native modal <dialog> (see
-// useModalDialog), its accessible name "Launch options" as the button that opens it says,
-// and one opened over the review sheet hears the keys alone: Escape closes it and leaves
-// the sheet open. Focus starts on the chosen prompt, the choice most often changed, and goes
-// back to the button that opened it as it closes: on Escape, the close button, or a click on
-// the backdrop. The heading stays at the top while the options under it scroll.
+// LaunchFrame holds a launch's options in the middle of the window, so a row at the top or
+// bottom of a list never cuts them off: an item's (LaunchDialog), and a repository's, as the
+// Deps page's upgrade. It is a native modal <dialog> (see useModalDialog), and one opened
+// over the review sheet hears the keys alone: Escape closes it and leaves the sheet open.
+// Focus starts on the chosen prompt, the choice most often changed, and goes back to the
+// button that opened it as it closes: on Escape, the close button, or a click on the
+// backdrop. The heading stays at the top while the options under it scroll.
 //
 // It is drawn in the page's body rather than inside the row that opens it, so the row
 // doesn't count the pointer or focus in the dialog as its own and light up behind the
@@ -49,22 +54,20 @@ function initialFocus(body: HTMLElement | null): HTMLElement | null {
 // column as empty, and the whole dialog collapses to its border over the dimmed window.
 // Each column keeps its content's height and shrinks under the cap (min-h-0), the options
 // scrolling between the heading and the buttons.
-export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialogProps) {
+export function LaunchFrame({ id, label, title, about, aboutTitle, onClose, children }: LaunchFrameProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const cancel = useModalDialog(dialogRef, onClose, () => initialFocus(bodyRef.current), { backdrop: true })
 
   useCloseWhenHidden(dialogRef, onClose)
 
-  const name = `${item.repo}#${String(item.number)}`
-
   return createPortal(
     <dialog
       ref={dialogRef}
       id={id}
       aria-modal="true"
-      aria-label="Launch options"
-      aria-describedby={`${id}-item`}
+      aria-label={label}
+      aria-describedby={`${id}-about`}
       onCancel={cancel}
       className={`${sheetDialogClass} max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-[34rem] overflow-hidden open:flex open:flex-col motion-safe:animate-pop-in`}
     >
@@ -75,19 +78,11 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-base font-semibold">{title}</h2>
             <p
-              id={`${id}-item`}
-              title={`${name} · ${item.title}`}
+              id={`${id}-about`}
+              title={aboutTitle}
               className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted"
             >
-              {item.kind === 'pr' ? (
-                <PullRequestIcon className="size-3.5 shrink-0" />
-              ) : (
-                <IssueIcon className="size-3.5 shrink-0" />
-              )}
-              <span className="truncate">
-                <span className="font-medium text-text">{name}</span>
-                {` · ${item.title}`}
-              </span>
+              {about}
             </p>
           </div>
           <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClass}>
@@ -98,5 +93,48 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
       </div>
     </dialog>,
     document.body,
+  )
+}
+
+export interface LaunchDialogProps {
+  // id is the dialog's ID, which the button that opened it names in aria-controls.
+  id: string
+  // title is the dialog's heading, the launch it makes: "Open in Codex".
+  title: string
+  // item is the pull request or issue the launch is for, named under the title.
+  item: InboxItem
+  onClose: () => void
+  // children are the launch options, which fill the dialog under its heading.
+  children: ReactNode
+}
+
+// LaunchDialog holds one item's launch options (LaunchFrame), its accessible name "Launch
+// options" as the button that opens it says, the item named under its heading.
+export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialogProps) {
+  const name = `${item.repo}#${String(item.number)}`
+
+  return (
+    <LaunchFrame
+      id={id}
+      label="Launch options"
+      title={title}
+      about={
+        <>
+          {item.kind === 'pr' ? (
+            <PullRequestIcon className="size-3.5 shrink-0" />
+          ) : (
+            <IssueIcon className="size-3.5 shrink-0" />
+          )}
+          <span className="truncate">
+            <span className="font-medium text-text">{name}</span>
+            {` · ${item.title}`}
+          </span>
+        </>
+      }
+      aboutTitle={`${name} · ${item.title}`}
+      onClose={onClose}
+    >
+      {children}
+    </LaunchFrame>
   )
 }

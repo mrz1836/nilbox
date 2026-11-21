@@ -22,6 +22,7 @@ import { UpdateRestartDialog } from './components/UpdateRestartDialog'
 import { InboxView, type Reveal } from './components/InboxView'
 import { LaunchControls, type LaunchPlace } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
+import type { PromptRequest } from './components/PromptsView'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './components/Toast'
@@ -649,6 +650,9 @@ export function App() {
   // numbers them.
   const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
   const [runRequest, setRunRequest] = useState<RunRequest | null>(null)
+  // promptRequest is the prompt the Prompts page was last asked to open, as the Deps page's
+  // upgrade dialog's Edit asks.
+  const [promptRequest, setPromptRequest] = useState<PromptRequest | null>(null)
   const requests = useRef(0)
 
   // changes numbers the toasts the window raises itself, counting down, so they never meet
@@ -1035,6 +1039,17 @@ export function App() {
 
   const openPrompts = () => {
     changeView('prompts')
+  }
+
+  // openPromptsAt opens the Prompts page on the prompt promptId when one is named, as the
+  // Deps page's upgrade dialog's Edit does, or as it is otherwise.
+  const openPromptsAt = (promptId?: number) => {
+    if (promptId !== undefined) {
+      requests.current += 1
+      setPromptRequest({ id: promptId, seq: requests.current })
+    }
+
+    openPrompts()
   }
 
   // dismissProjects stores that the user put away the inbox's offer to show issue
@@ -1439,6 +1454,7 @@ export function App() {
                                 variables={config.variables}
                                 items={config.items}
                                 onChanged={reload}
+                                request={promptRequest}
                               />
                             </div>
                           </Suspense>
@@ -1484,7 +1500,7 @@ export function App() {
                                 onDepsSort={(sort) => {
                                   remember(setDepsSort(sort), 'the Deps page’s order')
                                 }}
-                                onOpenPrompts={openPrompts}
+                                onOpenPrompts={openPromptsAt}
                               />
                             </div>
                           </Suspense>

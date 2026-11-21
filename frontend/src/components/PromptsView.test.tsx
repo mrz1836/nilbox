@@ -19,7 +19,7 @@ import {
   variables,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { PromptsView } from './PromptsView'
+import { PromptsView, type PromptRequest } from './PromptsView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -32,11 +32,13 @@ interface HarnessProps {
   initial?: Prompt[]
   initialReplies?: Prompt[]
   onChanged?: () => void
+  // request asks the page to open a prompt, as App passes the Deps page's Edit on.
+  request?: PromptRequest | null
 }
 
 // Harness holds the library the way App does: a reload brings in `next` and
 // `nextReplies`, where set.
-function Harness({ initial = prompts(), initialReplies = replyPrompts(), onChanged }: HarnessProps) {
+function Harness({ initial = prompts(), initialReplies = replyPrompts(), onChanged, request = null }: HarnessProps) {
   const [list, setList] = useState(initial)
   const [replies, setReplies] = useState(initialReplies)
 
@@ -48,6 +50,7 @@ function Harness({ initial = prompts(), initialReplies = replyPrompts(), onChang
       defaults={defaultPrompts()}
       variables={variables()}
       items={[item(), item({ id: 2, kind: 'issue', number: 12, title: 'Crash on start' })]}
+      request={request}
       onChanged={() => {
         onChanged?.()
 
@@ -346,6 +349,52 @@ describe('PromptsView', () => {
     expect(body).toBeVisible()
     expect(body).toHaveFocus()
     expect([body.selectionStart, body.selectionEnd]).toEqual([8, 14])
+  })
+
+  it('opens the prompt it is asked to, in sight in the library, and again each time it is asked', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    const { rerender } = render(<Harness request={{ id: 5, seq: 1 }} />)
+
+    const explain = library().getByRole('button', { name: /Explain/ })
+    expect(explain).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Explain')
+    expect(scrolled).toHaveBeenCalledWith({ block: 'nearest' })
+    expect(scrolled.mock.contexts).toContain(explain)
+
+    await userEvent.click(library().getByRole('button', { name: /Quick look/ }))
+    rerender(<Harness request={{ id: 5, seq: 1 }} />)
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Quick look')
+
+    rerender(<Harness request={{ id: 5, seq: 2 }} />)
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Explain')
+  })
+
+  it('asks before leaving unsaved changes for a prompt it is asked to open', async () => {
+    const { rerender } = render(<Harness />)
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), ' draft')
+    rerender(<Harness request={{ id: 5, seq: 1 }} />)
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Discard your changes?' }))
+    await userEvent.click(dialog.getByRole('button', { name: 'Discard changes' }))
+
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Explain')
+  })
+
+  it('opens a prompt it is asked to once the library brings it in', async () => {
+    const added = prompt({ id: 41, name: 'Upgrade dependencies', nickname: 'Upgrade deps', appliesTo: 'repo' })
+    const { rerender } = render(<Harness request={{ id: 41, seq: 1 }} />)
+
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
+
+    next = [...prompts(), added]
+    rerender(<Harness request={{ id: 41, seq: 1 }} />)
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), ' draft')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Upgrade deps')
+    })
   })
 
   it('asks before leaving unsaved changes', async () => {
