@@ -12,7 +12,7 @@ import {
 import { remToPx } from '../lib/rem'
 import { usePopover } from '../lib/usePopover'
 import { ChevronRightIcon } from './icons'
-import { PopoverPanel } from './PopoverPanel'
+import { panelClass, PopoverPanel } from './PopoverPanel'
 
 export interface MenuItem {
   label: string
@@ -180,7 +180,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      className={`absolute z-10 min-w-48 rounded-lg border border-border bg-surface p-1.5 whitespace-normal shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in ${x} ${y}`}
+      className={`${panelClass} absolute z-10 min-w-48 p-1.5 whitespace-normal outline-none motion-safe:animate-pop-in ${x} ${y}`}
     >
       <MenuItems items={items} onChoose={onChoose} />
     </div>

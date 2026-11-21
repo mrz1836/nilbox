@@ -11,6 +11,7 @@ import {
 import { counted, formatCount } from '../lib/format'
 import { insertSuggestion, segments, type QuerySpec, type Suggester, type Suggestion } from '../lib/query'
 import { SearchIcon, XIcon } from './icons'
+import { panelClass } from './PopoverPanel'
 
 export interface SearchFieldProps {
   value: string
@@ -241,7 +242,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
         </span>
       </div>
       {open && (
-        <div className="absolute top-full right-0 z-40 mt-1 w-80 rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20">
+        <div className={`${panelClass} absolute top-full right-0 z-40 mt-1 w-80 p-1 text-sm`}>
           <div id={listId} role="listbox" aria-label={suggestions.label} className="max-h-72 overflow-y-auto">
             {options.map((option, i) => (
               <div
