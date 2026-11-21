@@ -22,6 +22,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Need is data the engine can read to make an unknown value known.
@@ -110,11 +111,7 @@ func Bool(b bool) Value {
 
 // List returns a known list, partial when there may be more than it holds.
 func List(values []string, partial bool) Value {
-	if values == nil {
-		values = []string{}
-	}
-
-	return Value{Status: StatusKnown, List: values, Partial: partial}
+	return Value{Status: StatusKnown, List: textutil.NonNil(values), Partial: partial}
 }
 
 // Since returns a known duration field's moment.

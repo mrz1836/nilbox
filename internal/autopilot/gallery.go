@@ -225,8 +225,8 @@ func Gallery() []GalleryTemplate {
 		}
 
 		info[i].Spec = spec.Normalize(sp)
-		info[i].Blanks = nonNil(info[i].Blanks)
-		info[i].Signals = nonNil(info[i].Signals)
+		info[i].Blanks = textutil.NonNil(info[i].Blanks)
+		info[i].Signals = textutil.NonNil(info[i].Signals)
 	}
 
 	return info

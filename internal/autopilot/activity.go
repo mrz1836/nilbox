@@ -295,7 +295,7 @@ func (s *Service) Engine(context.Context) (EngineStatus, error) {
 	defer s.engine.mu.Unlock()
 
 	out := s.engine.status
-	out.Problems = nonNil(slices.Clone(out.Problems))
+	out.Problems = textutil.NonNil(slices.Clone(out.Problems))
 
 	return out, nil
 }
@@ -545,7 +545,7 @@ func (s *Service) views(ctx context.Context, rows []queries.AutopilotMatch) ([]M
 		}
 
 		v := matchView(m, named[row.RoutineID])
-		v.Runs, v.Effects = nonNil(byMatch[row.ID]), nonNil(effects[row.ID])
+		v.Runs, v.Effects = textutil.NonNil(byMatch[row.ID]), textutil.NonNil(effects[row.ID])
 		out = append(out, v)
 	}
 
@@ -572,7 +572,7 @@ func matchView(m *match, routine string) Match {
 	v := Match{
 		ID: m.ID, RoutineID: m.RoutineID, Routine: routine, FireKey: m.FireKey, DryRun: m.DryRun, Manual: m.Manual,
 		State: m.state(), BlockedBy: Blocker(m.BlockedBy), Reason: Reason(m.Reason), Words: m.Detail,
-		Steps: make([]MatchStep, 0, len(m.steps)), Step: int(m.Step), Trace: nonNil(m.trace), Approved: m.Approved,
+		Steps: make([]MatchStep, 0, len(m.steps)), Step: int(m.Step), Trace: textutil.NonNil(m.trace), Approved: m.Approved,
 		Attempt: int(m.Attempt), Runs: []Run{}, Effects: []Effect{}, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 		DecidedAt: m.DecidedAt, ClosedAt: m.ClosedAt,
 		Item: ItemRef{
@@ -598,7 +598,7 @@ func matchView(m *match, routine string) Match {
 	if b := Blocker(m.BlockedBy); (b == BlockHold || b == BlockDirty) && int(m.Step) < len(m.steps) {
 		if h := m.steps[m.Step].Hold; h != nil {
 			shown := *h
-			shown.Files = nonNil(h.Files)
+			shown.Files = textutil.NonNil(h.Files)
 			v.Hold = &shown
 		}
 	}
@@ -630,7 +630,7 @@ func stepView(sr *stepRun) MatchStep {
 
 	if sr.Review != nil {
 		rv := *sr.Review
-		rv.Comments = nonNil(rv.Comments)
+		rv.Comments = textutil.NonNil(rv.Comments)
 		out.Review = &rv
 	}
 
@@ -750,7 +750,7 @@ func (s *Service) explainLedger(ctx context.Context, r Routine, out Explanation)
 	}
 
 	d := eval.Evaluate(r.Spec, all[0], h, now)
-	out.Match, out.FireKey, out.Trace, out.Needs = d.Match, d.FireKey, nonNil(d.Trace), nonNil(d.Needs)
+	out.Match, out.FireKey, out.Trace, out.Needs = d.Match, d.FireKey, textutil.NonNil(d.Trace), textutil.NonNil(d.Needs)
 
 	handsOff, err := l.handsOff(ctx, r.ID)
 	if err != nil {

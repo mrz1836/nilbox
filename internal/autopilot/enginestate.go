@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // KeyEngine is the preference that holds the engine's own state, as JSON: when Pause
@@ -80,17 +81,9 @@ func readEngineState(ctx context.Context, p *prefs.Store) (engineState, error) {
 		return empty, nil //nolint:nilerr // a state that can't be read is started again
 	}
 
-	if st.FirstPass == nil {
-		st.FirstPass = map[int64]string{}
-	}
-
-	if st.FromNow == nil {
-		st.FromNow = map[int64]fromNow{}
-	}
-
-	if st.CatchingUp == nil {
-		st.CatchingUp = map[int64]bool{}
-	}
+	st.FirstPass = textutil.NonNilMap(st.FirstPass)
+	st.FromNow = textutil.NonNilMap(st.FromNow)
+	st.CatchingUp = textutil.NonNilMap(st.CatchingUp)
 
 	return st, nil
 }

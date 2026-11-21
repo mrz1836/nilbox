@@ -846,7 +846,7 @@ func mustSteps(raw string) []stepRun {
 		return []stepRun{}
 	}
 
-	return nonNil(steps)
+	return textutil.NonNil(steps)
 }
 
 // The statuses of a run.

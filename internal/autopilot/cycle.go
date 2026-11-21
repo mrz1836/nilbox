@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Cycle is what one of the engine's cycles did.
@@ -886,7 +887,7 @@ func (p *pass) newMatch(r *routineRun, f facts.Facts, d eval.Decision, dry bool)
 			FireKey: d.FireKey, DryRun: dry, State: string(StateQueued), SpecHash: r.hash, CreatedAt: p.now,
 			UpdatedAt: p.now, DecidedAt: p.now,
 		},
-		steps: stepsOf(r.spec), trace: nonNil(d.Trace),
+		steps: stepsOf(r.spec), trace: textutil.NonNil(d.Trace),
 	}
 
 	if f.Head.Known() {
@@ -933,7 +934,7 @@ func (p *pass) reopen(ctx context.Context, r *routineRun, id int64, d eval.Decis
 	}
 
 	m.State, m.BlockedBy, m.Reason, m.Detail, m.ClosedAt = string(StateQueued), "", "", "", nil
-	m.steps, m.Step, m.SpecHash, m.DecidedAt, m.trace = stepsOf(r.spec), 0, r.hash, p.now, nonNil(d.Trace)
+	m.steps, m.Step, m.SpecHash, m.DecidedAt, m.trace = stepsOf(r.spec), 0, r.hash, p.now, textutil.NonNil(d.Trace)
 
 	if err = p.e.ledger.update(ctx, p.e.ledger.q, m); err != nil {
 		return nil, err

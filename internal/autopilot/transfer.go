@@ -362,7 +362,7 @@ func (s *Service) previewPrompts(ctx context.Context, b Bundle) ([]PromptArrival
 		return []PromptArrival{}, uierr.New("The prompts in the file couldn't be read.", err)
 	}
 
-	return nonNil(arrivals), nil
+	return textutil.NonNil(arrivals), nil
 }
 
 // Import brings in the bundle at req.Path, as its preview read it: first the prompts it
@@ -421,7 +421,7 @@ func (s *Service) importPrompts(ctx context.Context, b Bundle) ([]string, error)
 		return []string{}, uierr.New("The prompts in the file couldn't be added.", err)
 	}
 
-	return nonNil(added), nil
+	return textutil.NonNil(added), nil
 }
 
 // storeImported stores b's routines, mapped, switched off, the account signed in's, at the
@@ -473,7 +473,7 @@ func (s *Service) missingRefs(ctx context.Context, b Bundle, arriving []PromptAr
 		}
 	}
 
-	return nonNil(c.out), nil
+	return textutil.NonNil(c.out), nil
 }
 
 // refCollector returns a collector over the library, this Mac's agents and profiles, and
@@ -562,7 +562,7 @@ func (c *refCollector) add(name string, ref MissingRef) {
 	}
 
 	ref.Routines = []string{name}
-	ref.Choices = nonNil(ref.Choices)
+	ref.Choices = textutil.NonNil(ref.Choices)
 	c.out = append(c.out, ref)
 }
 

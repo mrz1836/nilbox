@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -109,9 +110,7 @@ func (s *Service) RunDiff(ctx context.Context, runID int64) (runevent.Diff, erro
 		return empty, uierr.New("This run's changes couldn't be read. Its worktree may be gone.", err)
 	}
 
-	if diff.Untracked == nil {
-		diff.Untracked = []string{}
-	}
+	diff.Untracked = textutil.NonNil(diff.Untracked)
 
 	return diff, nil
 }

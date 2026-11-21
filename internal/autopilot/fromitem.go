@@ -77,7 +77,7 @@ func (s *Service) FromItem(ctx context.Context, itemID int64) (ItemDraft, error)
 	}
 
 	d := eval.Evaluate(sp, f, eval.History{}, now)
-	out.Match, out.Trace = d.Match, nonNil(d.Trace)
+	out.Match, out.Trace = d.Match, textutil.NonNil(d.Trace)
 
 	return out, nil
 }

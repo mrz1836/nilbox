@@ -6,6 +6,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -136,17 +137,9 @@ func emptyPreview() RunPreview {
 
 // nonNilPreview returns p with no nil list or map.
 func nonNilPreview(p RunPreview) RunPreview {
-	if p.Sources == nil {
-		p.Sources = map[string]string{}
-	}
-
-	if p.Env == nil {
-		p.Env = []string{}
-	}
-
-	if p.Warnings == nil {
-		p.Warnings = []string{}
-	}
+	p.Sources = textutil.NonNilMap(p.Sources)
+	p.Env = textutil.NonNil(p.Env)
+	p.Warnings = textutil.NonNil(p.Warnings)
 
 	return p
 }
