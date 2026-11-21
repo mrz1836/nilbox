@@ -436,14 +436,9 @@ func (s *Store) recordEvent(ctx context.Context, now time.Time, entry Entry) (No
 
 // fromRow converts a stored notification to the window's.
 func fromRow(r queries.Notification) Notification {
-	var itemID int64
-	if r.ItemID != nil {
-		itemID = *r.ItemID
-	}
-
 	return Notification{
 		ID: r.ID, Kind: notifyprefs.Kind(r.Kind), CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
-		ItemID: itemID, ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
+		ItemID: store.Deref(r.ItemID), ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail, RunID: r.RunID,
 		RunStarted: r.RunStarted, Heading: r.Heading,
 		Autopilot: event.AutopilotTarget{

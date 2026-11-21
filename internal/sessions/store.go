@@ -649,7 +649,8 @@ func fromRow(row queries.AgentSession) Record {
 		Number: int(row.Number), Title: row.Title, URL: row.URL, Dir: row.Dir, ClonePath: row.ClonePath,
 		Worktree: row.Worktree, WorktreeAction: WorktreeAction(row.WorktreeAction), Permission: row.Permission,
 		Notice: row.LaunchNotice, PID: int(row.Pid), State: State(row.State), Detail: row.StateDetail,
-		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, StateAt: row.StateAt, RunID: row.RunID,
+		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, LinkedAt: store.Deref(row.LinkedAt),
+		StateAt: row.StateAt, EndedAt: store.Deref(row.EndedAt), RunID: row.RunID,
 		GitHubEvent: GitHubEvent(row.GithubEvent), GitHubEventCommit: row.GithubEventCommit,
 	}
 
@@ -667,14 +668,6 @@ func fromRow(row queries.AgentSession) Record {
 
 	if row.GithubEventAt != nil && r.GitHubEvent != GitHubNone {
 		r.GitHubEventAt = *row.GithubEventAt
-	}
-
-	if row.LinkedAt != nil {
-		r.LinkedAt = *row.LinkedAt
-	}
-
-	if row.EndedAt != nil {
-		r.EndedAt = *row.EndedAt
 	}
 
 	return r
