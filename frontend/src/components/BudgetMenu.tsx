@@ -68,7 +68,7 @@ export function BudgetMenu({ gauge, onCheck }: BudgetMenuProps) {
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 w-80 outline-none"
+        className="layer-popover w-80 outline-none"
       >
         <RateGauge gauge={gauge} now={now} titleId={`${id}-title`} />
       </PopoverPanel>

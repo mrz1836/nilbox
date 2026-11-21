@@ -67,7 +67,7 @@ export function SessionsButton({
         id={id}
         role="dialog"
         aria-label="Agent sessions"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[28rem] flex-col overflow-y-auto p-3.5 text-left"
+        className="layer-popover flex max-h-[calc(100vh-8rem)] w-[28rem] flex-col overflow-y-auto p-3.5 text-left"
       >
         <SessionPanel sessions={sessions} agents={agents} />
       </PopoverPanel>

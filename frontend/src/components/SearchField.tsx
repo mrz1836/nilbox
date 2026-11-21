@@ -242,7 +242,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
         </span>
       </div>
       {open && (
-        <div className={`${panelClass} absolute top-full right-0 z-40 mt-1 w-80 p-1 text-sm`}>
+        <div className={`${panelClass} absolute top-full right-0 layer-popover mt-1 w-80 p-1 text-sm`}>
           <div id={listId} role="listbox" aria-label={suggestions.label} className="max-h-72 overflow-y-auto">
             {options.map((option, i) => (
               <div

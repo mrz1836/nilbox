@@ -180,7 +180,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      className={`${panelClass} absolute z-10 min-w-48 p-1.5 whitespace-normal outline-none motion-safe:animate-pop-in ${x} ${y}`}
+      className={`${panelClass} absolute layer-popover min-w-48 p-1.5 whitespace-normal outline-none motion-safe:animate-pop-in ${x} ${y}`}
     >
       <MenuItems items={items} onChoose={onChoose} />
     </div>
@@ -405,7 +405,7 @@ export function MenuButton({
       <PopoverPanel
         state={popover}
         align={align}
-        className={`z-40 whitespace-normal ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
+        className={`layer-popover whitespace-normal ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
       >
         {typeof header === 'function'
           ? header(() => {

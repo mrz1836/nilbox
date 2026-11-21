@@ -121,7 +121,7 @@ export function StatusSort({
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-30 w-72 outline-none"
+        className="layer-popover w-72 outline-none"
       >
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
           <h3 id={`${id}-title`} className="text-sm font-semibold">

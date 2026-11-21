@@ -149,7 +149,7 @@ export function ServiceStatusMenu({ service, onChooseWatch }: ServiceStatusMenuP
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 w-80 outline-none"
+        className="layer-popover w-80 outline-none"
       >
         <div className="flex flex-col">
           <div className="flex items-center justify-between gap-4 px-4 pt-3.5">
