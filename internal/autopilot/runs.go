@@ -303,13 +303,13 @@ func (s *Service) RunEvents(ctx context.Context, runID, after int64) (runevent.P
 
 	e := s.engine
 	if e == nil || e.views == nil {
-		return emptyPage(), uierr.New("This run's events aren't kept here.", ErrNoViews)
+		return runevent.EmptyPage(), uierr.New("This run's events aren't kept here.", ErrNoViews)
 	}
 
 	page, err := e.views.Events(ctx, runID, after)
 	if err != nil {
-		return emptyPage(), uierr.New("This run's events couldn't be read.", err)
+		return runevent.EmptyPage(), uierr.New("This run's events couldn't be read.", err)
 	}
 
-	return nonNilPage(page), nil
+	return page.Listed(), nil
 }
