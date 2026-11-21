@@ -1,3 +1,7 @@
+// The test reads and runs the agent with Node's own modules, whose types tsconfig.app.json
+// leaves out.
+/// <reference types="node" />
+
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInThisContext } from 'node:vm'
