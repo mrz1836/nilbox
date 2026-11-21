@@ -7,7 +7,7 @@ import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { LaunchOptions } from '../lib/launch'
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
+import type { InboxItem, ItemDetails, Worktree } from '../platform'
 import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import {
@@ -27,11 +27,10 @@ import {
 } from '../test/fixtures'
 import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
+import { editActionsOf, triageActionsOf } from '../test/query'
 import { followResizes } from '../test/stubs'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
-import type { EditActions } from './ItemMenu'
 import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps } from './ItemRow'
-import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -43,32 +42,6 @@ const launch: LaunchOptions = {
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
   onSettingsSaved: () => undefined,
-}
-
-function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules,
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
-}
-
-function editActions(): EditActions {
-  return {
-    onCopyLink: vi.fn(),
-    onUnassign: vi.fn(() => Promise.resolve()),
-    onRemoveReview: vi.fn(() => Promise.resolve()),
-  }
 }
 
 // render renders on a clock that stands at now.
@@ -310,7 +283,7 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('offers to nudge the author once they have been quiet a day, where the card can', async () => {
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const edits = editActionsOf({ onNudge: vi.fn() })
     const quiet = { ...theirs(), updatedAt: '2026-06-13T12:00:00Z' }
     const row = mountCard(quiet, { resolution, edits })
 
@@ -330,7 +303,7 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('says when the user nudged the author, and waits again from then', () => {
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const edits = editActionsOf({ onNudge: vi.fn() })
     const row = mountCard(
       { ...theirs(), updatedAt: '2026-06-10T12:00:00Z', nudgedAt: '2026-06-15T09:00:00Z' },
       {
@@ -360,7 +333,7 @@ describe('ItemRow waiting on the author', () => {
           <ItemRow
             item={{ ...theirs(), updatedAt: '2026-06-01T12:00:00Z' }}
             launch={launch}
-            edits={{ ...editActions(), onNudge: vi.fn() }}
+            edits={editActionsOf({ onNudge: vi.fn() })}
           />
         </ul>
       </CardPrefsContext>,
@@ -591,8 +564,8 @@ describe('ItemRow chips', () => {
 
   it('opens the risk chip’s panel whole, over the triage, which its second line doesn’t clip', async () => {
     const row = mountCard(asked({ trusted: false, trust: 'outside', files: fileCheck() }), {
-      triage: triageActions(),
-      edits: editActions(),
+      triage: triageActionsOf(),
+      edits: editActionsOf(),
     })
     const chip = screen.getByRole('button', { name: 'Outside · Agent config · Workflows' })
 
@@ -691,13 +664,15 @@ describe('ItemRow chips', () => {
 
 describe('ItemRow pin', () => {
   it('marks a pinned card before its title', () => {
-    mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+    mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActionsOf() })
 
     expect(screen.getByRole('img', { name: 'Pinned to the top of the list' })).toBeInTheDocument()
   })
 
   it('names the rule that pins it, which the card doesn’t unpin', () => {
-    mountCard(asked({ repoRule: 'pinned' }), { triage: triageActions({ pinned: ['acme-org'], muted: [] }) })
+    mountCard(asked({ repoRule: 'pinned' }), {
+      triage: triageActionsOf({ repoRules: { pinned: ['acme-org'], muted: [] } }),
+    })
 
     const mark = screen.getByRole('img', { name: 'Pinned with acme-org' })
     expect(mark).toHaveAttribute('title', expect.stringContaining('Settings → Repositories'))
@@ -723,7 +698,7 @@ describe('ItemRow pin', () => {
 describe('ItemRow tabs', () => {
   // inTab renders an item's card in a tab, with the row's triage.
   function inTab(it: InboxItem, tab: TriageTab) {
-    const triage = triageActions({ pinned: [], muted: ['acme-org'] })
+    const triage = triageActionsOf({ repoRules: { pinned: [], muted: ['acme-org'] } })
     mountCard(it, { tab, triage })
 
     return triage
@@ -749,7 +724,7 @@ describe('ItemRow tabs', () => {
         snoozedUntil: '2026-06-16T18:45:00Z',
         details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
       }),
-      { tab: 'snoozed', triage: triageActions() },
+      { tab: 'snoozed', triage: triageActionsOf() },
     )
 
     expect(row).toHaveAttribute('data-rule', 'snoozed')
@@ -771,7 +746,7 @@ describe('ItemRow tabs', () => {
         dismissedAt: '2026-06-15T10:00:00Z',
         details: details({ checks: { ...details().checks, passed: 10, failed: 2 } }),
       }),
-      { tab: 'dismissed', triage: triageActions() },
+      { tab: 'dismissed', triage: triageActionsOf() },
     )
 
     expect(row).toHaveAttribute('data-rule', 'dismissed')
@@ -880,7 +855,7 @@ describe('ItemRow agent', () => {
           launch={launch}
           resolution={itemResolution()}
           tab="snoozed"
-          triage={triageActions()}
+          triage={triageActionsOf()}
         />
       </ul>,
     )
@@ -1104,8 +1079,8 @@ describe('ItemRow peek', () => {
         unread: true,
       }),
       {
-        triage: triageActions(),
-        edits: editActions(),
+        triage: triageActionsOf(),
+        edits: editActionsOf(),
         onOpen: vi.fn(),
         onFilterBy: vi.fn(),
         sessions: [working],
@@ -1338,7 +1313,7 @@ describe('ItemRow peek', () => {
   })
 
   it('acts from its action bar: the primary, the agent’s options, triage, and GitHub', async () => {
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const onOpen = vi.fn()
     const it = asked()
     const row = mountCard(it, { triage, onOpen })
@@ -1368,7 +1343,7 @@ describe('ItemRow peek', () => {
     platform.focusSession.mockRejectedValueOnce(new Error('The terminal tab is gone.'))
     const onOpen = vi.fn()
     const it = asked({ pinnedAt: '2026-06-15T11:00:00Z' })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const row = mountCard(it, { sessions: [agentSession()], onOpen, triage, tab: 'inbox' })
     await userEvent.click(toggles(row).stretched)
 
@@ -1384,7 +1359,7 @@ describe('ItemRow peek', () => {
 
   it('reads an issue on GitHub without a sheet, and offers only its pin in a set-aside tab', async () => {
     const it = item({ kind: 'issue', details: details(), dismissedAt: '2026-06-15T10:00:00Z' })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     render(
       <ul>
         <ItemRow item={it} launch={null} tab="dismissed" triage={triage} sessions={[agentSession()]} />
@@ -1403,7 +1378,7 @@ describe('ItemRow peek', () => {
 
 describe('ItemRow triage', () => {
   it('hides the triage until the card is lit, over the state column', () => {
-    const row = mountCard(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountCard(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
 
     const triage = row.querySelector('[data-triage]')
     expect(triage).toHaveClass('opacity-0', 'card-lit:opacity-100')
@@ -1415,7 +1390,7 @@ describe('ItemRow triage', () => {
 
   it('keeps the triage shown, and the state column faded, while the card works with GitHub', async () => {
     const refreshing = deferred()
-    const triage = triageActions()
+    const triage = triageActionsOf()
     triage.onRefresh = vi.fn(() => refreshing.promise)
     const row = mountCard(asked(), { triage })
 
@@ -1434,9 +1409,9 @@ describe('ItemRow triage', () => {
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
     const unassigning = deferred()
-    const edits = editActions()
+    const edits = editActionsOf()
     edits.onUnassign = vi.fn(() => unassigning.promise)
-    const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
+    const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActionsOf(), edits })
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
@@ -1473,9 +1448,9 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('lights only while the pointer is on the card, whatever a click focused in it', async () => {
     const user = userEvent.setup()
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const onOpen = vi.fn()
-    const row = mountLit(asked(), { triage, edits: editActions(), onOpen })
+    const row = mountLit(asked(), { triage, edits: editActionsOf(), onOpen })
     const { stretched, chevron } = toggles(row)
     const title = within(row).getAllByRole('button')[0] as HTMLElement
 
@@ -1507,7 +1482,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('lights as the keyboard moves focus into the card, through to Show details', async () => {
     const user = userEvent.setup()
-    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountLit(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
     const { chevron } = toggles(row)
 
     // jsdom rings focus that Tab moved while the key is down, and remembers the last
@@ -1531,7 +1506,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('gives the ▾ focus back unringed after a pointer closes the launch options, ringed after Escape', async () => {
     const user = userEvent.setup()
-    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountLit(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
     const options = within(row).getByRole('button', { name: /^Launch options/ })
 
     await user.click(options)
@@ -1555,8 +1530,8 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('gives a menu’s button focus back unringed after a pointer picks from it', async () => {
     const user = userEvent.setup()
-    const triage = triageActions()
-    const edits = editActions()
+    const triage = triageActionsOf()
+    const edits = editActionsOf()
     const row = mountLit(asked(), { triage, edits })
 
     const snooze = within(row).getByRole('button', { name: 'Snooze for…' })
@@ -1583,7 +1558,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
 describe('ItemRow unread dot', () => {
   it('marks an unread card first on its first line, before the pin and the title', () => {
-    const row = mountCard(asked({ unread: true, pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+    const row = mountCard(asked({ unread: true, pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActionsOf() })
 
     const dot = within(row).getByTitle('New since you last opened it')
     expect(dot).toHaveTextContent('Unread')
@@ -1616,7 +1591,7 @@ describe('ItemRow open', () => {
     const onOpen = vi.fn()
     const user = userEvent.setup()
     const pull = item()
-    const triage = triageActions()
+    const triage = triageActionsOf()
     render(
       <ul>
         <ItemRow item={pull} launch={null} tab="dismissed" triage={triage} onOpen={onOpen} />

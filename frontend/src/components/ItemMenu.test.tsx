@@ -10,45 +10,19 @@ import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { autopilotMatch, details, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { editActionsOf, triageActionsOf } from '../test/query'
 import { AutopilotMenuContext, useRoutineMenu } from './autopilot/RoutineMenu'
-import { teamsText, type EditActions } from './ItemMenu'
+import { teamsText } from './ItemMenu'
 import { ItemRow } from './ItemRow'
 import { defaultToastSeconds } from './Toast'
-import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules,
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
-}
-
-function editActions(): EditActions {
-  return {
-    onCopyLink: vi.fn(),
-    onUnassign: vi.fn(() => Promise.resolve()),
-    onRemoveReview: vi.fn(() => Promise.resolve()),
-  }
-}
 
 // renderRow renders one row with its triage buttons and its menu, and returns what they
 // do.
 function renderRow(it: InboxItem, tab: TriageTab = 'inbox', repoRules?: RepoRules) {
-  const triage = triageActions(repoRules)
-  const edits = editActions()
+  const triage = triageActionsOf(repoRules === undefined ? {} : { repoRules })
+  const edits = editActionsOf()
 
   render(
     <ul>
@@ -180,12 +154,12 @@ describe('ItemMenu', () => {
 
   it('offers neither mark while the cards show no unread dots, and still marks an item opened on GitHub read', async () => {
     const unread = item({ unread: true })
-    const triage = triageActions()
+    const triage = triageActionsOf()
 
     render(
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
         <ul>
-          <ItemRow item={unread} launch={null} triage={triage} edits={editActions()} />
+          <ItemRow item={unread} launch={null} triage={triage} edits={editActionsOf()} />
         </ul>
       </CardPrefsContext>,
       { wrapper: at() },
@@ -377,8 +351,8 @@ describe('ItemMenu', () => {
       updatedAt: '2026-06-15T11:00:00Z',
       details: details({ viewerVerdict: 'changes' }),
     })
-    const triage = triageActions()
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const triage = triageActionsOf()
+    const edits = editActionsOf({ onNudge: vi.fn() })
 
     render(
       <ul>
@@ -413,8 +387,8 @@ describe('ItemMenu', () => {
         <ItemRow
           item={item({ ...waiting, authorIsBot: true })}
           launch={null}
-          triage={triageActions()}
-          edits={{ ...editActions(), onNudge: vi.fn() }}
+          triage={triageActionsOf()}
+          edits={editActionsOf({ onNudge: vi.fn() })}
         />
       </ul>,
       { wrapper: at() },
@@ -539,8 +513,8 @@ describe('teamsText', () => {
 
 describe('ItemMenu open', () => {
   it('opens a pull request in the review sheet', async () => {
-    const triage = triageActions()
-    const edits = { ...editActions(), onOpen: vi.fn() }
+    const triage = triageActionsOf()
+    const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item()
 
     render(
@@ -556,12 +530,12 @@ describe('ItemMenu open', () => {
   })
 
   it('opens an issue in the issue sheet', async () => {
-    const edits = { ...editActions(), onOpen: vi.fn() }
+    const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item({ kind: 'issue' })
 
     render(
       <ul>
-        <ItemRow item={it} launch={null} tab="inbox" triage={triageActions()} edits={edits} />
+        <ItemRow item={it} launch={null} tab="inbox" triage={triageActionsOf()} edits={edits} />
       </ul>,
       { wrapper: at() },
     )
@@ -575,7 +549,7 @@ describe('ItemMenu open', () => {
   it('offers neither without a sheet', async () => {
     render(
       <ul>
-        <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+        <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>,
       { wrapper: at() },
     )
@@ -624,7 +598,7 @@ async function renderWithRoutines(it: InboxItem = item(), routines = menuRoutine
   render(
     <WithRoutines routines={routines}>
       <ul>
-        <ItemRow item={it} launch={null} triage={triageActions()} edits={editActions()} />
+        <ItemRow item={it} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>
     </WithRoutines>,
     { wrapper: at() },
@@ -853,7 +827,7 @@ describe('ItemMenu Autopilot', () => {
     render(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
-          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+          <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
       { wrapper: at() },
@@ -874,7 +848,7 @@ describe('ItemMenu Autopilot', () => {
     render(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
-          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+          <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
       { wrapper: at() },
