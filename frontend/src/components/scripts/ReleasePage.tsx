@@ -34,11 +34,11 @@ import { buttonClass, captionClass, quietButtonClass, Segmented, type SegmentOpt
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
+import { SearchBox } from '../SearchBox'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { GroupHeading } from './GroupHeading'
 import { CandidateRow, MutedRow, ReadinessSummary, releaseListClass } from './ReleaseRow'
-import { RepoSearch } from './RepoSearch'
 import { RunStatus } from './RunStatus'
 import { ToolProblem } from './ToolProblem'
 
@@ -361,7 +361,7 @@ export function ReleasePage({
         )}
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
-            <RepoSearch value={search} onChange={setSearch} />
+            <SearchBox value={search} onChange={setSearch} />
           </div>
           <Segmented<ReleaseSort>
             label="Sort the repositories"

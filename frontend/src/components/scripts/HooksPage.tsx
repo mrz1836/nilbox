@@ -22,11 +22,11 @@ import { buttonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, ChevronRightIcon, ExternalIcon, InfoIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
+import { SearchBox } from '../SearchBox'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { GroupHeading } from './GroupHeading'
 import { HookRow } from './HookRow'
-import { RepoSearch } from './RepoSearch'
 import { ToneIcon, toneWords } from './ToneIcon'
 import { ToolProblem } from './ToolProblem'
 
@@ -446,7 +446,7 @@ export function HooksPage({
             <span className="sr-only">: {list.error}</span>
           </p>
         )}
-        <RepoSearch value={search} onChange={setSearch} />
+        <SearchBox value={search} onChange={setSearch} />
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">{body}</div>
     </div>

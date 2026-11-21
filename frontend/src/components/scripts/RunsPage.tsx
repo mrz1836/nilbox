@@ -17,8 +17,9 @@ import { clearScriptRunHistory, type ScriptRun, type TerminalID } from '../../pl
 import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass, Segmented } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { SearchIcon, TrashIcon } from '../icons'
+import { TrashIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
+import { SearchBox } from '../SearchBox'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { RunPanel } from './RunPanel'
@@ -135,22 +136,7 @@ export function RunsPage({ runs, error, reload, terminal, selected, onSelect: se
           <ErrorText error={clear.error} />
           <div className="flex flex-wrap items-center gap-2">
             <Segmented label="Kind of run" size="sm" value={filter} options={filterOptions} onChange={setFilter} />
-            <label htmlFor={`${id}-search`} className="sr-only">
-              Search repositories
-            </label>
-            <div className="flex min-w-40 flex-1 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 focus-within:border-accent/60">
-              <SearchIcon className="size-3.5 shrink-0 text-muted" />
-              <input
-                id={`${id}-search`}
-                type="search"
-                value={search}
-                placeholder="Search repositories…"
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                }}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-              />
-            </div>
+            <SearchBox value={search} onChange={setSearch} className="min-w-40 flex-1" />
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">

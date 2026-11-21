@@ -7,8 +7,8 @@ import type { RunsIn, ScriptEntry, ScriptSection } from '../../platform'
 import { chipClass, fieldClass } from '../controls'
 import { AlertIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, TagIcon } from '../icons'
 import { MenuButton } from '../Menu'
+import { SearchBox } from '../SearchBox'
 import { GroupHeading } from './GroupHeading'
-import { RepoSearch } from './RepoSearch'
 import { argsFor, releaseWords, scriptMenu, ScriptRow, type ScriptMenuProps } from './ScriptRow'
 
 // List is one of the section's folded lists of targets.
@@ -155,7 +155,7 @@ function MagexBody({ section, ...place }: Omit<MagexSectionProps, 'headingId' | 
           </div>
           {/* The search lines up with the field, below the field's label. */}
           <div className="flex min-w-48 flex-1 flex-col pt-5">
-            <RepoSearch
+            <SearchBox
               value={search}
               onChange={setSearch}
               label="Search magex targets"
