@@ -5,7 +5,7 @@ import { ownRule, parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow }
 import { useQuery } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
 import { listLaunchTargets, setRepoRule, type LaunchTarget, type RepoRule, type Settings } from '../../platform'
-import { buttonClass, ErrorText, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, dangerIconButtonClass, ErrorText, fieldClass, Segmented, type SegmentOption } from '../controls'
 import { MuteIcon, PinIcon, XIcon } from '../icons'
 import { Group, joinIds, Note, SectionIntro } from './rows'
 
@@ -199,7 +199,7 @@ function RuleRowItem({ row, nested, busy, onChange, onRemove }: RuleRowItemProps
         aria-label={`Remove the rule for ${row.target}`}
         title={`Remove the rule for ${row.target}`}
         onClick={onRemove}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+        className={`${dangerIconButtonClass} disabled:opacity-50`}
       >
         <XIcon className="size-3.5" />
       </button>

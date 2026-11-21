@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from 'react'
 
-import { buttonClass, ErrorText, fieldClass } from '../controls'
+import { buttonClass, dangerIconButtonClass, ErrorText, fieldClass } from '../controls'
 import { XIcon } from '../icons'
 import { Group, joinIds } from './rows'
 
@@ -78,7 +78,7 @@ export function StringListEditor({
                 onClick={() => {
                   onRemove(item)
                 }}
-                className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+                className={`${dangerIconButtonClass} ml-auto disabled:opacity-50`}
               >
                 <XIcon className="size-3.5" />
               </button>
