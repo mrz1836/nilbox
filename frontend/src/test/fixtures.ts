@@ -39,6 +39,7 @@ import type {
   Account,
   AfterMerge,
   Agent,
+  AgentID,
   AgentSession,
   AgentInfo,
   AgentVersion,
@@ -2748,6 +2749,18 @@ export function mainWorktree(overrides: Partial<Worktree> = {}): Worktree {
     branches: [],
     ...overrides,
   })
+}
+
+// managed is the path the window shows for a worktree the app made, name, under the clone
+// root's managed root, for clone: "~/projects/.<slug>/worktrees/example-repo/pr-7".
+export function managed(name: string, clone = 'example-repo'): string {
+  return `~/projects/.${brand.slug}/worktrees/${clone}/${name}`
+}
+
+// agentName names an agent as the worktrees page's lines and menus take it: Codex, and
+// Claude for any other.
+export function agentName(id: AgentID): string {
+  return id === 'codex' ? 'Codex' : 'Claude'
 }
 
 export function worktreeRepo(overrides: Partial<WorktreeRepo> = {}): WorktreeRepo {
