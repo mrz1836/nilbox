@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { renderAt } from '../test/clock'
 import { agentGroup, agents, launchHold, runningHold } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
@@ -65,6 +66,26 @@ describe('LaunchHoldDialog', () => {
     const dialog = within(screen.getByRole('dialog', { name: 'Its worktree has uncommitted changes' }))
     expect(dialog.getByText(/pr-88 has 3 uncommitted files/)).toBeInTheDocument()
     expect(dialog.getByText(/Codex would work on top of them/)).toBeInTheDocument()
+  })
+
+  it('names a session a repository’s launch started by its repository alone, having no item to number', () => {
+    const base = runningHold()
+    const hold = { ...base, worktree: '', running: base.running.map((r) => ({ ...r, worktree: '', number: 0 })) }
+
+    renderAt(
+      <LaunchHoldDialog
+        hold={hold}
+        agentName="Claude"
+        agents={agents()}
+        item={{ repo: 'acme-org/example-repo', number: 7 }}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const running = screen.getByRole('list', { name: 'Sessions running here' })
+    expect(running).toHaveTextContent('Claude needs approval on acme-org/example-repo · 2m ago')
+    expect(running).not.toHaveTextContent('#')
   })
 
   it('names the folder of an agent working in the clone, with nothing to offer but Close', () => {

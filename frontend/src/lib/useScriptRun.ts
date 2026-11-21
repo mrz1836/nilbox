@@ -4,7 +4,8 @@ import { runScript, type RunsIn, type ScriptEntry, type ScriptQuestion, type Use
 import { useMutation } from './useMutation'
 
 // ScriptAsk is a run the user asked for: the script, where it runs ('' for the setting),
-// whether a command that bumps a version runs anyway, and a magex target's arguments.
+// whether a command the page points elsewhere (a version bump, which Release does, or a
+// dependency upgrade, which Deps does) runs anyway, and a magex target's arguments.
 export interface ScriptAsk {
   entry: ScriptEntry
   runsIn: RunsIn | ''

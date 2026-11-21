@@ -1,17 +1,24 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 
 import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
 import { savableChoices, withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
-import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution, Situation } from '../platform'
+import type { AgentInfo, LaunchSetting, Profile, Prompt, Resolution } from '../platform'
 import { buttonClass, linkClass, primaryButtonClass, quietButtonClass, smallButtonClass } from './controls'
 import { AlertIcon, StarIcon, TerminalIcon } from './icons'
-import { LaunchPreviewSection } from './LaunchPreviewSection'
+import { LaunchPreviewSection, type LaunchSubject } from './LaunchPreviewSection'
+
+// ResolvedLaunch is what a launch's settings resolve to, each with where it came from: an
+// item's Resolution, or a repository's, whose kind is ''. The launch options read the kind
+// from their subject, never from it.
+export type ResolvedLaunch = Omit<Resolution, 'kind'>
 
 export interface LaunchMenuProps {
-  item: InboxItem
-  // resolved is what the item's settings resolve to with the chosen prompt and profile;
+  // subject is what the launch is for: an item, or a repository, which offers only the
+  // prompts for repositories, always makes a worktree, and saves nothing as a default.
+  subject: LaunchSubject
+  // resolved is what the subject's settings resolve to with the chosen prompt and profile;
   // its inherited values are what each setting shows as its default.
-  resolved: Resolution
+  resolved: ResolvedLaunch
   choices: Choices
   onChoices: (c: Choices) => void
   // agents are the coding agents a launch can start, each with whether it is installed.
@@ -35,9 +42,6 @@ export interface LaunchMenuProps {
   // resolveError says why the settings under the chosen prompt and profile could not be
   // worked out, or ''.
   resolveError: string
-  // situation is the pull request's situation the launch is for, which the preview plans
-  // with; '' (the default) for none.
-  situation?: Situation
   onManagePrompts: () => void
   // onCancel closes the options without launching.
   onCancel: () => void
@@ -60,245 +64,223 @@ function defaultLabel(s: LaunchSetting, label: (v: string) => string): string {
   return `Default · ${label(s.inherited)} (${sourceLabel(s.inheritedSource)})`
 }
 
-// LaunchMenu is the launch options in their dialog: the coding agent, the prompt (a select,
-// with the chosen one's description under it), the agent's profile, its model and effort,
-// the worktree, and plan mode for this launch, a preview of what it runs, and buttons to
-// save the choices as defaults, to cancel, or to launch. Saving takes one click, as it
-// changes only this Mac's defaults, and offers Undo, which puts back what the save
-// replaced; the save buttons wait until a choice differs. Every choice starts at what the
-// item's settings resolve to, each showing where that comes from; the profiles, models, and
-// effort levels offered are the chosen agent's. The choices scroll when the window is
-// short, and the buttons stay in view under them.
-export function LaunchMenu({
-  item,
+export interface LaunchFieldsProps {
+  // subject is what the launch is for: an outside contributor's item starts in plan mode
+  // until the override lifts it, and a repository always makes a worktree of its own.
+  subject: Pick<LaunchSubject, 'kind' | 'trusted'>
+  // resolved is what the subject's settings resolve to with the chosen prompt and profile;
+  // its inherited values are what each setting shows as its default.
+  resolved: ResolvedLaunch
+  choices: Choices
+  onChoices: (c: Choices) => void
+  // agents are the coding agents a launch can start, each with whether it is installed.
+  agents: readonly AgentInfo[]
+  profiles: readonly Profile[]
+  // resolveError says why the settings under the chosen prompt and profile could not be
+  // worked out, or ''.
+  resolveError: string
+  // prompt is the choice of prompt, between the agent and the profile, as the launch menu
+  // shows it; none (the default) where the prompt is chosen apart, as the Deps page's
+  // upgrade sheet chooses it above them.
+  prompt?: ReactNode
+  // worktree says where a repository's launch runs, in place of the worktree choice an
+  // item's launch offers; without it, the worktree shows as always on.
+  worktree?: ReactNode
+}
+
+// LaunchFields are the launch options' own settings, as the launch menu and the Deps page's
+// upgrade sheet both show them: the coding agent, the agent's profile, its model and effort,
+// the worktree, plan mode, and Fast mode for this launch, the outside-contributor override,
+// and the warnings of the settings resolved. Every choice starts at what the subject's
+// settings resolve to, each showing where that comes from; the profiles, models, and effort
+// levels offered are the chosen agent's. A repository's launch always makes a worktree of its
+// own, so it offers no choice of one, and is trusted, so it offers no override.
+export function LaunchFields({
+  subject,
   resolved,
   choices,
   onChoices,
   agents,
   profiles,
-  prompts,
-  agentName,
-  onLaunch,
-  busy,
-  onSave,
-  saving,
-  status,
-  onUndo,
   resolveError,
-  situation = '',
-  onManagePrompts,
-  onCancel,
-}: LaunchMenuProps) {
+  prompt,
+  worktree: worktreeNote,
+}: LaunchFieldsProps) {
   const id = useId()
-  const untrusted = !item.trusted
+  const untrusted = !subject.trusted
   // agent is the agent this launch starts, as resolved under the choices, with the models
   // its cache lists when the app read one.
   const agent = agentOf(agents, resolved.agent.id) ?? { ...resolved.agent, installed: true, path: '' }
   const agentProfiles = profiles.filter((p) => p.agent === agent.id)
   const agentId = choices.agent === '' ? resolved.agentInherited : choices.agent
-  const applicable = prompts.filter((p) => promptApplies(p, item.kind))
-  const promptId = choices.promptId === 0 ? resolved.prompt.id : choices.promptId
-  // about is the chosen prompt's description, under the select, or '' when it only says
-  // its nickname again.
-  const chosenPrompt = applicable.find((p) => p.id === promptId)
-  const about = chosenPrompt === undefined || chosenPrompt.name === chosenPrompt.nickname ? '' : chosenPrompt.name
   const profile = choices.profile === '' ? resolved.profile.value : choices.profile
   const worktree = choices.worktree ?? resolved.worktree.inherited
   const planMode = choices.planMode ?? resolved.planMode.inherited
   const fast = choices.fast ?? resolved.fast.inherited
   // forcedPlan: an outside contributor's item starts in plan mode until the override lifts it.
   const forcedPlan = untrusted && !choices.override
-  const [owner, name] = [resolved.owner, resolved.repo.split('/').at(-1) ?? '']
-  // savable reports a choice a save would store; until then the save buttons wait.
-  const savable = savableChoices(choices)
+  // first: the profile opens the options, with neither an agent to choose nor a prompt
+  // above it, so it draws no rule over itself.
+  const first = prompt === undefined && agents.length <= 1
   const set = (patch: Partial<Choices>) => {
     onChoices({ ...choices, ...patch })
   }
 
   return (
-    <div className="flex min-h-0 flex-col text-sm">
-      <div className="min-h-0 overflow-y-auto overscroll-contain">
-        {agents.length > 1 && (
-          <div className="px-1.5 pt-2">
-            <p id={`${id}-agent-title`} className={sectionTitle}>
-              Agent
-            </p>
-            <div role="radiogroup" aria-labelledby={`${id}-agent-title`} className="flex gap-1.5 px-2 pb-1">
-              {agents.map((a) => (
-                <label
-                  key={a.id}
-                  title={
-                    !a.installed
-                      ? `${a.name} isn’t installed (${a.command} wasn’t found)`
-                      : a.id === resolved.agentInherited
-                        ? sourceLabel(resolved.agentInheritedSource)
-                        : a.path
-                  }
-                  className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-disabled"
-                >
-                  <input
-                    type="radio"
-                    name={`${id}-agent`}
-                    value={a.id}
-                    checked={agentId === a.id}
-                    disabled={!a.installed}
-                    onChange={() => {
-                      onChoices(withAgent(choices, a.id === resolved.agentInherited ? '' : a.id))
-                    }}
-                    className="sr-only"
-                  />
-                  {a.name}
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className={`px-1.5 pt-2 pb-1 ${agents.length > 1 ? 'mt-1 border-t border-border' : ''}`}>
-          <div className="flex items-baseline justify-between">
-            <label htmlFor={`${id}-prompt`} className={sectionTitle}>
-              Prompt
-            </label>
-            <button type="button" onClick={onManagePrompts} className={quietButtonClass}>
-              Manage
-            </button>
-          </div>
-          <div className="flex flex-col gap-1 px-2">
-            {/* The dialog opens with focus on the prompt, the choice most often changed. A
-                select keeps the dialog one size however many prompts there are, and its
-                menu shows every one. */}
-            <select
-              id={`${id}-prompt`}
-              data-initial-focus
-              value={promptId}
-              aria-describedby={about === '' ? undefined : `${id}-prompt-about`}
-              onChange={(e) => {
-                const chosen = Number(e.target.value)
-
-                set({ promptId: chosen === resolved.prompt.inheritedId ? 0 : chosen })
-              }}
-              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1.5 text-sm font-medium"
-            >
-              {applicable.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id === resolved.prompt.inheritedId
-                    ? `${p.nickname} · ${sourceLabel(resolved.prompt.inheritedSource)}`
-                    : p.nickname}
-                </option>
-              ))}
-            </select>
-            {about !== '' && (
-              <p id={`${id}-prompt-about`} className="line-clamp-2 text-xs text-muted">
-                {about}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-1 border-t border-border px-1.5 pt-2">
-          <p id={`${id}-profile-title`} className={sectionTitle}>
-            Profile
+    <>
+      {agents.length > 1 && (
+        <div className="px-1.5 pt-2">
+          <p id={`${id}-agent-title`} className={sectionTitle}>
+            Agent
           </p>
-          <div role="radiogroup" aria-labelledby={`${id}-profile-title`} className="flex flex-wrap gap-1.5 px-2 pb-1">
-            {agentProfiles.length === 0 && (
-              <p className="text-xs text-muted">{`No ${agent.name} profiles: run ${agent.command} once to make ~/${agent.configDir}.`}</p>
-            )}
-            {agentProfiles.map((p) => (
+          <div role="radiogroup" aria-labelledby={`${id}-agent-title`} className="flex gap-1.5 px-2 pb-1">
+            {agents.map((a) => (
               <label
-                key={p.name}
+                key={a.id}
                 title={
-                  !p.signedIn
-                    ? `Not signed in: run ${p.configDir === '' ? '' : `${agent.configEnv}=${p.folder} `}${agent.command} login`
-                    : p.name === resolved.profile.inherited
-                      ? sourceLabel(resolved.profile.inheritedSource)
-                      : p.folder
+                  !a.installed
+                    ? `${a.name} isn’t installed (${a.command} wasn’t found)`
+                    : a.id === resolved.agentInherited
+                      ? sourceLabel(resolved.agentInheritedSource)
+                      : a.path
                 }
-                className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
+                className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-disabled"
               >
                 <input
                   type="radio"
-                  name={`${id}-profile`}
-                  value={p.name}
-                  checked={profile === p.name}
+                  name={`${id}-agent`}
+                  value={a.id}
+                  checked={agentId === a.id}
+                  disabled={!a.installed}
                   onChange={() => {
-                    set({ profile: p.name === resolved.profile.inherited ? '' : p.name })
+                    onChoices(withAgent(choices, a.id === resolved.agentInherited ? '' : a.id))
                   }}
                   className="sr-only"
                 />
-                {p.name}
-                {!p.signedIn && <span className="ml-1 text-caption text-warning">· not signed in</span>}
+                {a.name}
               </label>
             ))}
           </div>
         </div>
+      )}
 
-        <div className="mt-1 flex flex-col gap-2 border-t border-border px-3.5 pt-3 pb-2">
-          <div className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
-            <label htmlFor={`${id}-model`} className="text-xs text-muted">
-              Model
+      {prompt !== undefined && (
+        <div className={`px-1.5 pt-2 pb-1 ${agents.length > 1 ? 'mt-1 border-t border-border' : ''}`}>{prompt}</div>
+      )}
+
+      <div className={first ? 'px-1.5 pt-2' : 'mt-1 border-t border-border px-1.5 pt-2'}>
+        <p id={`${id}-profile-title`} className={sectionTitle}>
+          Profile
+        </p>
+        <div role="radiogroup" aria-labelledby={`${id}-profile-title`} className="flex flex-wrap gap-1.5 px-2 pb-1">
+          {agentProfiles.length === 0 && (
+            <p className="text-xs text-muted">{`No ${agent.name} profiles: run ${agent.command} once to make ~/${agent.configDir}.`}</p>
+          )}
+          {agentProfiles.map((p) => (
+            <label
+              key={p.name}
+              title={
+                !p.signedIn
+                  ? `Not signed in: run ${p.configDir === '' ? '' : `${agent.configEnv}=${p.folder} `}${agent.command} login`
+                  : p.name === resolved.profile.inherited
+                    ? sourceLabel(resolved.profile.inheritedSource)
+                    : p.folder
+              }
+              className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
+            >
+              <input
+                type="radio"
+                name={`${id}-profile`}
+                value={p.name}
+                checked={profile === p.name}
+                onChange={() => {
+                  set({ profile: p.name === resolved.profile.inherited ? '' : p.name })
+                }}
+                className="sr-only"
+              />
+              {p.name}
+              {!p.signedIn && <span className="ml-1 text-caption text-warning">· not signed in</span>}
             </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-1 flex flex-col gap-2 border-t border-border px-3.5 pt-3 pb-2">
+        <div className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
+          <label htmlFor={`${id}-model`} className="text-xs text-muted">
+            Model
+          </label>
+          <select
+            id={`${id}-model`}
+            value={choices.model ?? ''}
+            onChange={(e) => {
+              const value = e.target.value
+
+              set({ model: value === '' || value === resolved.model.inherited ? null : value })
+            }}
+            className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
+          >
+            <option value="">{defaultLabel(resolved.model, (v) => modelLabel(v, agent.models))}</option>
+            {choices.model !== null && !agent.models.some((c) => c.value === choices.model) && (
+              <option value={choices.model}>{choices.model}</option>
+            )}
+            {agent.models.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <label
+            htmlFor={`${id}-effort`}
+            className={`text-xs text-muted ${resolved.effortOff ? 'opacity-disabled' : ''}`}
+          >
+            Effort
+          </label>
+          {resolved.effortOff ? (
             <select
-              id={`${id}-model`}
-              value={choices.model ?? ''}
+              id={`${id}-effort`}
+              value=""
+              disabled
+              aria-describedby={`${id}-effort-help`}
+              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body disabled:cursor-not-allowed disabled:opacity-disabled"
+            >
+              <option value="">{agent.name}’s own</option>
+            </select>
+          ) : (
+            <select
+              id={`${id}-effort`}
+              value={choices.effort ?? ''}
               onChange={(e) => {
                 const value = e.target.value
 
-                set({ model: value === '' || value === resolved.model.inherited ? null : value })
+                set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
               }}
               className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
             >
-              <option value="">{defaultLabel(resolved.model, (v) => modelLabel(v, agent.models))}</option>
-              {choices.model !== null && !agent.models.some((c) => c.value === choices.model) && (
-                <option value={choices.model}>{choices.model}</option>
-              )}
-              {agent.models.map((c) => (
+              <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
+              {agent.effortLevels.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>
               ))}
             </select>
-            <label
-              htmlFor={`${id}-effort`}
-              className={`text-xs text-muted ${resolved.effortOff ? 'opacity-disabled' : ''}`}
-            >
-              Effort
-            </label>
-            {resolved.effortOff ? (
-              <select
-                id={`${id}-effort`}
-                value=""
-                disabled
-                aria-describedby={`${id}-effort-help`}
-                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body disabled:cursor-not-allowed disabled:opacity-disabled"
-              >
-                <option value="">{agent.name}’s own</option>
-              </select>
-            ) : (
-              <select
-                id={`${id}-effort`}
-                value={choices.effort ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value
-
-                  set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
-                }}
-                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
-              >
-                <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
-                {agent.effortLevels.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          {resolved.effortOff && (
-            <p id={`${id}-effort-help`} className="-mt-1 text-xs text-muted">
-              {agent.name} uses the effort in its own config; change it in the session with /model. To set it here, turn
-              on Settings → Launching → Set Codex’s effort at launch.
-            </p>
           )}
+        </div>
+        {resolved.effortOff && (
+          <p id={`${id}-effort-help`} className="-mt-1 text-xs text-muted">
+            {agent.name} uses the effort in its own config; change it in the session with /model. To set it here, turn
+            on Settings → Launching → Set Codex’s effort at launch.
+          </p>
+        )}
+        {subject.kind === '' ? (
+          (worktreeNote ?? (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked disabled className="checkbox" />
+              <span className="text-muted">Start in a worktree</span>
+              <span className="ml-auto text-caption text-muted">always, for a repository</span>
+            </label>
+          ))
+        ) : (
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -313,140 +295,251 @@ export function LaunchMenu({
               {choices.worktree === null ? sourceLabel(resolved.worktree.inheritedSource) : 'this launch'}
             </span>
           </label>
-          <label className={`flex items-center gap-2 ${forcedPlan ? '' : 'cursor-pointer'}`}>
-            <input
-              type="checkbox"
-              checked={forcedPlan || planMode}
-              disabled={forcedPlan}
-              onChange={(e) => {
-                set({ planMode: e.target.checked === resolved.planMode.inherited ? null : e.target.checked })
-              }}
-              className="checkbox"
-            />
-            <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
-            <span className="ml-auto text-caption text-muted">
-              {forcedPlan
-                ? 'outside contributor'
-                : choices.planMode === null
-                  ? sourceLabel(resolved.planMode.inheritedSource)
-                  : 'this launch'}
-            </span>
-          </label>
-          {agent.fastMode && (
-            <div>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={fast}
-                  aria-describedby={fast ? `${id}-fast-help` : undefined}
-                  onChange={(e) => {
-                    set({ fast: e.target.checked === resolved.fast.inherited ? null : e.target.checked })
-                  }}
-                  className="checkbox"
-                />
-                Fast mode
-                <span className="ml-auto text-caption text-muted">
-                  {choices.fast === null ? sourceLabel(resolved.fast.inheritedSource) : 'this launch'}
-                </span>
-              </label>
-              {fast && (
-                <p id={`${id}-fast-help`} className="pt-0.5 pl-6 text-xs text-muted">
-                  {agent.name} runs a session started in Fast mode outside its app server, so its card can’t show when
-                  it waits for you.
-                </p>
-              )}
-            </div>
-          )}
-          {untrusted && (
-            <div>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={choices.override}
-                  aria-describedby={`${id}-override-help`}
-                  onChange={(e) => {
-                    set({ override: e.target.checked })
-                  }}
-                  className="checkbox"
-                />
-                Use profile permissions for this item
-              </label>
-              <p id={`${id}-override-help`} className="pt-0.5 pl-6 text-xs text-muted">
-                {overrideHelp}
+        )}
+        <label className={`flex items-center gap-2 ${forcedPlan ? '' : 'cursor-pointer'}`}>
+          <input
+            type="checkbox"
+            checked={forcedPlan || planMode}
+            disabled={forcedPlan}
+            onChange={(e) => {
+              set({ planMode: e.target.checked === resolved.planMode.inherited ? null : e.target.checked })
+            }}
+            className="checkbox"
+          />
+          <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
+          <span className="ml-auto text-caption text-muted">
+            {forcedPlan
+              ? 'outside contributor'
+              : choices.planMode === null
+                ? sourceLabel(resolved.planMode.inheritedSource)
+                : 'this launch'}
+          </span>
+        </label>
+        {agent.fastMode && (
+          <div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={fast}
+                aria-describedby={fast ? `${id}-fast-help` : undefined}
+                onChange={(e) => {
+                  set({ fast: e.target.checked === resolved.fast.inherited ? null : e.target.checked })
+                }}
+                className="checkbox"
+              />
+              Fast mode
+              <span className="ml-auto text-caption text-muted">
+                {choices.fast === null ? sourceLabel(resolved.fast.inheritedSource) : 'this launch'}
+              </span>
+            </label>
+            {fast && (
+              <p id={`${id}-fast-help`} className="pt-0.5 pl-6 text-xs text-muted">
+                {agent.name} runs a session started in Fast mode outside its app server, so its card can’t show when it
+                waits for you.
               </p>
-            </div>
-          )}
-          {[
-            ...resolved.warnings,
-            ...(resolveError === '' ? [] : [`Couldn’t work out the settings for this choice: ${resolveError}`]),
-          ].map((w) => (
-            <p key={w} className="flex items-start gap-1.5 text-xs text-warning">
-              <AlertIcon className="mt-px size-3.5 shrink-0" />
-              {w}
+            )}
+          </div>
+        )}
+        {untrusted && (
+          <div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={choices.override}
+                aria-describedby={`${id}-override-help`}
+                onChange={(e) => {
+                  set({ override: e.target.checked })
+                }}
+                className="checkbox"
+              />
+              Use profile permissions for this item
+            </label>
+            <p id={`${id}-override-help`} className="pt-0.5 pl-6 text-xs text-muted">
+              {overrideHelp}
             </p>
-          ))}
-        </div>
+          </div>
+        )}
+        {[
+          ...resolved.warnings,
+          ...(resolveError === '' ? [] : [`Couldn’t work out the settings for this choice: ${resolveError}`]),
+        ].map((w) => (
+          <p key={w} className="flex items-start gap-1.5 text-xs text-warning">
+            <AlertIcon className="mt-px size-3.5 shrink-0" />
+            {w}
+          </p>
+        ))}
+      </div>
+    </>
+  )
+}
 
-        <LaunchPreviewSection item={item} choices={choices} untrusted={untrusted} situation={situation} />
+// LaunchMenu is the launch options in their dialog: the coding agent, the prompt (a select,
+// with the chosen one's description under it), the agent's profile, its model and effort,
+// the worktree, and plan mode for this launch (LaunchFields), a preview of what it runs, and
+// buttons to save the choices as defaults, to cancel, or to launch. Saving takes one click,
+// as it changes only this Mac's defaults, and offers Undo, which puts back what the save
+// replaced; the save buttons wait until a choice differs. The choices scroll when the window
+// is short, and the buttons stay in view under them.
+//
+// For a repository (a subject of kind ''), it offers only the prompts for repositories,
+// shows the worktree always on, and saves nothing: a prompt for repositories has no place
+// among an org's or a repository's defaults, and every other choice saved there would change
+// each launch on the repository's items as well.
+export function LaunchMenu({
+  subject,
+  resolved,
+  choices,
+  onChoices,
+  agents,
+  profiles,
+  prompts,
+  agentName,
+  onLaunch,
+  busy,
+  onSave,
+  saving,
+  status,
+  onUndo,
+  resolveError,
+  onManagePrompts,
+  onCancel,
+}: LaunchMenuProps) {
+  const id = useId()
+  const applicable = prompts.filter((p) => promptApplies(p, subject.kind))
+  const promptId = choices.promptId === 0 ? resolved.prompt.id : choices.promptId
+  // about is the chosen prompt's description, under the select, or '' when it only says
+  // its nickname again.
+  const chosenPrompt = applicable.find((p) => p.id === promptId)
+  const about = chosenPrompt === undefined || chosenPrompt.name === chosenPrompt.nickname ? '' : chosenPrompt.name
+  const [owner, name] = [resolved.owner, resolved.repo.split('/').at(-1) ?? '']
+  // savable reports a choice a save would store; until then the save buttons wait.
+  const savable = savableChoices(choices)
+
+  return (
+    <div className="flex min-h-0 flex-col text-sm">
+      <div className="min-h-0 overflow-y-auto overscroll-contain">
+        <LaunchFields
+          subject={subject}
+          resolved={resolved}
+          choices={choices}
+          onChoices={onChoices}
+          agents={agents}
+          profiles={profiles}
+          resolveError={resolveError}
+          prompt={
+            <>
+              <div className="flex items-baseline justify-between">
+                <label htmlFor={`${id}-prompt`} className={sectionTitle}>
+                  Prompt
+                </label>
+                <button type="button" onClick={onManagePrompts} className={quietButtonClass}>
+                  Manage
+                </button>
+              </div>
+              <div className="flex flex-col gap-1 px-2">
+                {/* The dialog opens with focus on the prompt, the choice most often changed. A
+                    select keeps the dialog one size however many prompts there are, and its
+                    menu shows every one. */}
+                <select
+                  id={`${id}-prompt`}
+                  data-initial-focus
+                  value={promptId}
+                  aria-describedby={about === '' ? undefined : `${id}-prompt-about`}
+                  onChange={(e) => {
+                    const chosen = Number(e.target.value)
+
+                    onChoices({ ...choices, promptId: chosen === resolved.prompt.inheritedId ? 0 : chosen })
+                  }}
+                  className="w-full truncate rounded-md border border-border bg-surface px-2 py-1.5 text-sm font-medium"
+                >
+                  {applicable.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.id === resolved.prompt.inheritedId
+                        ? `${p.nickname} · ${sourceLabel(resolved.prompt.inheritedSource)}`
+                        : p.nickname}
+                    </option>
+                  ))}
+                </select>
+                {about !== '' && (
+                  <p id={`${id}-prompt-about`} className="line-clamp-2 text-xs text-muted">
+                    {about}
+                  </p>
+                )}
+              </div>
+            </>
+          }
+        />
+
+        <LaunchPreviewSection subject={subject} choices={choices} />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">
-        <div className="mr-auto flex min-w-0 flex-col gap-1">
-          <span className="text-caption text-muted">
-            {savable ? 'Save these choices as the default for' : 'Change a choice above to save it as the default for'}
-          </span>
-          {/* The two wrap onto two lines when the footer is short of room, rather than run
-              under Cancel. */}
-          <span className="flex min-w-0 flex-wrap gap-1.5">
-            <button
-              type="button"
-              disabled={saving || !savable}
-              onClick={() => {
-                onSave('repo')
-              }}
-              title={`Every launch on ${resolved.repo}`}
-              className={saveButtonClass}
-            >
-              <StarIcon className="size-3 shrink-0 text-muted" />
-              <span className="truncate">{name}</span>
-            </button>
-            <button
-              type="button"
-              disabled={saving || !savable}
-              onClick={() => {
-                onSave('org')
-              }}
-              title={`Every launch on ${owner}'s repositories`}
-              className={saveButtonClass}
-            >
-              <StarIcon className="size-3 shrink-0 text-muted" />
-              <span className="truncate">all of {owner}</span>
-            </button>
-          </span>
-          {status !== null && (
-            <span className="flex flex-wrap items-baseline gap-x-1.5 text-caption leading-snug">
-              <span
-                role={status.tone === 'error' ? 'alert' : 'status'}
-                className={
-                  status.tone === 'error' ? 'text-danger' : status.tone === 'warning' ? 'text-warning' : 'text-success'
-                }
-              >
-                {status.text}
-              </span>
-              {onUndo !== null && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={onUndo}
-                  title="Put back the defaults this save replaced"
-                  className={`${linkClass} disabled:opacity-disabled`}
-                >
-                  Undo
-                </button>
-              )}
+        {subject.kind === '' ? (
+          <span className="mr-auto" />
+        ) : (
+          <div className="mr-auto flex min-w-0 flex-col gap-1">
+            <span className="text-caption text-muted">
+              {savable
+                ? 'Save these choices as the default for'
+                : 'Change a choice above to save it as the default for'}
             </span>
-          )}
-        </div>
+            {/* The two wrap onto two lines when the footer is short of room, rather than run
+                under Cancel. */}
+            <span className="flex min-w-0 flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={saving || !savable}
+                onClick={() => {
+                  onSave('repo')
+                }}
+                title={`Every launch on ${resolved.repo}`}
+                className={saveButtonClass}
+              >
+                <StarIcon className="size-3 shrink-0 text-muted" />
+                <span className="truncate">{name}</span>
+              </button>
+              <button
+                type="button"
+                disabled={saving || !savable}
+                onClick={() => {
+                  onSave('org')
+                }}
+                title={`Every launch on ${owner}'s repositories`}
+                className={saveButtonClass}
+              >
+                <StarIcon className="size-3 shrink-0 text-muted" />
+                <span className="truncate">all of {owner}</span>
+              </button>
+            </span>
+            {status !== null && (
+              <span className="flex flex-wrap items-baseline gap-x-1.5 text-caption leading-snug">
+                <span
+                  role={status.tone === 'error' ? 'alert' : 'status'}
+                  className={
+                    status.tone === 'error'
+                      ? 'text-danger'
+                      : status.tone === 'warning'
+                        ? 'text-warning'
+                        : 'text-success'
+                  }
+                >
+                  {status.text}
+                </span>
+                {onUndo !== null && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={onUndo}
+                    title="Put back the defaults this save replaced"
+                    className={`${linkClass} disabled:opacity-disabled`}
+                  >
+                    Undo
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         <button type="button" onClick={onCancel} className={`${buttonClass} shrink-0`}>
           Cancel
         </button>

@@ -66,6 +66,15 @@ describe('promptApplies', () => {
     expect(promptApplies({ appliesTo: 'pr' }, 'pr')).toBe(true)
     expect(promptApplies({ appliesTo: 'pr' }, 'issue')).toBe(false)
   })
+
+  it('keeps a prompt for repositories out of every item’s launch, and offers a repository nothing else', () => {
+    expect(promptApplies({ appliesTo: 'repo' }, 'pr')).toBe(false)
+    expect(promptApplies({ appliesTo: 'repo' }, 'issue')).toBe(false)
+    expect(promptApplies({ appliesTo: 'repo' }, '')).toBe(true)
+    expect(promptApplies({ appliesTo: 'any' }, '')).toBe(false)
+    expect(promptApplies({ appliesTo: 'pr' }, '')).toBe(false)
+    expect(promptApplies({ appliesTo: 'issue' }, '')).toBe(false)
+  })
 })
 
 describe('usage', () => {

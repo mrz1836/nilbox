@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AutopilotGitHubAction, AutopilotProblem, ItemKind } from '../../../platform'
+import type { AutopilotGitHubAction, AutopilotProblem, ItemKind, Prompt } from '../../../platform'
 import { autopilotCatalog, prompt, prompts, routineSuggestions } from '../../../test/fixtures'
 import { GitHubStepBlock, isCommentReply } from './GitHubStepBlock'
-import type { BuilderKit } from './parts'
+import { fitsKinds, type BuilderKit } from './parts'
 
 vi.mock('../../../platform', () => import('../../../test/platform').then((fake) => fake.platform))
 
@@ -35,10 +35,11 @@ interface HarnessProps {
   start?: AutopilotGitHubAction[]
   kinds?: ItemKind[]
   problems?: AutopilotProblem[]
+  prompts?: Prompt[]
 }
 
-// Harness holds the step's actions as the builder does.
-function Harness({ start = [], kinds = ['pr'], problems = [] }: HarnessProps) {
+// Harness holds the step's actions as the builder does, over library unless prompts says.
+function Harness({ start = [], kinds = ['pr'], problems = [], prompts: held = library() }: HarnessProps) {
   const [actions, setActions] = useState(start)
   const kit: BuilderKit = {
     catalog: autopilotCatalog(),
@@ -51,7 +52,7 @@ function Harness({ start = [], kinds = ['pr'], problems = [] }: HarnessProps) {
   return (
     <GitHubStepBlock
       kit={kit}
-      prompts={library()}
+      prompts={held}
       path="[0]"
       kinds={kinds}
       actions={actions}
@@ -120,6 +121,42 @@ describe('GitHubStepBlock', () => {
 
     expect(isCommentReply({ purpose: 'reply', replyAction: 'approve' })).toBe(false)
     expect(isCommentReply({ purpose: 'reply', replyAction: 'comment' })).toBe(true)
+  })
+
+  it('offers every comment reply to a routine that acts on no kind yet, but never one for repositories', async () => {
+    const user = userEvent.setup()
+    render(
+      <Harness
+        kinds={[]}
+        prompts={[
+          ...library(),
+          // No reply is for repositories, but a library is checked whatever it holds.
+          prompt({
+            id: 24,
+            nickname: 'Deps',
+            purpose: 'reply',
+            replyAction: 'comment',
+            starterKey: '',
+            appliesTo: 'repo',
+          }),
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add an action' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Comment one of my replies' }))
+
+    expect(
+      within(screen.getByRole('combobox', { name: 'Action 1: the reply it comments' }))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Question', 'Thanks'])
+
+    expect(fitsKinds({ appliesTo: 'repo' }, [])).toBe(false)
+    expect(fitsKinds({ appliesTo: 'repo' }, ['pr'])).toBe(false)
+    expect(fitsKinds({ appliesTo: 'issue' }, [])).toBe(true)
+    expect(fitsKinds({ appliesTo: 'any' }, ['pr', 'issue'])).toBe(true)
+    expect(fitsKinds({ appliesTo: 'pr' }, ['pr', 'issue'])).toBe(false)
   })
 
   it('keeps a reply that no longer fits as itself, its problem where it is', () => {

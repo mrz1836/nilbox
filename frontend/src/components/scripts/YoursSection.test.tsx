@@ -357,6 +357,33 @@ describe('Yours', () => {
     )
   })
 
+  it('points a script that upgrades the dependencies to Deps, with no way there from a page that leaves Deps out', async () => {
+    const upgrade = userScript({ name: 'Upgrade', command: 'pnpm up --latest' })
+    withYours(yours([yourEntry(upgrade, { deps: true })]))
+    renderPage()
+
+    const up = await row('Upgrade')
+    expect(up.getByText('Deps upgrades in a fresh worktree and opens a pull request')).toBeInTheDocument()
+    expect(up.queryByRole('button', { name: 'Open Deps' })).not.toBeInTheDocument()
+    expect(up.queryByRole('button', { name: 'Run Upgrade' })).not.toBeInTheDocument()
+
+    await menu('Upgrade')
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'Run it anyway',
+      'Run it anyway in iTerm2',
+      'Edit…',
+      'Duplicate',
+      'Move up',
+      'Move down',
+      'Delete…',
+    ])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Run it anyway' }))
+
+    expect(platform.runScript).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ ref: 'yours:1', runsIn: '', anyway: true }),
+    )
+  })
+
   it('runs a script that doesn’t ask at once, where it says', async () => {
     withYours(yours([yourEntry(userScript({ runsIn: 'app' }))]))
     renderPage('terminal')

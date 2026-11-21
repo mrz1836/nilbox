@@ -2,9 +2,20 @@ import { useId, type Ref } from 'react'
 
 import { formatCount } from '../lib/format'
 import { copyLabel, useCopy } from '../lib/useCopy'
-import type { InboxItem, PromptCheckResult } from '../platform'
+import type { InboxItem, ItemKind, PromptCheckResult } from '../platform'
 import { quietButtonClass } from './controls'
 import { AlertIcon, CheckIcon, CopyIcon } from './icons'
+
+// PreviewKind is what a preview fills a prompt in for: a pull request, an issue, or a
+// repository, for a prompt for repositories.
+export type PreviewKind = ItemKind | 'repo'
+
+// sampleText names the sample a preview fills a prompt in for when no item is chosen.
+const sampleText: Readonly<Record<PreviewKind, string>> = {
+  pr: 'A sample pull request',
+  issue: 'A sample issue',
+  repo: 'A sample repository',
+}
 
 export interface PromptPreviewProps {
   // items are the inbox items the prompt applies to, offered to preview with.
@@ -16,8 +27,10 @@ export interface PromptPreviewProps {
   onInWorktreeChange: (on: boolean) => void
   atPrHead: boolean
   onAtPrHeadChange: (on: boolean) => void
-  // forPRs reports whether the preview item is a pull request, which can start at its head.
-  forPRs: boolean
+  // kind is what the preview fills the prompt in for: a pull request, which can start at
+  // its head, an issue, or the sample repository, which a prompt for repositories always
+  // fills in, since no item is one.
+  kind: PreviewKind
   // result is the latest check, or null before the first one.
   result: PromptCheckResult | null
   // hasErrors reports whether the text has errors, so there is nothing to preview.
@@ -46,7 +59,7 @@ function sentText(result: PromptCheckResult): string {
 // launch would send it, in a frame like the editor's: the item to fill it in for and the
 // session facts the prompt can test above, the text at the editor's own size, and its
 // length and a copy button below. A review reply shows as the review sheet would fill it
-// in, with no session.
+// in, with no session; a prompt for repositories, for the sample repository.
 export function PromptPreview({
   items,
   itemId,
@@ -55,7 +68,7 @@ export function PromptPreview({
   onInWorktreeChange,
   atPrHead,
   onAtPrHeadChange,
-  forPRs,
+  kind,
   result,
   hasErrors,
   reply = false,
@@ -81,7 +94,7 @@ export function PromptPreview({
             }}
             className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
           >
-            <option value={0}>A sample {forPRs ? 'pull request' : 'issue'}</option>
+            <option value={0}>{sampleText[kind]}</option>
             {items.map((item) => (
               <option key={item.id} value={item.id}>
                 {itemLabel(item)}
@@ -102,7 +115,7 @@ export function PromptPreview({
               />
               In a worktree
             </label>
-            {forPRs && (
+            {kind === 'pr' && (
               <label
                 className={`flex items-center gap-1.5 text-muted ${inWorktree ? 'cursor-pointer' : 'opacity-disabled'}`}
               >

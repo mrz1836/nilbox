@@ -1,16 +1,35 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { noChoices } from '../lib/launchChoices'
-import { agents, item, profile, prompt, prompts, resolution } from '../test/fixtures'
+import {
+  agents,
+  launchPreview,
+  profile,
+  prompt,
+  prompts,
+  repoLaunchPreview,
+  repoResolution,
+  resolution,
+} from '../test/fixtures'
 import { LaunchMenu, type LaunchMenuProps } from './LaunchMenu'
+import type { LaunchSubject } from './LaunchPreviewSection'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
+// prSubject is the trusted pull request the menu launches on, as LaunchControls makes it
+// the launch's subject.
+const prSubject: LaunchSubject = {
+  kind: 'pr',
+  trusted: true,
+  key: '[1,"",false]',
+  preview: () => Promise.resolve(launchPreview()),
+}
+
 function props(overrides: Partial<LaunchMenuProps> = {}): LaunchMenuProps {
   return {
-    item: item(),
+    subject: prSubject,
     resolved: resolution(),
     choices: noChoices,
     onChoices: vi.fn(),
@@ -107,5 +126,77 @@ describe('LaunchMenu', () => {
     await userEvent.click(open)
     expect(onLaunch).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+})
+
+describe('LaunchMenu for a repository', () => {
+  // upgrade and majors are the prompts for repositories the Deps page's Upgrade starts.
+  const upgrade = prompt({
+    id: 21,
+    name: 'Upgrade dependencies',
+    nickname: 'Upgrade deps',
+    appliesTo: 'repo',
+    starterKey: 'deps-minor',
+  })
+  const majors = prompt({
+    id: 22,
+    name: 'Upgrade dependencies, majors too',
+    nickname: 'Upgrade majors too',
+    appliesTo: 'repo',
+    starterKey: 'deps-major',
+  })
+  // preview plans acme-org/api-server's upgrade, as the Deps page's sheet does.
+  const preview = vi.fn(() => Promise.resolve(repoLaunchPreview()))
+  const repoSubject: LaunchSubject = { kind: '', trusted: true, key: 'acme-org/api-server', preview }
+
+  it('offers only the prompts for repositories, shows the worktree always on, and saves nothing', async () => {
+    const onChoices = vi.fn()
+    const onLaunch = vi.fn()
+    render(
+      <LaunchMenu
+        {...props({
+          subject: repoSubject,
+          resolved: repoResolution(),
+          prompts: [...prompts(), upgrade, majors],
+          onChoices,
+          onLaunch,
+        })}
+      />,
+    )
+
+    const select = screen.getByRole('combobox', { name: 'Prompt' })
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Upgrade deps', 'Upgrade majors too'])
+    expect(select).toHaveValue('21')
+    expect(select).toHaveAccessibleDescription('Upgrade dependencies')
+
+    // Every pick is the launch's own: a repository inherits no prompt.
+    await userEvent.selectOptions(select, 'Upgrade majors too')
+    expect(onChoices).toHaveBeenLastCalledWith({ ...noChoices, promptId: 22 })
+
+    const worktree = screen.getByRole('checkbox', { name: /Start in a worktree/ })
+    expect(worktree).toBeChecked()
+    expect(worktree).toBeDisabled()
+    expect(screen.getByText('always, for a repository')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /Use profile permissions/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/as the default for/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'api-server' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    expect(onLaunch).toHaveBeenCalledOnce()
+  })
+
+  it('previews the launch through its subject', async () => {
+    const choices = { ...noChoices, promptId: 21 }
+    render(<LaunchMenu {...props({ subject: repoSubject, resolved: repoResolution(), choices })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+
+    expect(await screen.findByText(/Upgrade the Go and JavaScript dependencies/)).toBeInTheDocument()
+    expect(screen.getByText(/^Creates .*deps-20260615 from origin\/master$/)).toBeInTheDocument()
+    expect(preview).toHaveBeenCalledExactlyOnceWith(choices)
   })
 })

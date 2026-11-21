@@ -29,6 +29,7 @@ import {
   launch,
   linkClone,
   openExternal,
+  previewLaunch,
   removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
@@ -529,7 +530,14 @@ export function LaunchControls({
           </div>
         ) : (
           <LaunchMenu
-            item={item}
+            // The item is the subject, planned for the card's situation: its preview plans
+            // again for another item, situation, or trust, as for other choices.
+            subject={{
+              kind: item.kind,
+              trusted: item.trusted,
+              key: JSON.stringify([item.id, situation, untrusted]),
+              preview: (c) => previewLaunch(launchRequest(item.id, c, untrusted, situation)),
+            }}
             resolved={base}
             choices={choices}
             onChoices={(next) => {
@@ -556,7 +564,6 @@ export function LaunchControls({
                   }
             }
             resolveError={resolveError}
-            situation={situation}
             onManagePrompts={() => {
               close()
               onManagePrompts()

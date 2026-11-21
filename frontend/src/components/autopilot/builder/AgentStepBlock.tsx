@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 
-import { agentName, anyEffortChoices, effortLabel, isAgentPrompt, modelLabel, promptApplies } from '../../../lib/launch'
+import { agentName, anyEffortChoices, effortLabel, isAgentPrompt, modelLabel } from '../../../lib/launch'
 import { omit, placeOf, placeWhy, problemsAt, settingRange, toolsOf } from '../../../lib/routineBuilder'
 import type {
   AgentID,
@@ -18,7 +18,7 @@ import type {
 import { dangerIconButtonClass, fieldClass, quietButtonClass, Segmented, Select } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, PlusIcon, TrashIcon } from '../../icons'
 import { LaunchOverrideFields } from '../../LaunchOverrideFields'
-import { Notes, NumberField, Reset, type BuilderKit } from './parts'
+import { fitsKinds, Notes, NumberField, Reset, type BuilderKit } from './parts'
 
 // AgentKit is what the agent step's block reads beside the builder's kit: the prompt
 // library, the coding agents and their profiles, the launch defaults a click would use at
@@ -105,8 +105,9 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
     model === '' ? 'its default model' : modelLabel(model, agent?.models),
     effort === '' ? 'default effort' : effortLabel(effort, agent?.effortLevels).toLowerCase(),
   ].join(' · ')
-  const prompts = agentKit.prompts.filter(isAgentPrompt)
-  const offered = prompts.filter((p) => kinds.every((k) => promptApplies(p, k)))
+  // The menu offers the agent prompts that fit what the routine acts on, never one for
+  // repositories (fitsKinds).
+  const offered = agentKit.prompts.filter((p) => isAgentPrompt(p) && fitsKinds(p, kinds))
   const current = promptValue(step)
   const promptProblems = problemsAt(kit.problems, 'steps', `${field}.prompt`)
   const known =

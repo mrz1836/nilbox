@@ -785,10 +785,13 @@ export type SensitivePathMatch = NonNullLists<sensitive.PathMatch>
 export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
 
-export type AgentSession = NonNullLists<sessions.Session>
+// AgentSession is a session the app follows. One a repository's launch started, as Deps'
+// Upgrade does, has no item: its kind is '' (which the generated type, a union of the item
+// kinds alone, leaves out), its number and item ID 0.
+export type AgentSession = Omit<NonNullLists<sessions.Session>, 'kind'> & { kind: item.Kind | '' }
 export type SessionWords = NonNullLists<sessions.Words>
 export type SessionUsage = NonNullLists<sessions.Usage>
-export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
+export type SessionsSnapshot = Omit<NonNullLists<sessions.Snapshot>, 'sessions'> & { sessions: AgentSession[] }
 export type SessionState = sessions.State
 export type SessionWorktreeAction = sessions.WorktreeAction
 
@@ -957,8 +960,12 @@ export const { LaunchRepo: launchRepo } = launcherService
 // resume its conversation in the terminal, under its fence unless profile widens it.
 export type TakeOverRequest = launcher.TakeOverRequest
 
+const sessionsService = narrow(sessions.Service)
+
+// listSessions reads the sessions the app follows, a repository's own (kind '') among them.
+export const listSessions: () => CancellablePromise<SessionsSnapshot> = sessionsService.List
+
 export const {
-  List: listSessions,
   Focus: focusSession,
   LastWords: sessionLastWords,
   // Usage reads how many tokens a session used from the agent's own files on this Mac:
@@ -966,7 +973,7 @@ export const {
   Usage: sessionUsage,
   ShowFolder: showSessionFolder,
   Forget: forgetSession,
-} = narrow(sessions.Service)
+} = sessionsService
 
 export const {
   Open: openReview,

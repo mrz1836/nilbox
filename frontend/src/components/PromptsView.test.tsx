@@ -1052,6 +1052,136 @@ describe('PromptsView', () => {
   })
 })
 
+describe('PromptsView prompts for repositories', () => {
+  // repoPrompts are the starters for repositories, which the Deps page's upgrades launch:
+  // one within the dependencies' majors and one across them, each in a worktree and out of
+  // plan mode, and neither a default anywhere, since nothing is a repository's default.
+  function repoPrompts(): Prompt[] {
+    const usage = { defaults: [], slots: [], orgs: [], repos: [], slotPlaces: [], kinds: [], replies: [], routines: [] }
+
+    return [
+      prompt({
+        id: 31,
+        name: 'Upgrade dependencies',
+        nickname: 'Upgrade deps',
+        appliesTo: 'repo',
+        body: 'Upgrade the dependencies of {{.Repo}}.\n',
+        planMode: false,
+        worktree: true,
+        starterKey: 'deps-minor',
+        usage,
+      }),
+      prompt({
+        id: 32,
+        name: 'Upgrade dependencies, majors too',
+        nickname: 'Upgrade majors too',
+        appliesTo: 'repo',
+        body: 'Upgrade the dependencies of {{.Repo}}, majors too.\n',
+        planMode: false,
+        worktree: true,
+        starterKey: 'deps-major',
+        usage,
+      }),
+    ]
+  }
+
+  it('lists them in a group of their own, after the prompts for both', () => {
+    render(<Harness initial={[...prompts(), ...repoPrompts()]} />)
+
+    expect(
+      library()
+        .getAllByRole('region')
+        .map((r) => r.getAttribute('aria-label')),
+    ).toEqual(['Pull requests', 'Issues', 'Both', 'Repositories'])
+    expect(library().getByRole('button', { name: 'Repositories, 2 prompts' })).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(library().getByRole('region', { name: 'Repositories' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([expect.stringContaining('Upgrade deps'), expect.stringContaining('Upgrade majors too')])
+  })
+
+  it('opens one with the sample repository to preview it with, and no default to make it', async () => {
+    render(<Harness initial={[...prompts(), ...repoPrompts()]} />)
+    await waitForCheck()
+
+    await userEvent.click(library().getByRole('button', { name: /Upgrade deps/ }))
+
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'What the prompt is for' }))
+        .getAllByRole('radio')
+        .map((r) => r.parentElement?.textContent),
+    ).toEqual(['Pull requests', 'Issues', 'Both', 'Repositories'])
+    expect(screen.getByRole('radio', { name: 'Repositories' })).toBeChecked()
+    // No inbox item is a repository, so the check asks for the sample.
+    await waitFor(() => {
+      expect(lastCheck()).toEqual(expect.objectContaining({ id: 31, itemId: 0 }))
+    })
+    expect(lastCheck().input.appliesTo).toBe('repo')
+
+    const sheet = within(screen.getByRole('complementary', { name: 'Variables' }))
+    expect(sheet.getByText(/Values are for the sample repository\./)).toBeInTheDocument()
+    expect(within(sheet.getByRole('region', { name: 'Item' })).getAllByText('Item only')).toHaveLength(4)
+
+    await userEvent.click(screen.getByRole('button', { name: /Launch settings/ }))
+    expect(
+      screen.getByText(/A launch for a repository always starts in a new worktree of its own\./),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    expect(
+      within(screen.getByRole('combobox', { name: 'Preview with' }))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['A sample repository'])
+    expect(screen.getByRole('checkbox', { name: 'In a worktree' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: /At the PR/ })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Upgrade deps' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Duplicate', 'Export…', 'Delete…'])
+  })
+
+  it('makes a prompt one for repositories, previewing it with the sample repository from then on', async () => {
+    render(<Harness />)
+    await waitForCheck()
+    expect(lastCheck().itemId).toBe(1)
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Repositories' }))
+
+    await waitFor(() => {
+      expect([lastCheck().itemId, lastCheck().input.appliesTo]).toEqual([0, 'repo'])
+    })
+    expect(screen.getByRole('complementary', { name: 'Variables' })).toHaveTextContent(
+      'Values are for the sample repository.',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(platform.updatePrompt).toHaveBeenCalledWith(3, expect.objectContaining({ appliesTo: 'repo' }))
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+  })
+
+  it('shows why a prompt a routine runs can’t be for repositories', async () => {
+    const refusal =
+      'It’s used by the routine “Fix security”, and a routine runs its prompts on pull requests and issues, so it can’t be for repositories.'
+    platform.checkPrompt.mockImplementation((req) =>
+      Promise.resolve(
+        req.input.appliesTo === 'repo'
+          ? checkResult({ fields: [{ field: 'appliesTo', message: refusal }] })
+          : checkResult(),
+      ),
+    )
+    render(<Harness />)
+    await waitForCheck()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Repositories' }))
+
+    expect(await screen.findByText(refusal)).toBeInTheDocument()
+    expect(screen.getByText('Fix 1 problem to save.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+})
+
 describe('PromptsView review replies', () => {
   // replyLibrary returns the replies part of the library.
   function replyLibrary() {
@@ -1201,6 +1331,12 @@ describe('PromptsView review replies', () => {
 
     await userEvent.click(replyLibrary().getByRole('button', { name: /Question/ }))
     expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked()
+    // A reply is the text of a comment on an item, never a repository's.
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'What the reply is for' }))
+        .getAllByRole('radio')
+        .map((r) => r.parentElement?.textContent),
+    ).toEqual(['Pull requests', 'Issues', 'Both'])
 
     await userEvent.click(screen.getByRole('radio', { name: 'Issues' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))

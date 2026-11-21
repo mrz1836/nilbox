@@ -1,8 +1,27 @@
 import { useId, type ReactNode } from 'react'
 
-import type { AutopilotCatalog, AutopilotPastRules, AutopilotProblem, AutopilotSuggestions } from '../../../platform'
+import { promptApplies } from '../../../lib/launch'
+import type {
+  AutopilotCatalog,
+  AutopilotPastRules,
+  AutopilotProblem,
+  AutopilotSuggestions,
+  ItemKind,
+  Prompt,
+} from '../../../platform'
 import { captionClass, fieldClass, quietButtonClass } from '../../controls'
 import { AlertIcon } from '../../icons'
+
+// fitsKinds reports a prompt a routine's step may name, as its agent step's prompt or its
+// GitHub step's reply: one written for pull requests or issues, as one for repositories
+// never is, that applies to every kind of item the routine acts on. A routine runs its
+// prompts on items alone, so even one that acts on no kind yet offers none for
+// repositories.
+export function fitsKinds(p: Pick<Prompt, 'appliesTo'>, kinds: readonly ItemKind[]): boolean {
+  const applies = (kind: ItemKind) => promptApplies(p, kind)
+
+  return (applies('pr') || applies('issue')) && kinds.every(applies)
+}
 
 // BuilderKit is what every block of the builder reads beside its part of the draft: the
 // catalog it renders from, what the stored items suggest its pickers, the account signed

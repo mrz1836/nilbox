@@ -2093,6 +2093,46 @@ describe('the Scripts tab', () => {
     error.mockRestore()
   })
 
+  it('lists Deps in the order remembered from a past start, and remembers another', async () => {
+    const remembered = integrationsConfig({ lastPage: 'deps', depsSort: 'modules' })
+
+    platform.getSettings.mockResolvedValue(settings({ integrations: remembered }))
+    // The settings come back as stored, the page the tab reopens on with them.
+    platform.setDepsSort.mockImplementation((depsSort) =>
+      Promise.resolve(settings({ integrations: { ...remembered, depsSort } })),
+    )
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the clones' }))
+
+    await waitFor(() => {
+      expect(sorts.getByRole('radio', { name: 'Modules' })).toBeChecked()
+    })
+
+    await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+    expect(platform.setDepsSort).toHaveBeenCalledExactlyOnceWith('name')
+    expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+  })
+
+  it('still lists Deps in the order picked when it can’t be remembered, and logs why', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const gone = new Error('database gone')
+    platform.setDepsSort.mockRejectedValue(gone)
+    platform.getSettings.mockResolvedValue(settings({ integrations: integrationsConfig({ lastPage: 'deps' }) }))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the clones' }))
+    await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+
+    expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not remember the Deps page’s order:', gone)
+    })
+    error.mockRestore()
+  })
+
   it('closes the announcement from its close button', async () => {
     platform.listIntegrations.mockResolvedValue(missing())
     await renderApp()

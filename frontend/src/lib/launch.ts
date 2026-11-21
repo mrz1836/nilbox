@@ -152,7 +152,8 @@ export function perAgentEntries<T>(
   return out
 }
 
-// appliesToLabels name what a prompt is for.
+// appliesToLabels name what a prompt is for: a kind of item, both kinds, or a repository,
+// whose launch has no item, as the Deps page's Upgrade starts one.
 export const appliesToLabels: Readonly<Record<PromptAppliesTo, string>> = {
   pr: 'Pull requests',
   issue: 'Issues',
@@ -166,8 +167,15 @@ export function isAgentPrompt(prompt: Pick<Prompt, 'purpose'>): boolean {
   return prompt.purpose !== 'reply'
 }
 
-// promptApplies reports whether a prompt can launch an item of kind.
-export function promptApplies(prompt: Pick<Prompt, 'appliesTo'>, kind: ItemKind): boolean {
+// promptApplies reports whether a prompt can launch an item of kind, or, for '', a
+// repository, as the Deps page's Upgrade launches one. A prompt for repositories launches
+// a repository alone, so no item's launch ever offers one, and a repository's launch offers
+// nothing else: a prompt for both kinds of item still needs an item.
+export function promptApplies(prompt: Pick<Prompt, 'appliesTo'>, kind: ItemKind | ''): boolean {
+  if (kind === '') {
+    return prompt.appliesTo === 'repo'
+  }
+
   return prompt.appliesTo === 'any' || prompt.appliesTo === kind
 }
 

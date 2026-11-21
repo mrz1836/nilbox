@@ -66,8 +66,10 @@ interface PlaceProps {
   // for the user's own scripts, which may say a place of their own.
   setting: RunsIn
   terminalName: string
-  // onOpenRelease opens the Release page, or is null while it isn't on.
+  // onOpenRelease opens the Release page, and onOpenDeps the Deps page, each null while
+  // its page isn't on.
   onOpenRelease: (() => void) | null
+  onOpenDeps: (() => void) | null
 }
 
 interface ScriptsProps extends PlaceProps {
@@ -130,7 +132,7 @@ function Scripts({
   const yours = yoursSection(page)
   const sections = shownSections(page)
   const { step } = run
-  const { onOpenRelease } = place
+  const { onOpenRelease, onOpenDeps } = place
   const onRun = (ask: ScriptAsk) => {
     run.begin(ask)
   }
@@ -151,6 +153,7 @@ function Scripts({
           setting={setting}
           terminalName={terminalName}
           onOpenRelease={onOpenRelease}
+          onOpenDeps={onOpenDeps}
           onEdit={onEdit}
           onChange={onChange}
         />
@@ -468,6 +471,8 @@ export interface RepoScriptsPageProps {
   where: string
   // onOpenRelease opens the Release page, or is null while it isn't on.
   onOpenRelease: (() => void) | null
+  // onOpenDeps opens the Deps page, or is null (as when left out) while it isn't on.
+  onOpenDeps?: (() => void) | null
   onOpenSettings: (section: SettingsSection) => void
   // sections are the sections the user opened or folded, kept across starts, and
   // onSection stores another.
@@ -484,6 +489,8 @@ export interface RepoScriptsPageProps {
 // last; then the chosen clone's commands, the user's own first (with New script and each
 // one's menu to edit, duplicate, move, or delete it), then its t3.json, its
 // .vscode/tasks.json, and magex, each with Run and a menu that runs it in the other place.
+// A command that bumps a version points to Release instead, and one that upgrades the
+// dependencies in the clone to Deps, each with Run it anyway in its menu (ScriptRow).
 // A script of the user's set to ask before running asks first, a task with inputs asks
 // for them first, and a command from the repository's own files asks before its first
 // run and whenever it changes. Each source's section opens and folds, and stays as the user
@@ -500,6 +507,7 @@ export function RepoScriptsPage({
   terminal,
   where,
   onOpenRelease,
+  onOpenDeps = null,
   onOpenSettings,
   sections = {},
   onSection = () => undefined,
@@ -625,6 +633,7 @@ export function RepoScriptsPage({
         setting={runsIn}
         terminalName={terminalName}
         onOpenRelease={onOpenRelease}
+        onOpenDeps={onOpenDeps}
         onStarted={(run) => {
           if (showRuns) {
             follow(run)
