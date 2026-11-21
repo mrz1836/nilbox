@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { AgentID, LinkedItem, Worktree } from '../platform'
-import { FIXED_NOW } from '../test/clock'
+import { FIXED_NOW, isoAgo } from '../test/clock'
 import {
   agentSession,
   copiedPR,
@@ -33,11 +33,6 @@ import {
 // The rows the tests read: one of each state the page's gallery shows, at the tests' clock.
 
 const now = FIXED_NOW
-
-// ago is the time m minutes before the clock.
-function ago(m: number): string {
-  return new Date(now.getTime() - m * 60_000).toISOString()
-}
 
 const hour = 60
 const day = 24 * hour
@@ -87,13 +82,13 @@ const liveLock = row({
 const ready = row({ item: linkedItem(), stage: 'finished', canCleanUp: true })
 const reviewCommits = row({
   branch: 'worktree-pr-131',
-  item: linkedItem({ number: 131, closedAt: ago(6 * day) }),
+  item: linkedItem({ number: 131, closedAt: isoAgo({ m: 6 * day }) }),
   stage: 'needs-review',
   unpushed: 2,
   onGitHub: false,
 })
 const reviewDirty = row({
-  item: linkedItem({ number: 150, closedAt: ago(2 * day) }),
+  item: linkedItem({ number: 150, closedAt: isoAgo({ m: 2 * day }) }),
   stage: 'needs-review',
   dirty: true,
   dirtyCount: 3,
@@ -661,7 +656,10 @@ describe('safety', () => {
   }
 
   // read is what the drawer says of wt in the example clone, with the session given.
-  function read(wt: Worktree, session = agentSession({ dir: wt.displayPath, state: 'working', launchedAt: ago(12) })) {
+  function read(
+    wt: Worktree,
+    session = agentSession({ dir: wt.displayPath, state: 'working', launchedAt: isoAgo({ m: 12 }) }),
+  ) {
     return said(safety(wt, clone, now, session, agentName))
   }
 
@@ -812,7 +810,7 @@ describe('safety', () => {
     ],
     [
       'a session the app launched, read from its stage',
-      row({ stage: 'in-use', agent: 'codex', lastLaunchedAt: ago(5) }),
+      row({ stage: 'in-use', agent: 'codex', lastLaunchedAt: isoAgo({ m: 5 }) }),
       'Can’t be removed while Codex runs in it.',
     ],
     ['a session it knows nothing of', row({ stage: 'in-use' }), 'Can’t be removed while a session runs in it.'],

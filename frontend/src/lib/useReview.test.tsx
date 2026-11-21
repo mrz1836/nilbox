@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { at, FIXED_NOW } from '../test/clock'
 import { details, heldRun, item, review, reviewFile } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
@@ -312,7 +312,7 @@ describe('useReview', () => {
 
     // open opens #7 on a clock standing at now, its card at 'a', and lets its first read
     // answer.
-    async function open(now = new Date('2026-06-15T12:00:00Z')) {
+    async function open(now = FIXED_NOW) {
       const view = renderHook(({ card }) => useReview(1, '', card), {
         initialProps: { card: 'a' },
         wrapper: at(now),
@@ -495,7 +495,7 @@ describe('useReview', () => {
   })
 
   it('marks what the sheet read as being read, or as read then, once it is older than what it shows', () => {
-    const now = new Date('2026-06-15T12:00:00Z')
+    const now = FIXED_NOW
     const counts = review().counts
     const recent = review({ fetchedAt: '2026-06-15T11:59:00Z' })
     const old = review({ fetchedAt: '2026-06-15T11:50:00Z' })
