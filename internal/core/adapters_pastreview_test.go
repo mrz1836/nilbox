@@ -95,32 +95,52 @@ func TestARoutineMergesYourOwnPullRequestPastTheRulesThroughTheSheet(t *testing.
 	assert.True(t, r.pulls.allAutopilots())
 }
 
-func TestARoutinesMergePastTheRulesClosesWhereItMayNot(t *testing.T) {
+func TestARoutinesMergePastTheRulesStopsWhereItMayNot(t *testing.T) {
 	t.Parallel()
 
+	// A merge the switch keeps back waits for it (past_rules_off); any other closes.
+	const (
+		closes = autopilot.GitHubNotOffered
+		waits  = autopilot.GitHubPastRulesOff
+	)
+
 	tests := []struct {
-		name string
-		sw   pastSwitch
-		edit func(r *ghRig, req *autopilot.MergeSend)
-		want string
-		err  error
+		name    string
+		sw      pastSwitch
+		edit    func(r *ghRig, req *autopilot.MergeSend)
+		want    string
+		err     error
+		outcome autopilot.GitHubOutcome
 	}{
 		{
 			name: "the engine says why not", sw: pastSwitch{on: true}, want: "never merges past the rules",
+			outcome: closes,
 			edit: func(_ *ghRig, req *autopilot.MergeSend) {
 				req.PastReview, req.PastReviewWhy = false, "A run you started by hand never merges past the rules."
 			},
 		},
-		{name: "the switch is off", sw: pastSwitch{}, want: "is off in Autopilot's settings"},
-		{name: "the switch can't be read", sw: pastSwitch{on: true, err: errSwitchUnread}, want: "is off", err: errSwitchUnread},
+		{
+			name: "the engine says the switch is off", sw: pastSwitch{on: true}, want: "is off in Autopilot's settings",
+			outcome: waits,
+			edit: func(_ *ghRig, req *autopilot.MergeSend) {
+				req.PastReview, req.PastReviewWhy, req.PastRulesOff = false, autopilot.PastRulesOffWords, true
+			},
+		},
+		{name: "the switch is off", sw: pastSwitch{}, want: "is off in Autopilot's settings", outcome: waits},
+		{
+			name: "the switch can't be read", sw: pastSwitch{on: true, err: errSwitchUnread}, want: "is off",
+			err: errSwitchUnread, outcome: waits,
+		},
 		{
 			name: "a commit it didn't sign", sw: pastSwitch{on: true}, want: "wasn't signed by you",
+			outcome: closes,
 			edit: func(r *ghRig, _ *autopilot.MergeSend) {
 				r.pulls.owns[ghNode(ghPullNumber)].Commits[0].Signer = ghAuthor
 			},
 		},
 		{
 			name: "a rule it can't account for", sw: pastSwitch{on: true}, want: "can't account for",
+			outcome: closes,
 			edit: func(r *ghRig, _ *autopilot.MergeSend) {
 				own := r.pulls.owns[ghNode(ghPullNumber)]
 				own.Rules, own.RuleCount = append(own.Rules, github.BranchRule{Type: "MERGE_QUEUE", ParamsRead: true}), 3
@@ -147,7 +167,7 @@ func TestARoutinesMergePastTheRulesClosesWhereItMayNot(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.Equal(t, autopilot.GitHubNotOffered, got.Outcome)
+			assert.Equal(t, tt.outcome, got.Outcome)
 			assert.Contains(t, got.Words, tt.want)
 			assert.Empty(t, r.pulls.writes(), "nothing merged, nothing asked of the user")
 		})

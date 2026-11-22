@@ -299,6 +299,10 @@ func (p *pass) run(ctx context.Context) error {
 		return err
 	}
 
+	if err := p.resumePastRules(ctx); err != nil {
+		return err
+	}
+
 	open, err := p.e.ledger.open(ctx)
 	if err != nil {
 		return err

@@ -236,6 +236,7 @@ func (p *pass) followUp(ctx context.Context, r *routineRun, m *match, sr *stepRu
 	case sr.Step.Merge != nil:
 		job.Head, job.AutoMerge = mergeHead(m, int(m.Step)), autoMergeBack(m, sr.Step.Merge.How)
 		job.PastReview, job.Sensitive, job.PastReviewWhy = p.pastReview(r, m, sr)
+		job.PastRulesOff = job.PastReviewWhy == PastRulesOffWords
 
 		return job.Head, true
 	case sr.Step.PostReview != nil:

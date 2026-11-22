@@ -3867,12 +3867,14 @@ nil list, and words every refusal with `uierr`.
   ledger (the grouped `ListRoutineFigures`, then `ListRoutineLastRuns` and `ListMatchHeads`
   for the match each routine ran last): how many matches it recorded today (since local
   midnight in the clock's zone), real ones and a Dry run's apart, how many wait for the user,
-  and when it last ran: when its match that ran (done; in Dry run, would have) that closed
-  last closed, which is when it ran, however long it waited (for the user, or under Pause)
+  and when it last ran: when its match that ran (done, or closed after one of its steps ran;
+  in Dry run, would have) that closed last closed, which is when it ran, however long it waited (for the user, or under Pause)
   after it was recorded, and whether that was a Dry run's, so a newer one that waits or was
   skipped never reads as *ran*. The counts take the matches
-  `ListLatestItemMatches` counts: open, or closed as done, skipped, or dismissed; a baseline,
-  and a match that closed before it acted, count in none of them.
+  `ListLatestItemMatches` counts: open, closed as done, skipped, or dismissed, or closed after
+  one of its steps ran (a step whose status in `steps` is `done`, read with `json_each`: a
+  reply sent, then a merge no longer offered); a baseline, and a match that closed before it
+  acted, count in none of them.
 - `RoutineNames` gives every routine's name by its ID, the deleted ones included
   (`RoutineName.Deleted`), so the window still names a routine the history, a mark, or a chip
   names after it is gone.
@@ -4398,7 +4400,18 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   `past_rules_hash` equal to the full SHA-256 of its stored spec (`accepted`), and the match's
   steps that routine's (`SpecHash`); and no routine's run having pushed to it (`pushedTo`,
   as for an approval). A step that allows it but may not says why (`PastReviewWhy`); one that
-  doesn't allow it says nothing. `Service.Save` stores the hash only with
+  doesn't allow it says nothing. When the why is the switch (`PastRulesOffWords`), the job
+  says so (`Job.PastRulesOff`, `MergeSend.PastRulesOff`), and a merge that needs to go past
+  the rules comes back `GitHubPastRulesOff` (`Result.PastRulesOff`): `unsent` puts the step
+  back, as one that sent nothing, and the match waits `blocked` on `past_rules_off`
+  (`pastRulesWaitWords`), at that step, its earlier steps kept as done; the gate
+  `pastRulesSwitch` keeps it waiting, with no read of the item, while the switch is off, and
+  lets the merge go again once it is on. Any other `not_offered` ends its step `skipped`
+  (*Not sent: …*) as it closes the match, so no step stays `running` on a closed match. An
+  earlier build closed such a match instead, `not_offered` with `PastRulesOffWords`:
+  `resumePastRules`, once per engine (`Engine.resumed`, on its first cycle), sets each one
+  closed within the last week (`ListClosedMatches`) waiting on `past_rules_off` again, at its
+  merge, for the gates to decide (recheck closes one whose pull request moved on). `Service.Save` stores the hash only with
   `Draft.AcceptPastRules`, or when the new spec text is the very one accepted
   (`pastRulesToWrite`), refuses a spec with a tick otherwise as a problem at its first
   `merge.allowBypass` (`ProblemsError`), and clears it for a spec with no tick; `Routine.PastRules`
@@ -4412,8 +4425,9 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   `pastReview` (`adapters_pastreview.go`, the only file of core that names
   `review.ActionMergeBypass`, each request there with `Routine` set, which
   `TestOnlyThePastReviewAdapterMergesPastTheRules` parses core to hold): `PastReviewWhy`
-  closes it `not_offered` with the reason; else it reads the switch again
-  (`autopilotSettings`), refuses an offer warning of more than the approval and, as the step
+  closes it `not_offered` with the reason, or, with `PastRulesOff`, answers `GitHubPastRulesOff`
+  (`pastRulesOff`), which waits for the switch; else it reads the switch again
+  (`autopilotSettings`, off answering `GitHubPastRulesOff` too), refuses an offer warning of more than the approval and, as the step
   allows, sensitive files (`pastReviewOffer`), and sends `merge_bypass` with
   `review.RoutineMerge`; `ErrPastRulesNotYet` comes back `GitHubNotYet`, which waits
   `settling` and is tried a tick later, never asking the user, and a merge past the rules says
@@ -5297,14 +5311,23 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
 - **`lib/autopilot.ts`** holds the words, all pure: the modes, the tab's badge
   (`autopilotBadge`: the glance's agents working, an amber dot for its matches waiting, a red
   one for the user's routines that are broken or have an engine problem, none for another
-  account's), each routine's status line (`routineStatus`, from the routine's own `Figures`:
-  what waits, what it did today, what it would have done today in Dry run, else when it last
-  ran or would have run), the chip (`chipOf`, from the newest match: a Dry run's *Would run*
+  account's, and `live`, `liveOf`: `working` while an agent runs, `on` while Autopilot is on,
+  unpaused, signed in, run by this copy, with a routine on, else `off`, which `AppHeader`
+  shows as a dot before the tab's name, a steady accent ring for `on`, `animate-breathe` under
+  `motion-safe:` for `working`, with `onTitle` as the tooltip when nothing else is to say),
+  when Autopilot runs (`cadenceOf`, from the glance and the engine's `LastCycle`, which every
+  cycle's `autopilot:updated` keeps fresh; `Cadence.tsx` shows it under Activity's title and
+  in an enabled routine's pane, nothing while a banner says what stops everything), each
+  routine's status line (`routineStatus`, from the routine's own `Figures`: its merge past the
+  rules while the switch is off, in red (`pastRulesBlocked`, which also has the pane show
+  `pastRulesOffText` with **Open Autopilot settings**), what waits, what it did today, what it
+  would have done today in Dry run, else when it last ran or would have run), the chip (`chipOf`, from the newest match: a Dry run's *Would run*
   while it is open or done, an open state's words, a baseline's (a Dry run's too), a closed
   or skipped match's reason (a Dry run's too), each in words of its own, `reasonChips`, then
   a local step's verb or *Undone* and *Taken back*, a notice's *Told you*, else *Ran*),
   which matches Activity lists (`inActivity`: done, skipped, or
-  dismissed; `notListedText` says what became of one it doesn't), the question
+  dismissed, or closed after one of its steps ran, under Worth knowing; `notListedText` says
+  what became of one it doesn't), the question
   (`matchingWords`), and Activity's lines (`activityLines`: each day's grouped lines of local
   steps in place of the matches they stand for, the matches that did something by
   themselves, and the items left alone, newest first, filtered by routine and by result,

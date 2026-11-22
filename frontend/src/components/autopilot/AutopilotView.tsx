@@ -17,6 +17,7 @@ import {
   readyOf,
   resultLabels,
   resultOrder,
+  pastRulesBlocked,
   routineStatus,
   sameSecond,
   signedOutText,
@@ -88,6 +89,7 @@ import {
 } from '../icons'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { ActivityList } from './ActivityList'
+import { Cadence } from './Cadence'
 import { NeedsYouSection } from './NeedsYouSection'
 import { usePastRulesConfirm } from './PastRules'
 import type { AgentKit } from './builder/AgentStepBlock'
@@ -844,8 +846,10 @@ export default function AutopilotView({
 
   const working = (routineId: number) => autopilot.glance?.working.filter((w) => w.routineId === routineId).length ?? 0
   const problem = (routineId: number) => engine?.problems.find((p) => p.routineId === routineId)?.detail ?? ''
+  // pastRulesOff reports a routine whose merge goes past the rules while that is off.
+  const pastRulesOff = (r: AutopilotRoutine) => pastRulesBlocked(r, settings?.autopilot.mergePastRules ?? null)
   const statusOf = (r: AutopilotRoutine) =>
-    routineStatus(r, working(r.id), problem(r.id), notReadyText(readyOf(ready.readiness, r.id)))
+    routineStatus(r, working(r.id), problem(r.id), notReadyText(readyOf(ready.readiness, r.id)), pastRulesOff(r))
   // agentFor names the agent a match's routine runs: its agent step's, or the default one.
   const agentFor = (m: AutopilotMatch) => {
     const step = routines.find((r) => r.id === m.routineId)?.spec.steps.find((st) => st.agent != null)?.agent
@@ -1438,6 +1442,7 @@ export default function AutopilotView({
             </div>
           </div>
           <Banners autopilot={autopilot} settings={settings} onSettingsSaved={onSettingsSaved} />
+          {shown === 'activity' && <Cadence glance={autopilot.glance} engine={autopilot.engine} />}
           {shown === 'activity' && (ready.readiness?.notReady ?? 0) > 0 && (
             <NotReadyBanner count={ready.readiness?.notReady ?? 0} onSettings={onSettings} />
           )}
@@ -1595,6 +1600,9 @@ export default function AutopilotView({
               }}
               builder={editable(chosen) ? builderFor(chosen) : undefined}
               heldText={catalog.data === undefined ? undefined : dryRunWhy(catalog.data, chosen.dryRunOnly)}
+              cadence={chosen.enabled ? <Cadence glance={autopilot.glance} engine={autopilot.engine} /> : undefined}
+              pastRulesOff={chosen.enabled && pastRulesOff(chosen)}
+              onSettings={onSettings}
               watching={
                 <WatchingList
                   key={chosen.id}

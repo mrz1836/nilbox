@@ -19,6 +19,7 @@ import {
   agentRun,
   agents,
   autopilotEngine,
+  autopilotGlance,
   autopilotHold,
   autopilotMatch,
   autopilotTarget,
@@ -848,6 +849,15 @@ describe('Activity', () => {
     expect(list.getByText(/^Dry run · would have run/)).toHaveTextContent('Dry run · would have run 2h ago')
   })
 
+  it('says when Autopilot checks the routines, and when it last did', async () => {
+    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 4, enabled: 1 }))
+    renderTab()
+
+    expect(await screen.findByTestId('autopilot-cadence')).toHaveTextContent(
+      /^Checks your routines every minute, after each inbox refresh, and at once when you change one · last check /,
+    )
+  })
+
   it('says, across the top, that Autopilot is paused, with Resume, and that another copy runs it', async () => {
     platform.getAutopilotEngine.mockResolvedValue(autopilotEngine({ elsewhere: true, holds: false }))
     renderTab({ stored: settingsOf({ autopilot: { ...settingsOf().autopilot, paused: true } }) })
@@ -1010,6 +1020,36 @@ describe('Activity', () => {
 describe('a routine', () => {
   beforeEach(() => {
     platform.listRoutines.mockResolvedValue(routines())
+  })
+
+  it('says, in red and in its pane, when its merge past the rules waits for the switch, which Settings turns on', async () => {
+    platform.listRoutines.mockResolvedValue([routine({ pastRules: 'allowed' }), ...routines().slice(1)])
+    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 4, enabled: 1 }))
+    renderTab()
+
+    const list = await routineList()
+
+    expect(list.getByText('Autopilot · Merging past the rules is off in Autopilot’s settings')).toBeInTheDocument()
+
+    await userEvent.click(list.getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const pane = within(screen.getByRole('region', { name: 'Snooze passing bot PRs' }))
+
+    expect(pane.getByText(/a pull request that needs to go past the rules waits/)).toBeInTheDocument()
+    expect(pane.getByTestId('autopilot-cadence')).toBeInTheDocument()
+
+    await userEvent.click(pane.getByRole('button', { name: 'Open Autopilot settings' }))
+
+    expect(onSettings).toHaveBeenCalledOnce()
+  })
+
+  it('says nothing of the switch while it is on', async () => {
+    platform.listRoutines.mockResolvedValue([routine({ pastRules: 'allowed' }), ...routines().slice(1)])
+    renderTab({ stored: settingsOf({ autopilot: { ...settingsOf().autopilot, mergePastRules: true } }) })
+
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    expect(screen.queryByText(/a pull request that needs to go past the rules waits/)).not.toBeInTheDocument()
   })
 
   it('shows its sentence, its mode, and what it watches as the inbox’s own rows, menus and all', async () => {

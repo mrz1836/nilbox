@@ -42,11 +42,18 @@ type GitHub struct {
 	before func(req autopilot.GitHubSend)
 
 	// merges are the merges GitHub took, mergesTried every one asked, reviews the reviews
-	// posted, and needsReview the items whose merge GitHub holds for an approving review.
-	merges      []autopilot.MergeSend
-	mergesTried []autopilot.MergeSend
-	reviews     []autopilot.ReviewSend
-	needsReview map[int]bool
+	// posted, needsReview the items whose merge GitHub holds for an approving review, and
+	// awaitsApproval the user's own pull requests that lack only an approval from someone
+	// else, which merge only past the rules.
+	merges         []autopilot.MergeSend
+	mergesTried    []autopilot.MergeSend
+	reviews        []autopilot.ReviewSend
+	needsReview    map[int]bool
+	awaitsApproval map[int]bool
+
+	// closesPastRules answers a merge the switch kept back as an earlier build did: no
+	// longer offered, which closed its match (ClosesPastRules).
+	closesPastRules bool
 
 	// beforeFollow runs as each merge or review reaches the sheet (OnFollowUp).
 	beforeFollow func(number int)
@@ -245,6 +252,30 @@ func (g *GitHub) Marked() []int {
 	return slices.Clone(g.marks)
 }
 
+// AwaitsApproval makes the item number the user's own pull request that lacks only an
+// approval from someone else, or no longer for false: the sheet merges it only past the
+// rules, as core's does, and otherwise answers why not, a merge the switch kept back
+// waiting for it.
+func (g *GitHub) AwaitsApproval(number int, awaits bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.awaitsApproval == nil {
+		g.awaitsApproval = map[int]bool{}
+	}
+
+	g.awaitsApproval[number] = awaits
+}
+
+// ClosesPastRules has the sheet answer a merge the switch kept back as an earlier build
+// did, no longer offered, which closed its match, or as this one does for false.
+func (g *GitHub) ClosesPastRules(closes bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.closesPastRules = closes
+}
+
 // NeedsReview has GitHub hold the item number's merge for an approving review, or no
 // longer for false.
 func (g *GitHub) NeedsReview(number int, needs bool) {
@@ -272,10 +303,15 @@ func (g *GitHub) Merge(_ context.Context, req autopilot.MergeSend) (autopilot.Gi
 	}
 
 	g.mu.Lock()
-	needs := g.needsReview[req.Item.Number]
+	needs, awaits, closes := g.needsReview[req.Item.Number], g.awaitsApproval[req.Item.Number], g.closesPastRules
 	g.mu.Unlock()
 
-	if needs {
+	switch {
+	case awaits && !req.PastReview && req.PastRulesOff && !closes:
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubPastRulesOff, Words: autopilot.PastRulesOffWords}, nil
+	case awaits && !req.PastReview:
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubNotOffered, Words: req.PastReviewWhy}, nil
+	case needs:
 		return autopilot.GitHubSent{Outcome: autopilot.GitHubNeedsReview}, nil
 	}
 

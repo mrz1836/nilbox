@@ -23,6 +23,7 @@ import {
   activityLines,
   autopilotBadge,
   backlogText,
+  cadenceOf,
   checkText,
   chipOf,
   describeAttach,
@@ -37,6 +38,7 @@ import {
   inActivity,
   inChunks,
   itemText,
+  liveOf,
   matchingWords,
   maxIDs,
   mergeDays,
@@ -46,6 +48,9 @@ import {
   notReadyBanner,
   notReadyNames,
   notReadyText,
+  onTitle,
+  pastRulesBlocked,
+  pastRulesOffStatus,
   pendingText,
   readyOf,
   reviewPostLabel,
@@ -68,8 +73,21 @@ describe('autopilotBadge', () => {
       attention: false,
       failed: false,
       title: '',
+      live: 'off',
     })
     expect(autopilotBadge(null, [], null).count).toBe(0)
+  })
+
+  it('glows while Autopilot runs a routine, saying so, and breathes while an agent works', () => {
+    const on = autopilotGlance({ routines: 1, enabled: 1 })
+
+    expect(autopilotBadge(on, [routine()], autopilotEngine())).toMatchObject({ live: 'on', title: onTitle })
+    expect(liveOf(on, autopilotEngine())).toBe('on')
+    expect(liveOf({ ...on, paused: true }, autopilotEngine())).toBe('off')
+    expect(liveOf({ ...on, enabled: 0 }, autopilotEngine())).toBe('off')
+    expect(liveOf(on, autopilotEngine({ elsewhere: true }))).toBe('off')
+    expect(liveOf(on, autopilotEngine({ signedOut: true }))).toBe('off')
+    expect(liveOf(null, null)).toBe('off')
   })
 
   it('counts the agents working, with a dot for what needs you and one for a routine that can’t run', () => {
@@ -109,6 +127,7 @@ describe('autopilotBadge', () => {
       attention: true,
       failed: true,
       title: '2 agents working · 1 needs you · 1 routine can’t run',
+      live: 'working',
     })
   })
 
@@ -267,6 +286,20 @@ describe('routineStatus', () => {
     })
     expect(routineStatus(routine(), 0, 'GitHub refused the search.').tone).toBe('danger')
     expect(routineStatus(routine({ lastError: 'It failed.' }), 0, '').text).toBe('It failed.')
+  })
+
+  it('says, in red, when its merge past the rules waits for the switch that is off', () => {
+    const merging = routine({ pastRules: 'allowed', figures: routineFigures({ today: 1 }) })
+
+    expect(pastRulesBlocked(merging, false)).toBe(true)
+    expect(pastRulesBlocked(merging, true)).toBe(false)
+    expect(pastRulesBlocked(merging, null)).toBe(false)
+    expect(pastRulesBlocked(routine({ pastRules: '' }), false)).toBe(false)
+    expect(routineStatus(merging, 0, '', '', true)).toEqual({
+      text: `Autopilot · ${pastRulesOffStatus}`,
+      tone: 'danger',
+    })
+    expect(routineStatus({ ...merging, enabled: false }, 0, '', '', true).text).toBe('Autopilot · off')
   })
 
   it('says its mode, and what it is doing or did, from the routine’s own figures', () => {
@@ -535,6 +568,21 @@ describe('chipOf over every state and reason', () => {
     expect(inActivity(bare('skipped', 'tries'))).toBe(true)
     expect(inActivity(bare('baseline', 'from_now'))).toBe(false)
     expect(inActivity(bare('queued', ''))).toBe(false)
+    expect(inActivity(bare('closed', 'not_offered'))).toBe(false)
+
+    // A match that sent a reply, then found its merge no longer offered, did something.
+    const replied = {
+      ...bare('closed', 'not_offered'),
+      steps: [
+        githubStep({ kind: 'github', label: 'Reply', status: 'done', actions: ['reply'] }),
+        githubStep({ kind: 'merge', label: 'Merge it', status: 'skipped', note: 'Not sent: it is off.', actions: [] }),
+      ],
+    }
+
+    expect(inActivity(replied)).toBe(true)
+    expect(
+      activityLines([{ date: '2026-11-22', matches: [replied], groups: [] }], [], { routine: 0, result: 'attention' }),
+    ).toHaveLength(1)
     expect(notListedText(bare('baseline', 'from_now'))).toBe(
       'Activity has no line for that one. Already matched when you turned it on.',
     )
@@ -600,6 +648,30 @@ describe('matchingWords', () => {
   })
 })
 
+describe('cadenceOf', () => {
+  const on = autopilotGlance({ routines: 1, enabled: 1 })
+
+  it('says when Autopilot checks the routines, and when it last did', () => {
+    expect(cadenceOf(on, autopilotEngine())).toEqual({
+      text: 'Checks your routines every minute, after each inbox refresh, and at once when you change one',
+      lastAt: '2026-06-15T11:59:00Z',
+    })
+  })
+
+  it('says it waits for the first refresh, or that no routine is on', () => {
+    expect(cadenceOf(on, autopilotEngine({ lastCycle: null }))?.text).toMatch(/^Starting/)
+    expect(cadenceOf({ ...on, enabled: 0 }, autopilotEngine())?.text).toMatch(/^No routine is on/)
+  })
+
+  it('says nothing while the banners say what stops everything', () => {
+    expect(cadenceOf({ ...on, paused: true }, autopilotEngine())).toBeNull()
+    expect(cadenceOf({ ...on, on: false }, autopilotEngine())).toBeNull()
+    expect(cadenceOf(on, autopilotEngine({ elsewhere: true }))).toBeNull()
+    expect(cadenceOf(on, autopilotEngine({ signedOut: true }))).toBeNull()
+    expect(cadenceOf(on, null)).toBeNull()
+  })
+})
+
 describe('activityLines', () => {
   const days = activityPage().days
 
@@ -621,7 +693,7 @@ describe('activityLines', () => {
   it('leaves out a baseline, a match that closed before it acted, and one still open', () => {
     const quiet = [
       autopilotMatch({ id: 20, state: 'baseline', reason: 'from_now', effects: [] }),
-      autopilotMatch({ id: 21, state: 'closed', reason: 'no_longer_matches', effects: [] }),
+      autopilotMatch({ id: 21, state: 'closed', reason: 'no_longer_matches', effects: [], steps: [] }),
       autopilotMatch({ id: 22, state: 'queued', blockedBy: 'paused', reason: '', effects: [] }),
     ]
 

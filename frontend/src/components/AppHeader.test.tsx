@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { onTitle } from '../lib/autopilot'
 import { renderAt } from '../test/clock'
 import {
   account,
@@ -377,7 +378,7 @@ describe('AppHeader', () => {
   })
 
   it('shows the Autopilot tab while Autopilot is on, marked Beta, with nothing else on it while nothing is going', () => {
-    renderHeader({ autopilot: { count: 0, attention: false, failed: false, title: '' } })
+    renderHeader({ autopilot: { count: 0, attention: false, failed: false, title: '', live: 'off' } })
 
     const tab = screen.getByRole('button', { name: 'Autopilot' })
 
@@ -385,6 +386,25 @@ describe('AppHeader', () => {
     expect(within(tab).getByText('Beta')).toHaveAttribute('title', 'Beta: still being built')
     expect(tab).not.toHaveAttribute('title')
     expect(screen.queryByTestId('autopilot-count')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('autopilot-live')).not.toBeInTheDocument()
+  })
+
+  it('glows softly on the Autopilot tab while it runs, saying so in its tooltip', () => {
+    renderHeader({ autopilot: { count: 0, attention: false, failed: false, title: onTitle, live: 'on' } })
+
+    expect(screen.getByTestId('autopilot-live')).toHaveAttribute('data-live', 'on')
+    expect(screen.getByTestId('autopilot-live')).not.toHaveClass('motion-safe:animate-breathe')
+    expect(screen.getByRole('button', { name: 'Autopilot' })).toHaveAttribute('title', onTitle)
+    expect(screen.queryByTestId('autopilot-count')).not.toBeInTheDocument()
+  })
+
+  it('breathes on the Autopilot tab while an agent works', () => {
+    renderHeader({
+      autopilot: { count: 1, attention: false, failed: false, title: '1 agent working', live: 'working' },
+    })
+
+    expect(screen.getByTestId('autopilot-live')).toHaveAttribute('data-live', 'working')
+    expect(screen.getByTestId('autopilot-live')).toHaveClass('motion-safe:animate-breathe')
   })
 
   it('hides the Autopilot tab while Autopilot (beta) is off', () => {
@@ -404,7 +424,7 @@ describe('AppHeader', () => {
 
   it('counts the agents working on the Autopilot tab, with an amber dot while something needs you and a red one while a routine can’t run', () => {
     renderHeader({
-      autopilot: { count: 2, attention: true, failed: false, title: '2 agents working · 1 needs you' },
+      autopilot: { count: 2, attention: true, failed: false, title: '2 agents working · 1 needs you', live: 'working' },
     })
 
     expect(screen.getByTestId('autopilot-count')).toHaveTextContent('2')
@@ -414,7 +434,7 @@ describe('AppHeader', () => {
   })
 
   it('marks a routine that can’t run with a red dot on the Autopilot tab, without a count', () => {
-    renderHeader({ autopilot: { count: 0, attention: false, failed: true, title: '1 routine can’t run' } })
+    renderHeader({ autopilot: { count: 0, attention: false, failed: true, title: '1 routine can’t run', live: 'off' } })
 
     expect(screen.getByTestId('autopilot-failed')).toBeInTheDocument()
     expect(screen.getByTestId('autopilot-count')).not.toHaveTextContent(/\d/)

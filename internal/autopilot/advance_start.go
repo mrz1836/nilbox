@@ -295,7 +295,9 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 }
 
 // unsent records a GitHub action its sheet or the write gate kept from being sent: one no
-// longer offered closes m; one offered with warnings waits for the user; after a push,
+// longer offered ends its step as not sent and closes m; a merge that needs to go past the
+// rules while the user's switch for it is off waits for the switch (BlockPastRulesOff), at
+// that step; one offered with warnings waits for the user; after a push,
 // nothing was sent and it is no try, so the item is read again and the cycle decides it
 // again before the action starts once more; one the gate held waits until it may go.
 func (e *Engine) unsent(ctx context.Context, q *queries.Queries, m *match, sr *stepRun, runID int64, res Result,
@@ -304,7 +306,14 @@ func (e *Engine) unsent(ctx context.Context, q *queries.Queries, m *match, sr *s
 	words := cmp.Or(res.NotOffered, res.Warning, res.Held, res.Summary)
 	err := e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: words, EndedAt: now}, false)
 
-	if res.NotOffered != "" {
+	switch {
+	case res.PastRulesOff:
+		notSent(m, sr, runID)
+		m.wait(BlockPastRulesOff, pastRulesWaitWords)
+
+		return err
+	case res.NotOffered != "":
+		sr.Status, sr.Note, sr.Ended = stepSkipped, "Not sent: "+res.NotOffered, new(now)
 		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)
 
 		return err

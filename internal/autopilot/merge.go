@@ -58,10 +58,13 @@ type MergeSend struct {
 
 	// PastReview lets it go past the rules where an approval from someone else is all the
 	// user's own pull request lacks, and Sensitive when it changes sensitive files too
-	// (pastReview); PastReviewWhy says why a step that allows it may not, "" otherwise.
+	// (pastReview); PastReviewWhy says why a step that allows it may not, "" otherwise, and
+	// PastRulesOff reports that why is the user's switch being off: a merge that needs to go
+	// past the rules then answers GitHubPastRulesOff, so it waits for the switch.
 	PastReview    bool
 	Sensitive     bool
 	PastReviewWhy string
+	PastRulesOff  bool
 }
 
 // mergeDispatcher runs Merge it (catalog.DispatchMerge).
@@ -84,6 +87,7 @@ func (d mergeDispatcher) Dispatch(ctx context.Context, job Job) (Result, error) 
 	got, err := d.actions.Merge(ctx, MergeSend{
 		Item: job.Item, Head: job.Head, AutoMerge: job.AutoMerge, Method: st.Method, Accept: job.Accept,
 		PastReview: job.PastReview, Sensitive: job.Sensitive, PastReviewWhy: job.PastReviewWhy,
+		PastRulesOff: job.PastRulesOff,
 	})
 	if err != nil {
 		return Result{}, err

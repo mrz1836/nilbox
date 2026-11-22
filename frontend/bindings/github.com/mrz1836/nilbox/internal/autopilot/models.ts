@@ -230,7 +230,7 @@ export const BlankKind = {
 /**
  * Blocker is what an open match waits on.
  */
-export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "review_required" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "out_of_usage" | "signed_out" | "starting";
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "review_required" | "not_ready" | "missing_tool" | "cross_repository" | "past_rules_off" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "out_of_usage" | "signed_out" | "starting";
 
 /**
  * The values of Blocker, by the names of their Go constants.
@@ -267,6 +267,13 @@ export const Blocker = {
     BlockNotReady: "not_ready",
     BlockMissingTool: "missing_tool",
     BlockCrossRepo: "cross_repository",
+
+    /**
+     * BlockPastRulesOff is a Merge it that needs to go past the rules while Let routines
+     * merge your own pull requests past the rules is off in Autopilot's settings: it goes
+     * on by itself, at that step, once the user turns it on.
+     */
+    BlockPastRulesOff: "past_rules_off",
 
     /**
      * What a queued match waits on before it starts by itself.

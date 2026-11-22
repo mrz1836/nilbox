@@ -65,12 +65,70 @@ export const signedOutText =
 
 // AutopilotBadge is what the Autopilot tab counts: the agents working, an amber dot while
 // something waits for the user, a red dot while a routine is broken or can't run, and what
-// they mean, for its tooltip.
+// they mean, for its tooltip. live is whether Autopilot runs now, which the tab's dot
+// shows: off (Pause, no routine on, another copy runs them), on, a soft steady glow, or
+// working while an agent runs, breathing.
 export interface AutopilotBadge {
   count: number
   attention: boolean
   failed: boolean
   title: string
+  live: AutopilotLive
+}
+
+// AutopilotLive is whether Autopilot runs now: off, on, or working.
+export type AutopilotLive = 'off' | 'on' | 'working'
+
+// liveOf is whether Autopilot runs now: working while an agent of its runs goes; on while
+// it is on, not paused, this copy (not another) runs it, and a routine is switched on;
+// else off.
+export function liveOf(glance: AutopilotGlance | null, engine: AutopilotEngine | null): AutopilotLive {
+  if (glance === null) {
+    return 'off'
+  }
+
+  if (glance.working.length > 0) {
+    return 'working'
+  }
+
+  const on =
+    glance.on && !glance.paused && glance.enabled > 0 && engine?.elsewhere !== true && engine?.signedOut !== true
+
+  return on ? 'on' : 'off'
+}
+
+// onTitle is the Autopilot tab's tooltip while it runs and nothing else is to say.
+export const onTitle = 'Autopilot is on: it checks your routines every minute and after each inbox refresh'
+
+// Cadence is when Autopilot runs the routines, in words, and when it last checked them ('' for not yet).
+export interface Cadence {
+  text: string
+  lastAt: string
+}
+
+// cadenceOf says when Autopilot runs the routines: every minute, after each inbox refresh,
+// and at once on a change to one, with its last check; or that it waits for the first
+// refresh since the app started, or that no routine is on. It says nothing (null) while
+// Autopilot is off, paused, run by another copy, or signed out, which the banners say.
+export function cadenceOf(glance: AutopilotGlance | null, engine: AutopilotEngine | null): Cadence | null {
+  if (glance === null || !glance.on || glance.paused || engine === null || engine.elsewhere || engine.signedOut) {
+    return null
+  }
+
+  if (glance.enabled === 0) {
+    return { text: 'No routine is on, so Autopilot has nothing to run. Switch one on to start it.', lastAt: '' }
+  }
+
+  const last = engine.lastCycle
+
+  if (last === null || last.waiting === 'refresh') {
+    return { text: 'Starting: it checks your routines once the inbox’s first refresh is in.', lastAt: '' }
+  }
+
+  return {
+    text: 'Checks your routines every minute, after each inbox refresh, and at once when you change one',
+    lastAt: last.at,
+  }
 }
 
 // troubled is how many of the user's routines are broken or have a problem the engine
@@ -92,6 +150,7 @@ export function autopilotBadge(
   const working = glance?.working.length ?? 0
   const waiting = glance?.needsYou ?? 0
   const broken = troubled(routines, engine)
+  const live = liveOf(glance, engine)
   const title = [
     working > 0 ? counted(working, 'agent working', 'agents working') : '',
     waiting > 0 ? `${formatCount(waiting)} ${waiting === 1 ? 'needs' : 'need'} you` : '',
@@ -100,7 +159,13 @@ export function autopilotBadge(
     .filter((part) => part !== '')
     .join(' · ')
 
-  return { count: working, attention: waiting > 0, failed: broken > 0, title }
+  return {
+    count: working,
+    attention: waiting > 0,
+    failed: broken > 0,
+    title: title === '' && live === 'on' ? onTitle : title,
+    live,
+  }
 }
 
 // StatusLine is a routine's line under its name: what it says, its tone, and, for "ran 12
@@ -111,11 +176,34 @@ export interface StatusLine {
   since?: string
 }
 
+// pastRulesOffStatus is the status line of a routine on whose merge goes past the rules
+// while that is off in Autopilot's settings: a pull request that needs it waits.
+export const pastRulesOffStatus = 'Merging past the rules is off in Autopilot’s settings'
+
+// pastRulesOffText says, in the routine's pane, what the switch being off means for it.
+export const pastRulesOffText =
+  'This routine merges your own pull requests past the rules, but Let routines merge your own pull requests ' +
+  'past the rules is off in Autopilot’s settings. It merges only what GitHub allows; a pull request that needs ' +
+  'to go past the rules waits, and merges by itself once you turn it on.'
+
+// pastRulesBlocked reports a routine that merges past the rules, as its user accepted, while
+// the switch for it is off: false while the settings haven't loaded (null).
+export function pastRulesBlocked(r: AutopilotRoutine, mergePastRules: boolean | null): boolean {
+  return r.pastRules === 'allowed' && mergePastRules === false
+}
+
 // routineStatus is a routine's status line: whose it is when it is another account's, why
 // it is broken, what this Mac lacks for it (notReady), why it can't run, its last error,
-// then what it is doing (working, waiting), what it did today, or when it last ran (or, a
-// Dry run's, would have), from its own figures; a routine that is off says only its mode.
-export function routineStatus(r: AutopilotRoutine, working: number, problem: string, notReady = ''): StatusLine {
+// its merge past the rules while the switch for it is off (pastRulesOff), then what it is
+// doing (working, waiting), what it did today, or when it last ran (or, a Dry run's, would
+// have), from its own figures; a routine that is off says only its mode.
+export function routineStatus(
+  r: AutopilotRoutine,
+  working: number,
+  problem: string,
+  notReady = '',
+  pastRulesOff = false,
+): StatusLine {
   const figures = r.figures
   const mode = modeLabel(r.mode)
 
@@ -141,6 +229,10 @@ export function routineStatus(r: AutopilotRoutine, working: number, problem: str
 
   if (!r.enabled) {
     return { text: `${mode} · off`, tone: 'muted' }
+  }
+
+  if (pastRulesOff) {
+    return { text: `${mode} · ${pastRulesOffStatus}`, tone: 'danger' }
   }
 
   if (working > 0) {
@@ -655,7 +747,7 @@ function lineResult(line: ActivityLine): Exclude<ActivityResult, 'all'> {
         return 'dryRuns'
       }
 
-      if (line.match.state === 'skipped' || line.match.reason === 'failed') {
+      if (line.match.state === 'skipped' || line.match.state === 'closed' || line.match.reason === 'failed') {
         return 'attention'
       }
 
@@ -676,11 +768,18 @@ function lineRoutine(line: ActivityLine): number {
 }
 
 // inActivity reports a match Activity lists, on a line of its own or a grouped one: one
-// that ran, gave up, or the user skipped. An open match waiting on a limit waits in
-// Queued, and one being started in Working, which later builds show; a baseline and a
-// match that closed before it acted are left out.
-export function inActivity(m: AutopilotMatch): boolean {
-  return m.state === 'done' || m.state === 'skipped' || m.state === 'dismissed'
+// that ran, gave up, or the user skipped, and one that closed after one of its steps ran
+// (a reply sent, then a merge no longer offered), which did something the user should see.
+// An open match waiting on a limit waits in Queued, and one being started in Working,
+// which later builds show; a baseline and a match that closed before it acted are left
+// out.
+export function inActivity(m: Pick<AutopilotMatch, 'state' | 'steps'>): boolean {
+  return (
+    m.state === 'done' ||
+    m.state === 'skipped' ||
+    m.state === 'dismissed' ||
+    (m.state === 'closed' && m.steps.some((s) => s.status === 'done'))
+  )
 }
 
 // notListedText says why Activity shows no line for a match a notification or a chip asked

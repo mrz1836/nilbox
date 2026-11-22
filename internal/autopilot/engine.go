@@ -298,6 +298,10 @@ type Engine struct {
 	// stored after it.
 	since time.Time
 
+	// resumed reports that a cycle set waiting again the matches an earlier build closed
+	// for want of the switch to merge past the rules (resumePastRules), which runs once.
+	resumed bool
+
 	// on is Autopilot (beta) as the loop last read it (Enabled); onSince is when it was
 	// last turned on, since when built on, whose first cycle waits for a watch pass after
 	// it, as what was stored of the searches while it was off is stale; and draining

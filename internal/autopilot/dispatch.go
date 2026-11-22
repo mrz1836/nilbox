@@ -109,10 +109,12 @@ type Job struct {
 
 	// PastReview lets a Merge it go past the rules where an approval from someone else is
 	// all the user's own pull request lacks, Sensitive when it changes sensitive files too,
-	// and PastReviewWhy says why a step that allows it may not (pastrules.go).
+	// and PastReviewWhy says why a step that allows it may not (pastrules.go). PastRulesOff
+	// reports that why is the user's switch being off, which they can turn on.
 	PastReview    bool
 	Sensitive     bool
 	PastReviewWhy string
+	PastRulesOff  bool
 }
 
 // RunRequest is the agent step of a job, as its runner launches it, and Preview plans it.
@@ -166,6 +168,11 @@ type Result struct {
 	NotOffered string
 	Warning    string
 
+	// PastRulesOff reports a Merge it that would have gone past the rules, kept from being
+	// sent because Let routines merge your own pull requests past the rules is off: the
+	// match waits for the user to turn it on (BlockPastRulesOff), rather than closing.
+	PastRulesOff bool
+
 	// PushedSince reports a GitHub action that sent nothing because the pull request was
 	// pushed to since the head it was pinned to, or its sheet couldn't read it right before:
 	// no try, and it is read and decided again.
@@ -202,9 +209,10 @@ type Result struct {
 }
 
 // unsent reports a GitHub action its sheet or the write gate kept from being sent: no
-// longer offered, offered with warnings, pushed since, or held.
+// longer offered, offered with warnings, waiting for the switch to go past the rules,
+// pushed since, or held.
 func (r *Result) unsent() bool {
-	return r.NotOffered != "" || r.Warning != "" || r.PushedSince || r.Held != ""
+	return r.NotOffered != "" || r.Warning != "" || r.PastRulesOff || r.PushedSince || r.Held != ""
 }
 
 // Hold is a start held back for the user to confirm, as the launcher holds a click's

@@ -2,9 +2,11 @@ package autopilot
 
 import (
 	"cmp"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
@@ -113,6 +115,67 @@ func pastRulesToWrite(sp spec.Spec, data, was string, accept bool) (string, erro
 // pastRulesUnaccepted says a routine that merges past the rules wasn't accepted as such.
 const pastRulesUnaccepted = "Confirm that this routine may merge your own pull requests past the rules, then save it."
 
+// PastRulesOffWords says the user's switch for merging past the rules is off: why a Merge
+// it that allows going past them may not (consentWhy), and core's answer when the switch
+// reads off right before the merge.
+const PastRulesOffWords = "Let routines merge your own pull requests past the rules is off in Autopilot's settings."
+
+// pastRulesWaitWords says what a match waiting on the switch waits for (BlockPastRulesOff).
+const pastRulesWaitWords = "It needs to merge past the rules, which is off in Autopilot's settings: turn on Let " +
+	"routines merge your own pull requests past the rules, and it merges by itself."
+
+// resumeClosedFor is how long ago a match closed for want of the switch (an earlier build
+// closed it rather than wait) may have closed for resumePastRules to set it waiting again.
+const resumeClosedFor = 7 * 24 * time.Hour
+
+// pastRulesSwitch keeps m, waiting on the switch to go past the rules, waiting while the
+// switch is off; once it is on, the merge goes again, its pull request read afresh.
+func (p *pass) pastRulesSwitch(m *match) verdict {
+	if Blocker(m.BlockedBy) == BlockPastRulesOff && !p.cfg.MergePastRules {
+		return wait(BlockPastRulesOff, pastRulesWaitWords)
+	}
+
+	return verdict{}
+}
+
+// resumePastRules sets waiting again, at the merge, each match an earlier build closed as
+// no longer offered because the switch to go past the rules was off (the words it closed
+// with say so), closed within resumeClosedFor: the merge then waits for the switch, and goes
+// on by itself once it is on, its earlier steps kept as done, so a reply it sent isn't sent
+// again. The cycle's gates decide it again (recheck closes one whose pull request moved on).
+// It runs once, on the engine's first cycle.
+func (p *pass) resumePastRules(ctx context.Context) error {
+	if p.e.resumed {
+		return nil
+	}
+
+	rows, err := p.e.ledger.q.ListClosedMatches(ctx, queries.ListClosedMatchesParams{
+		State: string(StateClosed), Reason: string(ReasonNotOffered), Detail: PastRulesOffWords,
+		Since: new(p.now.Add(-resumeClosedFor)),
+	})
+	if err != nil {
+		return fmt.Errorf("read the matches that waited to merge past the rules: %w", err)
+	}
+
+	for _, row := range rows {
+		m, readErr := readMatch(row)
+		if readErr != nil || int(m.Step) >= len(m.steps) || m.steps[m.Step].Step.Merge == nil {
+			continue
+		}
+
+		sr := &m.steps[m.Step]
+		sr.Status, sr.RunID, sr.Note, sr.Started, sr.Ended = stepPending, 0, "", nil, nil
+		m.Reason, m.ClosedAt = "", nil
+		m.wait(BlockPastRulesOff, pastRulesWaitWords)
+
+		p.e.save(ctx, m)
+	}
+
+	p.e.resumed = true
+
+	return nil
+}
+
 // agentlessHead is the commit an agentless Merge it merges: the head m's Checks pass
 // trigger fired on, only while m's fire key is that commit's and none of its steps is an
 // agent's or a Wait for the checks; "" for any other, a click's run among them.
@@ -218,7 +281,7 @@ func (p *pass) consentWhy(r *routineRun, m *match, st *spec.MergeStep) string {
 	case !st.AllowBypass:
 		return "Its step doesn't allow merging past the rules."
 	case !p.cfg.MergePastRules:
-		return "Let routines merge your own pull requests past the rules is off in Autopilot's settings."
+		return PastRulesOffWords
 	case r == nil || !accepted(r.row):
 		return "You haven't confirmed it merges past the rules since it changed: open it and save it again."
 	case m.SpecHash != r.hash:

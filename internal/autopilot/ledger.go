@@ -116,6 +116,11 @@ const (
 	BlockNotReady    Blocker = "not_ready"
 	BlockMissingTool Blocker = "missing_tool"
 	BlockCrossRepo   Blocker = "cross_repository"
+
+	// BlockPastRulesOff is a Merge it that needs to go past the rules while Let routines
+	// merge your own pull requests past the rules is off in Autopilot's settings: it goes
+	// on by itself, at that step, once the user turns it on.
+	BlockPastRulesOff Blocker = "past_rules_off"
 )
 
 // What a queued match waits on before it starts by itself.
@@ -152,7 +157,7 @@ func stateOf(b Blocker) State {
 		BlockBacklog, BlockScriptAsks, BlockReviewRequired,
 	}, b):
 		return StateWaiting
-	case slices.Contains([]Blocker{BlockNotReady, BlockMissingTool, BlockCrossRepo}, b):
+	case slices.Contains([]Blocker{BlockNotReady, BlockMissingTool, BlockCrossRepo, BlockPastRulesOff}, b):
 		return StateBlocked
 	default:
 		return StateQueued

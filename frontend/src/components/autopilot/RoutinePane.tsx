@@ -1,6 +1,14 @@
 import { useId, type ReactNode } from 'react'
 
-import { canSwitch, editable, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
+import {
+  canSwitch,
+  editable,
+  modeHelp,
+  modeLabels,
+  modeOrder,
+  pastRulesOffText,
+  type StatusLine,
+} from '../../lib/autopilot'
 import type { AutopilotMode, AutopilotRoutine } from '../../platform'
 import { captionClass, iconButtonClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
 import { MoreIcon, RoutineIcon, SparkIcon } from '../icons'
@@ -26,10 +34,17 @@ export interface RoutinePaneProps {
   // to go there.
   onGraduate?: () => void
   onNotNow?: () => void
+  // cadence says when Autopilot runs it, while it is on (Cadence).
+  cadence?: ReactNode
+  // pastRulesOff says its merge goes past the rules while that is off in Autopilot's
+  // settings, which onSettings opens.
+  pastRulesOff?: boolean
+  onSettings?: () => void
 }
 
 // RoutinePane shows one routine: its name, Change with Claude… (while it can change here),
-// switch, mode, and ⋯ menu; its status line; the builder, the routine itself edited in
+// switch, mode, and ⋯ menu; its status line, when Autopilot runs it, and what keeps its
+// merge past the rules back; the builder, the routine itself edited in
 // place (or, without one, the sentence it reads as and what is wrong with it); then what it
 // watches now, as the inbox's rows, and what it did, its own Activity.
 export function RoutinePane({
@@ -44,6 +59,9 @@ export function RoutinePane({
   heldText = 'It has steps this version can only try in Dry run, so it stays there.',
   onGraduate,
   onNotNow,
+  cadence,
+  pastRulesOff = false,
+  onSettings,
 }: RoutinePaneProps) {
   const id = useId()
   const switchable = canSwitch(r)
@@ -99,6 +117,20 @@ export function RoutinePane({
           )}
         </div>
         <Status line={status} />
+        {cadence}
+        {pastRulesOff && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-3 rounded-md border border-danger/45 bg-danger/10 px-3 py-2 text-sm"
+          >
+            <span className="min-w-0 flex-1">{pastRulesOffText}</span>
+            {onSettings !== undefined && (
+              <button type="button" onClick={onSettings} className={quietButtonClass}>
+                Open Autopilot settings
+              </button>
+            )}
+          </div>
+        )}
         {r.figures.graduate && onGraduate !== undefined && (
           <div
             role="status"

@@ -1,7 +1,7 @@
 import type { RefObject } from 'react'
 
 import { brand } from '../generated/brand'
-import type { AutopilotBadge } from '../lib/autopilot'
+import type { AutopilotBadge, AutopilotLive } from '../lib/autopilot'
 import { counted, formatCount } from '../lib/format'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
@@ -102,6 +102,8 @@ interface TabCount {
   title: string
   attention: boolean
   failed?: boolean
+  // live is whether the tab's work runs now, which its dot shows: Autopilot's alone.
+  live?: AutopilotLive
 }
 
 // worktreesTitle explains the Worktrees tab's count.
@@ -137,7 +139,7 @@ function notificationsTitle(own: number, github: number): string {
 // tabCount is the count a tab shows; Prompts and Settings show none. Notifications counts
 // the unread, the app's own and GitHub's together. Autopilot counts the agents working,
 // with an amber dot while something waits for the user and a red one while a routine is
-// broken or can't run. Scripts counts the runs going, with a red dot after a run failed
+// broken or can't run, and says whether it runs now (live). Scripts counts the runs going, with a red dot after a run failed
 // until it is opened, and an amber one while a tool that's on can't be used.
 function tabCount(id: View, props: AppHeaderProps): TabCount {
   const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null, autopilot = null } = props
@@ -151,6 +153,7 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
             title: autopilot.title,
             attention: autopilot.attention,
             failed: autopilot.failed,
+            live: autopilot.live,
           }
     case 'inbox':
       return {
@@ -244,7 +247,7 @@ export function AppHeader(props: AppHeaderProps) {
             return null
           }
 
-          const { count, title, attention, failed = false } = tabCount(id, props)
+          const { count, title, attention, failed = false, live = 'off' } = tabCount(id, props)
           const badged = count > 0 || attention || failed
 
           return (
@@ -253,7 +256,7 @@ export function AppHeader(props: AppHeaderProps) {
               type="button"
               aria-pressed={view === id}
               aria-label={label}
-              title={badged ? title : undefined}
+              title={badged || live !== 'off' ? title : undefined}
               onClick={() => {
                 onViewChange(id)
               }}
@@ -263,6 +266,18 @@ export function AppHeader(props: AppHeaderProps) {
                   line growing out from its middle as the tab opens; a hovered one shows its
                   pill, and the keyboard's focus rings the pill rather than the column. */}
               <span className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-muted transition-colors group-hover:bg-raised group-hover:text-text group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent group-aria-pressed:text-text">
+                {/* Autopilot's dot: a soft steady glow while it runs, breathing while an
+                    agent works, none while it runs nothing. */}
+                {live !== 'off' && (
+                  <span
+                    data-testid={`${id}-live`}
+                    data-live={live}
+                    aria-hidden="true"
+                    className={`size-1.5 shrink-0 rounded-full bg-accent text-accent ${
+                      live === 'working' ? 'motion-safe:animate-breathe' : 'ring-2 ring-accent/25'
+                    }`}
+                  />
+                )}
                 {label}
                 {id === 'autopilot' && <BetaBadge />}
                 {id === 'inbox' && props.inboxRefreshing === true && (

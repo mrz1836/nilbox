@@ -3,6 +3,7 @@ package sim_test
 import (
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,5 +135,114 @@ func TestAnAgentlessMergeThatDoesntGoPastTheRulesMergesWhatGitHubAllows(t *testi
 		assert.Equal(t, sim.Commit(1, 1), merges[0].Head)
 		assert.False(t, merges[0].PastReview)
 		assert.Empty(t, merges[0].PastReviewWhy)
+	})
+}
+
+// labelThenMerge is #402's routine: a GitHub step first (a label here, a reply there), then
+// a merge past the rules where an approval from someone else is all it lacks.
+func labelThenMerge() spec.Spec {
+	sp := mergeOnPass(true)
+	sp.Steps = append([]spec.Step{{GitHub: []spec.GitHubAction{{Labels: &spec.LabelsAction{Add: []string{"queued"}}}}}},
+		sp.Steps...)
+
+	return sp
+}
+
+// awaitingApproval starts a sim whose #1, the user's own, passed its checks and lacks only
+// an approval from someone else, with the switch for merging past the rules off and
+// labelThenMerge's routine on Autopilot, accepted, switched on.
+func awaitingApproval(t *testing.T) *sim.Sim {
+	t.Helper()
+
+	s := sim.New(t)
+	s.World.Add(sim.Item{Number: 1, Watched: true, Checks: passing, Passed: 4})
+	s.GitHub.AwaitsApproval(1, true)
+	s.Begin()
+
+	r, err := s.Service.Save(t.Context(), autopilot.Draft{
+		Name: "Merge on a pass", Spec: labelThenMerge(), Mode: autopilotprefs.ModeAuto, AcceptPastRules: true,
+	})
+	require.NoError(t, err)
+
+	s.Enable(r.ID, autopilot.CurrentRun)
+
+	return s
+}
+
+func TestAMergeThatNeedsTheSwitchWaitsForItThenGoesOnAtThatStep(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := awaitingApproval(t)
+
+		for range 3 {
+			s.Refresh()
+		}
+
+		require.Len(t, s.GitHub.Jobs(), 1, "the label went")
+		assert.Empty(t, s.GitHub.Merges(), "nothing merged while the switch is off")
+
+		m := only(t, s)
+		assert.Equal(t, autopilot.StateBlocked, m.State, m.Words)
+		assert.Equal(t, autopilot.BlockPastRulesOff, m.BlockedBy)
+		assert.Contains(t, m.Words, "turn on Let routines merge your own pull requests past the rules")
+		assert.Equal(t, 1, m.Step, "it waits at the merge")
+
+		s.Advance(10*time.Minute, true)
+		assert.Len(t, s.GitHub.MergesTried(), 1, "it doesn't ask again, nor read the item again, while the switch is off")
+
+		s.Change(func(c *autopilotprefs.Config) { c.MergePastRules = true })
+		s.Refresh()
+		s.Refresh()
+
+		merges := s.GitHub.Merges()
+		require.Len(t, merges, 1, "it merged once the switch was on")
+		assert.True(t, merges[0].PastReview)
+		assert.Len(t, s.GitHub.Jobs(), 1, "the label wasn't sent again")
+
+		m = only(t, s)
+		assert.Equal(t, autopilot.StateDone, m.State, m.Words)
+		assert.Equal(t, autopilot.ReasonRan, m.Reason)
+	})
+}
+
+func TestAMergeAnEarlierBuildClosedForTheSwitchWaitsForItAgain(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := awaitingApproval(t)
+		s.GitHub.ClosesPastRules(true)
+
+		for range 3 {
+			s.Refresh()
+		}
+
+		m := only(t, s)
+		require.Equal(t, autopilot.StateClosed, m.State, m.Words)
+		require.Equal(t, autopilot.ReasonNotOffered, m.Reason)
+		assert.Equal(t, "skipped", m.Steps[1].Status, "the merge it didn't send ended, never left running")
+		assert.Contains(t, m.Steps[1].Note, "Not sent: ")
+
+		// It ran a step before it closed, so it counts as something the routine did: today,
+		// as when it last ran, and as the item's ⚡ chip.
+		figures := figuresOf(t, s, m.RoutineID)
+		assert.Equal(t, 1, figures.Today)
+		assert.NotNil(t, figures.LastAt)
+
+		latest, err := s.Service.LatestMatches(t.Context(), []int64{m.Item.ID})
+		require.NoError(t, err)
+		require.Len(t, latest, 1)
+		assert.Equal(t, m.ID, latest[0].ID)
+
+		// This build, with the switch now on, picks it up at the merge after a restart.
+		s.GitHub.ClosesPastRules(false)
+		s.Change(func(c *autopilotprefs.Config) { c.MergePastRules = true })
+		s.Restart()
+		s.Refresh()
+		s.Refresh()
+
+		require.Len(t, s.GitHub.Merges(), 1, "it merged")
+		assert.Len(t, s.GitHub.Jobs(), 1, "the label wasn't sent again")
+		assert.Equal(t, autopilot.StateDone, only(t, s).State)
 	})
 }

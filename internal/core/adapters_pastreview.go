@@ -43,12 +43,11 @@ func (g githubSteps) pastReview(ctx context.Context, rev review.Review, req auto
 	}
 
 	if !req.PastReview {
-		return notOffered(req.PastReviewWhy), true, nil
+		return engineRefused(req), true, nil
 	}
 
 	if on, err := g.pastRulesOn(ctx); err != nil || !on {
-		return notOffered("Let routines merge your own pull requests past the rules is off in Autopilot's settings."),
-			true, err
+		return pastRulesOff(), true, err
 	}
 
 	if sent, decided := pastReviewOffer(rev.Offers, req.Sensitive); decided {
@@ -78,6 +77,22 @@ func (g githubSteps) pastRulesOn(ctx context.Context) (bool, error) {
 	}
 
 	return c.MergePastRules, nil
+}
+
+// engineRefused is a merge past the rules the engine said may not go: one the switch keeps
+// back waits for it, and any other closes with the engine's reason.
+func engineRefused(req autopilot.MergeSend) autopilot.GitHubSent {
+	if req.PastRulesOff {
+		return pastRulesOff()
+	}
+
+	return notOffered(req.PastReviewWhy)
+}
+
+// pastRulesOff is a merge past the rules the switch kept from being sent: it waits for the
+// user to turn the switch on.
+func pastRulesOff() autopilot.GitHubSent {
+	return autopilot.GitHubSent{Outcome: autopilot.GitHubPastRulesOff, Words: autopilot.PastRulesOffWords}
 }
 
 // pastReviewOffer decides a merge past the rules on the sheet's offers before it is sent:

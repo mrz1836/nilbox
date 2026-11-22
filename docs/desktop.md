@@ -1905,7 +1905,8 @@ since. **Notifications** counts what is unread: the app's own notifications, the
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
 as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
 have working, with an amber dot while something waits for you and a red dot while a routine is
-broken or its search fails. **Worktrees** counts the linked worktrees on
+broken or its search fails; a small dot before its name glows softly while Autopilot runs your
+routines and breathes while an agent works. **Worktrees** counts the linked worktrees on
 disk across every clone in the repository
 locations, main worktrees aside, with an amber dot while some are done on GitHub but still on
 disk.
@@ -3399,7 +3400,10 @@ subscription ([budgets and caps](#budgets-and-caps)).
 **Beta**. Its count is the agents working in the background (a run in your terminal is your
 session from its start), with an amber dot while something waits for you and a red dot while a
 routine is broken or its search fails; hover it for what they mean (*2 agents working · 1 needs
-you · 1 routine can’t run*). While you have no routine, the tab explains Autopilot in the two
+you · 1 routine can’t run*). A small accent dot before its name says Autopilot runs: a soft,
+steady glow while it is on, a routine is switched on, and nothing pauses it, breathing while an
+agent works (still, with reduced motion), and none while it runs nothing (paused, no routine on,
+another copy running them, or no one signed in). While you have no routine, the tab explains Autopilot in the two
 sentences above, asks *Tell Autopilot what you want* ([Describe it](#describe-it)), then offers
 the [templates](#templates-and-quick-setup) that fit what Nilbox already knows (the first few,
 *Suggested for you* first), **Start from scratch**, **Start from an item** (which says to use an
@@ -3451,7 +3455,8 @@ you skipped, or one that didn't finish cleanly, starts the count again, and **No
 for five more.
 
 **A routine.** Choosing a routine shows its switch, its mode (**Dry run · Ask first ·
-Autopilot**, which asks the question above when it leaves Dry run while on), and the routine
+Autopilot**, which asks the question above when it leaves Dry run while on), while it is on
+when Autopilot runs it (as Activity says it, below), and the routine
 itself, in the [builder](#building-a-routine), with [Test](#testing-a-routine) below it. A
 routine that belongs to another account, or that a newer Nilbox made, shows only the sentence
 it reads as. Below them:
@@ -3475,6 +3480,14 @@ it reads as. Below them:
   reported, the real measure. A run in your terminal reports neither; the item's
   [session panel](#following-a-session) counts its session's tokens.
 
+**When it runs.** There is no schedule to set: while Autopilot is on, it checks every routine
+that is on every minute, after each refresh of the inbox, and at once when you change or switch
+one on, and a routine acts the moment what it waits for holds. Below Activity's title, a line
+says so, with its last check: *Checks your routines every minute, after each inbox refresh,
+and at once when you change one · last check 20s ago*. It says *Starting* until the first
+refresh since Nilbox opened is in, and that no routine is on while none is; the banners say
+what stops everything else.
+
 **Activity** lists what the routines did, under a heading for each day, newest first:
 
 | Line | Says | Can |
@@ -3484,11 +3497,12 @@ it reads as. Below them:
 | A notice | *Told you*, the item | **Open** |
 | A fix whose push was checked | Its verdict, *Fixed: checks pass on 4f2a9c1.* ([closing the loop](#closing-the-loop-wait-for-the-checks)) | **Open** |
 | A routine that gave up | *Gave up*, *Gave up after 2 tries.* | **Try again**, which resets its tries on the item |
+| A routine that stopped partway | Why it closed (*Closed: its step isn't offered*), the steps it ran (*Commented on #12*), and the one it couldn't send, with why | **Open** |
 | An item a routine leaves alone | *Left alone*, why (*You brought back what it snoozed.*) | **Let it act again** |
 
 **Filter** by routine (**Every routine**, or one) and by result (**Snoozes, pins, and
 dismissals**, **Dry runs**, **Notices**, or **Worth knowing**: what was left alone, what gave
-up, and what failed). Earlier days load as you scroll to the end, or with **Show earlier days**.
+up, what failed, and what stopped partway). Earlier days load as you scroll to the end, or with **Show earlier days**.
 **Open** shows the item, even when its routine is deleted: its card in the inbox while one of
 your lists holds it, else its row in the Watching list of a routine that still lists it (the
 line's own first), marked once, else its review or issue sheet while Nilbox still has it, else
@@ -4147,7 +4161,10 @@ hand. With the tick, the routine merges it so with no click, once three things a
 1. **Let routines merge your own pull requests past the rules** is on in **Settings →
    Autopilot** (off where it starts). It is never in a backup, Describe it can't propose it,
    and turning it off stops every such merge at once. While it is off, the builder and
-   Describe it's card warn on the step, and it merges only what GitHub allows.
+   Describe it's card warn on the step, it merges only what GitHub allows, and the routine's
+   line says so in red, its pane with **Open Autopilot settings**. A pull request that needs
+   to go past the rules waits in **Needs you** meanwhile, at the merge; turn the switch on and
+   it merges by itself, without sending again what the steps before the merge sent.
 2. You confirm the routine when you save it, in the builder or from Describe it's card: Save
    lists exactly what it may do, a box to tick for each tick, and saves only once they are.
    That confirms the routine as it is: any change to what it does asks again (a new name
@@ -4177,8 +4194,8 @@ merge state) and goes only if every one of these holds:
 When all hold it squash-merges (or merges with the step's method) at the head, and Activity
 says *Squash-merged #12 past the rules: it lacked only an approval from someone else.* When
 GitHub would merge it anyway, it merges as any Merge it does. While GitHub still works out the
-merge state, or the checks still report, it tries again on a later cycle. Anything else closes
-the match as no longer offered, saying why (*Its commit 4f2a9c1 wasn't signed by you.*):
+merge state, or the checks still report, it tries again on a later cycle. While the switch is
+off it waits for it, as above. Anything else closes the match as no longer offered, saying why (*Its commit 4f2a9c1 wasn't signed by you.*):
 nothing ever waits for your click. In Ask first, the step asks before it merges, as Merge it
 always does. A GitHub admin merge has the same moment between its read and its merge as the
 review sheet's own: a push in that second is refused by GitHub, which merges only the head the

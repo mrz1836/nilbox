@@ -93,6 +93,11 @@ const (
 	// GitHubNotOffered is an action the item's sheet no longer offers; Words says why.
 	GitHubNotOffered GitHubOutcome = "not_offered"
 
+	// GitHubPastRulesOff is a Merge it that needs to go past the rules, which Let routines
+	// merge your own pull requests past the rules being off kept from being sent: it waits
+	// for the user to turn it on. Words says so.
+	GitHubPastRulesOff GitHubOutcome = "past_rules_off"
+
 	// GitHubWarning is an action the sheet offers with warnings the user hasn't accepted;
 	// Words holds them, which the user accepts by approving.
 	GitHubWarning GitHubOutcome = "warning"
@@ -173,21 +178,15 @@ func (g githubDispatcher) Dispatch(ctx context.Context, job Job) (Result, error)
 
 // resultOf is how a GitHub action went, in the engine's words.
 func resultOf(got GitHubSent) (Result, error) {
+	if res, kept := keptOf(got); kept {
+		return res, nil
+	}
+
 	switch got.Outcome {
 	case GitHubSentIt:
 		return Result{Sent: true, Summary: got.Words}, nil
 	case GitHubNothing:
 		return Result{Summary: got.Words}, nil
-	case GitHubNotOffered:
-		return Result{NotOffered: textutil.Sentence(cmp.Or(got.Words, "Its sheet no longer offers it."))}, nil
-	case GitHubWarning:
-		return Result{Warning: cmp.Or(got.Words, "It comes with a warning.")}, nil
-	case GitHubPushedSince:
-		return Result{PushedSince: true, Summary: cmp.Or(got.Words, pushedSinceWords)}, nil
-	case GitHubUnread:
-		return Result{PushedSince: true, Summary: cmp.Or(got.Words, "It couldn't be read, so nothing was sent.")}, nil
-	case GitHubHeld:
-		return Result{Held: cmp.Or(got.Words, "GitHub actions are held for now."), RetryIn: got.RetryIn}, nil
 	case GitHubNeedsReview:
 		return Result{
 			Wait: BlockReviewRequired,
@@ -196,9 +195,35 @@ func resultOf(got GitHubSent) (Result, error) {
 		}, nil
 	case GitHubNotYet:
 		return Result{Wait: BlockSettling, WaitWords: cmp.Or(got.Words, "GitHub isn't ready to merge it yet.")}, nil
+	case GitHubNotOffered, GitHubPastRulesOff, GitHubWarning, GitHubPushedSince, GitHubUnread, GitHubHeld:
+		// keptOf answered these.
 	}
 
 	return Result{}, fmt.Errorf("%w: %q", errNoAction, got.Outcome)
+}
+
+// keptOf is a GitHub action its sheet or the write gate kept from being sent, in the engine's
+// words, and whether got is one: no longer offered, waiting for the switch to go past the
+// rules, offered with warnings, pushed since or unread, or held.
+func keptOf(got GitHubSent) (Result, bool) {
+	switch got.Outcome {
+	case GitHubNotOffered:
+		return Result{NotOffered: textutil.Sentence(cmp.Or(got.Words, "Its sheet no longer offers it."))}, true
+	case GitHubPastRulesOff:
+		return Result{PastRulesOff: true, Summary: cmp.Or(got.Words, PastRulesOffWords)}, true
+	case GitHubWarning:
+		return Result{Warning: cmp.Or(got.Words, "It comes with a warning.")}, true
+	case GitHubPushedSince:
+		return Result{PushedSince: true, Summary: cmp.Or(got.Words, pushedSinceWords)}, true
+	case GitHubUnread:
+		return Result{PushedSince: true, Summary: cmp.Or(got.Words, "It couldn't be read, so nothing was sent.")}, true
+	case GitHubHeld:
+		return Result{Held: cmp.Or(got.Words, "GitHub actions are held for now."), RetryIn: got.RetryIn}, true
+	case GitHubSentIt, GitHubNothing, GitHubNeedsReview, GitHubNotYet:
+		// Sent, nothing to send, or waiting: resultOf answers these.
+	}
+
+	return Result{}, false
 }
 
 // pushedSinceWords say a GitHub action found its pull request pushed to.

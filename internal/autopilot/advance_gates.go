@@ -39,6 +39,7 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 	for _, check := range []func() verdict{
 		func() verdict { return p.mergeRules(id, sr) },
 		func() verdict { return p.recheck(r, m, sr) },
+		func() verdict { return p.pastRulesSwitch(m) },
 		func() verdict { return p.scriptAsks(sr) },
 		func() verdict { return p.askFirst(r, m, sr) },
 		func() verdict { return p.held(r, m) },

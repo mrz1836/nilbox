@@ -57,16 +57,30 @@ WHERE item_id = sqlc.arg(item_id)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(row_limit);
 
+-- name: ListClosedMatches :many
+-- ListClosedMatches returns the matches in state that closed for reason with detail, at
+-- or after since, oldest first.
+SELECT * FROM autopilot_matches
+WHERE state = sqlc.arg(state) AND reason = sqlc.arg(reason) AND detail = sqlc.arg(detail)
+    AND closed_at >= sqlc.arg(since)
+ORDER BY id;
+
 -- name: ListLatestItemMatches :many
 -- ListLatestItemMatches returns, for each item among ids, its newest match that did
--- something there or waits to: open, or closed as done, skipped, or dismissed, never a
+-- something there or waits to: open, closed as done, skipped, or dismissed, or closed
+-- after one of its steps ran (a reply sent, then a merge no longer offered); never a
 -- baseline or one that closed because the item or the routine moved on before it acted.
 -- Newest first.
 SELECT m.* FROM autopilot_matches AS m
 WHERE m.id IN (
     SELECT MAX(l.id) FROM autopilot_matches AS l
     WHERE l.item_id IN (sqlc.slice(ids))
-        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+        AND (
+            l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+            OR (l.state = 'closed' AND EXISTS (
+                SELECT 1 FROM json_each(l.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+            ))
+        )
     GROUP BY l.item_id
 )
 ORDER BY m.id DESC;
@@ -81,19 +95,27 @@ SELECT
     CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS today,
     CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
     CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting
-FROM autopilot_matches
-WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+FROM autopilot_matches AS m
+WHERE m.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    OR (m.state = 'closed' AND EXISTS (
+        SELECT 1 FROM json_each(m.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+    ))
 GROUP BY routine_id;
 
 -- name: ListRoutineLastRuns :many
--- ListRoutineLastRuns returns, for each routine with a match that ran (done; in Dry run,
--- would have), the ID of the one that ran last: the one that closed last, since a match
--- runs as it closes, which can be long after it was recorded (one that waited for the
--- user, or under Pause). SQLite takes a bare column of a query with one max() from the
--- row that holds the max, which closed_last only selects.
+-- ListRoutineLastRuns returns, for each routine with a match that ran (done, or closed
+-- after one of its steps ran; in Dry run, would have), the ID of the one that ran last: the
+-- one that closed last, since a match runs as it closes, which can be long after it was
+-- recorded (one that waited for the user, or under Pause). SQLite takes a bare column of a
+-- query with one max() from the row that holds the max, which closed_last only selects.
 SELECT routine_id, id, MAX(closed_at) AS closed_last
-FROM autopilot_matches
-WHERE state = 'done' AND closed_at IS NOT NULL
+FROM autopilot_matches AS m
+WHERE m.closed_at IS NOT NULL AND (
+    m.state = 'done'
+    OR (m.state = 'closed' AND EXISTS (
+        SELECT 1 FROM json_each(m.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+    ))
+)
 GROUP BY routine_id;
 
 -- name: ListMatchHeads :many

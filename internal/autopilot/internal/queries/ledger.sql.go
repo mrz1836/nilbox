@@ -839,6 +839,80 @@ func (q *Queries) ListBaselines(ctx context.Context, routineID int64) ([]ListBas
 	return items, nil
 }
 
+const listClosedMatches = `-- name: ListClosedMatches :many
+SELECT id, routine_id, item_id, account_login, repo_owner, repo_name, kind, number, title, url, fire_key, dry_run, manual, state, blocked_by, reason, detail, trace, steps, step, spec_hash, head_oid, auto_merge_at_match, approved, attempt, created_at, updated_at, decided_at, closed_at FROM autopilot_matches
+WHERE state = ?1 AND reason = ?2 AND detail = ?3
+    AND closed_at >= ?4
+ORDER BY id
+`
+
+type ListClosedMatchesParams struct {
+	State  string
+	Reason string
+	Detail string
+	Since  *time.Time
+}
+
+// ListClosedMatches returns the matches in state that closed for reason with detail, at
+// or after since, oldest first.
+func (q *Queries) ListClosedMatches(ctx context.Context, arg ListClosedMatchesParams) ([]AutopilotMatch, error) {
+	rows, err := q.db.QueryContext(ctx, listClosedMatches,
+		arg.State,
+		arg.Reason,
+		arg.Detail,
+		arg.Since,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AutopilotMatch{}
+	for rows.Next() {
+		var i AutopilotMatch
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoutineID,
+			&i.ItemID,
+			&i.AccountLogin,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.FireKey,
+			&i.DryRun,
+			&i.Manual,
+			&i.State,
+			&i.BlockedBy,
+			&i.Reason,
+			&i.Detail,
+			&i.Trace,
+			&i.Steps,
+			&i.Step,
+			&i.SpecHash,
+			&i.HeadOID,
+			&i.AutoMergeAtMatch,
+			&i.Approved,
+			&i.Attempt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DecidedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHandsOff = `-- name: ListHandsOff :many
 SELECT item_id, since, why FROM autopilot_hands_off WHERE routine_id = ?1
 `
@@ -1017,14 +1091,20 @@ SELECT m.id, m.routine_id, m.item_id, m.account_login, m.repo_owner, m.repo_name
 WHERE m.id IN (
     SELECT MAX(l.id) FROM autopilot_matches AS l
     WHERE l.item_id IN (/*SLICE:ids*/?)
-        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+        AND (
+            l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+            OR (l.state = 'closed' AND EXISTS (
+                SELECT 1 FROM json_each(l.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+            ))
+        )
     GROUP BY l.item_id
 )
 ORDER BY m.id DESC
 `
 
 // ListLatestItemMatches returns, for each item among ids, its newest match that did
-// something there or waits to: open, or closed as done, skipped, or dismissed, never a
+// something there or waits to: open, closed as done, skipped, or dismissed, or closed
+// after one of its steps ran (a reply sent, then a merge no longer offered); never a
 // baseline or one that closed because the item or the routine moved on before it acted.
 // Newest first.
 func (q *Queries) ListLatestItemMatches(ctx context.Context, ids []*int64) ([]AutopilotMatch, error) {
@@ -1598,8 +1678,11 @@ SELECT
     CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS today,
     CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
     CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting
-FROM autopilot_matches
-WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+FROM autopilot_matches AS m
+WHERE m.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    OR (m.state = 'closed' AND EXISTS (
+        SELECT 1 FROM json_each(m.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+    ))
 GROUP BY routine_id
 `
 
@@ -1644,8 +1727,13 @@ func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]Li
 
 const listRoutineLastRuns = `-- name: ListRoutineLastRuns :many
 SELECT routine_id, id, MAX(closed_at) AS closed_last
-FROM autopilot_matches
-WHERE state = 'done' AND closed_at IS NOT NULL
+FROM autopilot_matches AS m
+WHERE m.closed_at IS NOT NULL AND (
+    m.state = 'done'
+    OR (m.state = 'closed' AND EXISTS (
+        SELECT 1 FROM json_each(m.steps) AS s WHERE json_extract(s.value, '$.status') = 'done'
+    ))
+)
 GROUP BY routine_id
 `
 
@@ -1655,11 +1743,11 @@ type ListRoutineLastRunsRow struct {
 	ClosedLast interface{}
 }
 
-// ListRoutineLastRuns returns, for each routine with a match that ran (done; in Dry run,
-// would have), the ID of the one that ran last: the one that closed last, since a match
-// runs as it closes, which can be long after it was recorded (one that waited for the
-// user, or under Pause). SQLite takes a bare column of a query with one max() from the
-// row that holds the max, which closed_last only selects.
+// ListRoutineLastRuns returns, for each routine with a match that ran (done, or closed
+// after one of its steps ran; in Dry run, would have), the ID of the one that ran last: the
+// one that closed last, since a match runs as it closes, which can be long after it was
+// recorded (one that waited for the user, or under Pause). SQLite takes a bare column of a
+// query with one max() from the row that holds the max, which closed_last only selects.
 func (q *Queries) ListRoutineLastRuns(ctx context.Context) ([]ListRoutineLastRunsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRoutineLastRuns)
 	if err != nil {
