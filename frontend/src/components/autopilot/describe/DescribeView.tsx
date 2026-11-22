@@ -350,7 +350,7 @@ export function DescribeView({
           </p>
         )
       ) : turns.length === 0 ? (
-        <p className="max-w-prose text-sm leading-relaxed text-muted">
+        <p className="text-sm leading-relaxed text-muted">
           Say what you want Autopilot to do, as you would to a colleague: “when Dependabot’s security scans fail on my
           Go repositories, fix it in the background and tell me how it went”. Claude proposes the routines, prompts, and
           settings it needs as cards, and nothing changes until you apply one.
