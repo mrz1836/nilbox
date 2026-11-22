@@ -1068,7 +1068,12 @@ Draft 2020-12, generated from this build's format: every key, every closed set o
         "actionsPerDay": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 200
+          "maximum": 2000
+        },
+        "actionsPerHour": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 300
         },
         "dailyCap": {
           "$ref": "#/$defs/DailyCap"

@@ -108,16 +108,17 @@ type SettingKey string
 
 // The settings a proposal may change, in the order Settings → Autopilot lists them.
 const (
-	SettingDefaultMode   SettingKey = "defaultMode"
-	SettingAgentsAtOnce  SettingKey = "agentsAtOnce"
-	SettingRunsPerDay    SettingKey = "runsPerDay"
-	SettingActionsPerDay SettingKey = "actionsPerDay"
-	SettingDailyCap      SettingKey = "dailyCap"
-	SettingKeepAwake     SettingKey = "keepAwake"
-	SettingHoldOnOutage  SettingKey = "holdOnOutage"
-	SettingCatchUpHours  SettingKey = "catchUpHours"
-	SettingHistoryDays   SettingKey = "historyDays"
-	SettingLogDays       SettingKey = "logDays"
+	SettingDefaultMode    SettingKey = "defaultMode"
+	SettingAgentsAtOnce   SettingKey = "agentsAtOnce"
+	SettingRunsPerDay     SettingKey = "runsPerDay"
+	SettingActionsPerDay  SettingKey = "actionsPerDay"
+	SettingActionsPerHour SettingKey = "actionsPerHour"
+	SettingDailyCap       SettingKey = "dailyCap"
+	SettingKeepAwake      SettingKey = "keepAwake"
+	SettingHoldOnOutage   SettingKey = "holdOnOutage"
+	SettingCatchUpHours   SettingKey = "catchUpHours"
+	SettingHistoryDays    SettingKey = "historyDays"
+	SettingLogDays        SettingKey = "logDays"
 )
 
 // SettingChange is one of Autopilot's settings a proposal changes, in the window's words.

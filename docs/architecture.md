@@ -1610,7 +1610,10 @@ it quietly, a line a run (**{workflow} · held on GitHub** or **· held for appr
 Open on GitHub, and Ignore this workflow while it isn't named. A merge's warning still says
 every held run, since GitHub still counts it. `Rebuild` builds the sheet again from the
 cache, with no request and no new visit, which the window asks for when the list changes
-while the sheet is open. Should GitHub still refuse one for what it is
+while the sheet is open. `build` takes the inbox's stored state (`StoredPull.State`, the
+item's `state`, which a merge or close the inbox recorded sets, as a routine's merge does,
+dropping the cache): MERGED or CLOSED ends the sheet as a read that finds it would, so an
+open sheet whose card leaves the list moves on, with no request. Should GitHub still refuse one for what it is
 (`github.ErrRunNotApprovable`), `Act` remembers its run ID for as long as the app runs
 (`Service.onGitHub`, in memory, never stored; `markOnGitHub` applies it to every cache the
 sheet loads, over any read since), never sends it again, and goes on with the rest; with none
@@ -3788,8 +3791,11 @@ Checks pass while its checks run (none failed, none waiting on a maintainer) or 
 Checks fail, waiting for every check, once one failed while the rest run or settle; a
 schedule due later today; Goes quiet within a day of its spell (`soonQuiet`). A trigger
 that waits on an event no one can foresee is never pending. `Plan.Conditions` decides the
-conditions alone, as `Evaluate` runs them, which the engine asks of a pending decision. The
-property tests (`FuzzShuffledConditionsDecideAlike`, `FuzzNegationOfAnUnknownIsUnknown`,
+conditions alone, as `Evaluate` runs them, and `Plan.ConditionsWhenDue` decides them as the
+item will stand once a pending trigger holds, with the facts it makes so (`Pending.Assume`:
+Checks pass waiting on running checks makes them all passed, `allPassed`; Checks fail waiting
+for the rest makes them finished and failing, `allFinished`), which the engine asks of a
+pending decision. The property tests (`FuzzShuffledConditionsDecideAlike`, `FuzzNegationOfAnUnknownIsUnknown`,
 `FuzzNeverYesOnAnUnknownItNeeds`) run over generated specs and facts; the last checks that
 reading what was missing never turns a yes or a no into anything else.
 
@@ -3935,7 +3941,8 @@ lists the category as **Autopilot routines**, beside the others.
 `autopilot.enabled` (Autopilot (beta), off: see **Autopilot (beta)**, below),
 `autopilot.paused` (off), `autopilot.defaultMode` (`ask`), `autopilot.agentsAtOnce` (2, 1 to
 3, so one of the run engine's four slots stays free for the user's scripts),
-`autopilot.runsPerDay` (20, 1 to 200), `autopilot.actionsPerDay` (50, 1 to 200),
+`autopilot.runsPerDay` (20, 1 to 200), `autopilot.actionsPerDay` (500, 1 to 2,000),
+`autopilot.actionsPerHour` (120, 10 to 300, under the write gate's 400 an hour),
 `autopilot.dailyCap` and `autopilot.dailyCapUnit` (0 for none, else 1 to 500 dollars or
 100,000 to 50,000,000 tokens; `usd` or `tokens`), `autopilot.keepAwake` (off),
 `autopilot.holdOnOutage` (on), `autopilot.catchUpHours` (24, 1 to 168),
@@ -4323,7 +4330,7 @@ What the user sees is the ⚡ chip's *What runs next* in `docs/desktop.md`. As a
 each routine on each item it watches (`evaluateItem`), a decision whose trigger is pending
 goes to `noteUpcoming`: the routine acts (not Dry run), has no record of the pending
 `FireKey` but one that reopens (`reopensRow`), so a commit it ran on whose checks run again
-says nothing, and its `Plan.Conditions` is a sure yes; the item is one it doesn't leave
+says nothing, and its `Plan.ConditionsWhenDue` is a sure yes; the item is one it doesn't leave
 alone, which `evaluateItem` checked first. Each becomes an `Upcoming` (the routine, its mode
 and whether it waits for an OK, `waitsForOK`: Ask first with a step `asksFirst` names, its
 trigger, `When` and `At`, and its steps as a match's show before they start,
@@ -4966,9 +4973,10 @@ left as it is; when one can't be closed, none is.
 **Limits.** A match is one try and one of its routine's runs a day however many runs it starts
 (`history` and `dayCounts` count distinct matches; `limits` holds only a match's first run to
 the tries, the routine's runs, and the wait), while the GitHub actions a day count each one
-sent (a `not_sent` run counts toward nothing). Autopilot keeps to a third of the write gate's
-edit lane, `ActionsPerMinute` (10) and `ActionsPerHour` (60), from the runs started in the last
-minute and hour, manual ones too (`pace`, `writes_held`); the gate's own pace still holds
+sent (a `not_sent` run counts toward nothing). Autopilot keeps under the write gate's edit
+lane (60 a minute, 400 an hour): its GitHub actions an hour (`Config.ActionsPerHour`, 120 by
+default, at most 300), and a sixth of that a minute (`actionsPerMinute`, at most
+`MaxActionsPerMinute`, 40), from the runs started in the last minute and hour, manual ones too (`pace`, `writes_held`); the gate's own pace still holds
 under it. An outside contributor's item waits for the user's OK in every mode
 (`outside_contributor`), and the first pass's cap (`FirstCap`) holds a routine with a GitHub
 action, as above. Mark the GitHub notification done is a local step: it runs at once, through
@@ -5343,9 +5351,12 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   unpaused, signed in, run by this copy, with a routine on, else `off`, which `AppHeader`
   shows as a dot before the tab's name, a steady accent ring for `on`, `animate-breathe` under
   `motion-safe:` for `working`, with `onTitle` as the tooltip when nothing else is to say),
-  when Autopilot runs (`cadenceOf`, from the glance and the engine's `LastCycle`, which every
-  cycle's `autopilot:updated` keeps fresh; `Cadence.tsx` shows it under Activity's title and
-  in an enabled routine's pane, nothing while a banner says what stops everything), each
+  when Autopilot runs (`cadenceOf`, from the glance, the engine's `LastCycle`, which every
+  cycle's `autopilot:updated` keeps fresh, and `GitHubReads`: the settings' inbox and checks
+  intervals, and the inbox's last read, which gives the next; `howWords` says how often, in
+  the settings' numbers; `Cadence.tsx` shows it under Activity's title, with **Refresh now**
+  through the inbox's `refresh`, and its first line in an enabled routine's pane, nothing
+  while a banner says what stops everything), each
   routine's status line (`routineStatus`, from the routine's own `Figures`: its merge past the
   rules while the switch is off, in red (`pastRulesBlocked`, which also has the pane show
   `pastRulesOffText` with **Open Autopilot settings**), what waits, what it did today, what it
@@ -6324,7 +6335,10 @@ The shared classes are written out once, so Tailwind finds each whole:
 a link in the text's color), the dialog shells (`modalClass`, `sheetDialogClass`), the
 toolbar's bar (`toolbarClass`), and `ErrorText`, a refusal's words under its control;
 `PopoverPanel.tsx` holds `panelClass`, a listbox's or menu's panel, and `PopoverPanel` floats
-on a menu's shadow or a card chip's (`elevation`); and `settings/rows.tsx` holds `groupClass`,
+on a menu's shadow or a card chip's (`elevation`), moved sideways off the edge it lines up with
+by `usePopover`'s `shift` (`shiftInto`: measured before it paints, inside every ancestor whose
+overflow clips it and the window, a gap from their edges, so a right-aligned menu in a narrow
+sidebar never opens past its edge); and `settings/rows.tsx` holds `groupClass`,
 a settings card. `SearchBox` is the one plain search
 field a page or a panel draws, over its repositories or whatever it lists, and `Terminal` the
 terminal window, in the dark palette in either theme, that the inbox-nil party and the setup's

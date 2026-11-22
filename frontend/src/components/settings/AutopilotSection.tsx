@@ -12,6 +12,7 @@ import {
   AutopilotMode,
   clearAutopilotHistory,
   setAutopilotActionsPerDay,
+  setAutopilotActionsPerHour,
   setAutopilotAgentsAtOnce,
   setAutopilotCatchUpHours,
   setAutopilotDailyCap,
@@ -66,7 +67,8 @@ const whileItRuns =
 const limits = {
   agentsAtOnce: { min: 1, max: 3 },
   runsPerDay: { min: 1, max: 200 },
-  actionsPerDay: { min: 1, max: 200 },
+  actionsPerDay: { min: 1, max: 2000 },
+  actionsPerHour: { min: 10, max: 300 },
   catchUpHours: { min: 1, max: 168 },
   historyDays: { min: 7, max: 365 },
   logDays: { min: 1, max: 90 },
@@ -79,7 +81,8 @@ const limits = {
 const defaults = {
   agentsAtOnce: 2,
   runsPerDay: 20,
-  actionsPerDay: 50,
+  actionsPerDay: 500,
+  actionsPerHour: 120,
   catchUpHours: 24,
   historyDays: 90,
   logDays: 30,
@@ -90,7 +93,8 @@ const defaults = {
 // brought, is offered too (withValue).
 const agentChoices = [1, 2, 3]
 const runChoices = [5, 10, 20, 50, 100, 200]
-const actionChoices = [10, 25, 50, 100, 200]
+const actionChoices = [50, 100, 200, 500, 1000, 2000]
+const actionHourChoices = [60, 120, 200, 300]
 const catchUpChoices = [6, 12, 24, 48, 72, 168]
 const historyChoices = [7, 14, 30, 60, 90, 180, 365]
 const logChoices = [1, 7, 14, 30, 60, 90]
@@ -659,7 +663,7 @@ export function AutopilotSection({ settings: stored, onSaved, agents, profiles, 
           <NumberRow
             label="GitHub actions a day"
             controlId={`${id}-actions`}
-            description="The most actions on GitHub your routines will send in a day, together, such as asking Dependabot to rebase."
+            description="The most actions on GitHub your routines will send in a day, together, such as a reply or a merge."
             value={config.actionsPerDay}
             choices={actionChoices}
             range={limits.actionsPerDay}
@@ -668,6 +672,20 @@ export function AutopilotSection({ settings: stored, onSaved, agents, profiles, 
             error={errorFor('actionsPerDay')}
             onChange={(n) => {
               change('actionsPerDay', n, () => setAutopilotActionsPerDay(n))
+            }}
+          />
+          <NumberRow
+            label="GitHub actions an hour"
+            controlId={`${id}-actions-hour`}
+            description="The most your routines will send in an hour, a sixth of it at most a minute. GitHub allows about 500 actions that write an hour, which your own clicks and tools share, so this stays at 300 or under."
+            value={config.actionsPerHour}
+            choices={actionHourChoices}
+            range={limits.actionsPerHour}
+            fallback={defaults.actionsPerHour}
+            words={(n) => counted(n, 'action', 'actions')}
+            error={errorFor('actionsPerHour')}
+            onChange={(n) => {
+              change('actionsPerHour', n, () => setAutopilotActionsPerHour(n))
             }}
           />
           <CapRow

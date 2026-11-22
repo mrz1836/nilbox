@@ -391,6 +391,13 @@ export function NeedsYouSection({
     await approveMatches([c.match.id])
   })
   const shown = [...groups.waiting, ...groups.backlogs.flatMap((b) => b.matches), ...groups.blocked, ...groups.queued]
+  // sharedWhy is what every queued match waits on, when it is one thing for all of them, and
+  // there are several: the Queued list says it once, in full, and each row its pull request.
+  const [firstQueued] = groups.queued
+  const sharedWhy =
+    firstQueued !== undefined && groups.queued.length > 1 && groups.queued.every((m) => m.words === firstQueued.words)
+      ? firstQueued.words
+      : ''
   const marked = highlight !== null && shown.some((m) => m.id === highlight.matchId) ? highlight : null
 
   useEffect(() => {
@@ -568,19 +575,33 @@ export function NeedsYouSection({
             Queued
             <span className="text-xs font-normal text-muted">Each starts by itself once what it waits on frees.</span>
           </h3>
+          {/* What every one waits on, said once and in full, when they all wait on the same
+              thing (the day's or the hour's pace); each row then names its pull request. */}
+          {sharedWhy !== '' && (
+            <p role="note" className="flex items-start gap-2 px-3 text-xs text-text">
+              <ClockIcon className="mt-px size-3.5 shrink-0 text-muted" />
+              <span className="min-w-0">{sharedWhy}</span>
+            </p>
+          )}
           <ul className="flex flex-col">
             {groups.queued.map((m) => (
               <li
                 key={m.id}
                 data-match={m.id}
                 data-highlighted={marked?.matchId === m.id || undefined}
-                className="flex min-w-0 items-center gap-3 rounded-md px-3 py-1 text-sm data-highlighted:bg-accent/10"
+                className="flex min-w-0 items-start gap-3 rounded-md px-3 py-1 text-sm data-highlighted:bg-accent/10"
               >
-                <ClockIcon className="size-3.5 shrink-0 text-muted" />
-                <span className="shrink-0 font-mono text-small text-muted">{itemText(m.item)}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted" title={m.item.title}>
-                  {m.words}
+                <ClockIcon className="mt-0.5 size-3.5 shrink-0 text-muted" />
+                <span className="shrink-0 font-mono text-small text-muted" title={m.item.title}>
+                  {itemText(m.item)}
                 </span>
+                {sharedWhy === '' ? (
+                  <span className="min-w-0 flex-1 text-xs text-muted">{m.words}</span>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted" title={m.item.title}>
+                    {m.item.title}
+                  </span>
+                )}
                 <span className="hidden max-w-56 shrink-0 truncate text-xs text-muted lg:inline" title={m.routine}>
                   {m.routine}
                 </span>

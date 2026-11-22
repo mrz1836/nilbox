@@ -77,11 +77,10 @@ const (
 	// user as a backlog.
 	FirstCap = 25
 
-	// ActionsPerMinute and ActionsPerHour are the most GitHub actions Autopilot sends in a
-	// minute and in an hour: a third of the write gate's edit lane, so the user's own
-	// clicks always have room.
-	ActionsPerMinute = 10
-	ActionsPerHour   = 60
+	// MaxActionsPerMinute is the most GitHub actions Autopilot sends in a minute, however many
+	// an hour its setting allows (autopilotprefs.Config.ActionsPerHour): two thirds of the
+	// write gate's edit lane (60 a minute), so the user's own clicks keep 20 (actionsPerMinute).
+	MaxActionsPerMinute = 40
 )
 
 var (

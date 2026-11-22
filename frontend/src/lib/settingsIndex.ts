@@ -398,6 +398,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Agents at once', keywords: ['coding agents', 'parallel', 'concurrent', 'slots', ...agentNames] },
     { label: 'Agent runs a day', keywords: ['daily runs', 'coding agents', 'cap', 'limit'] },
     { label: 'GitHub actions a day', keywords: ['rebase', 'update branch', 'labels', 'writes', 'cap', 'limit'] },
+    { label: 'GitHub actions an hour', keywords: ['pace', 'rate limit', 'per hour', 'writes', 'cap', 'limit'] },
     { label: 'Daily cap', keywords: ['budget', 'spend', 'cost', 'dollars', 'usd', 'tokens', 'money', 'limit'] },
     { label: 'Merging', keywords: ['merge it', 'past the rules', 'bypass', 'admin merge', 'routines'] },
     {

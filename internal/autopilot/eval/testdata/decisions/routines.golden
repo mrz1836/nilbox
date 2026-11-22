@@ -771,6 +771,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-dependabot-security-then-merge · pr partial · seen
 match: no
@@ -786,6 +788,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-dependabot-security-then-merge · issue · fresh
 match: no
@@ -909,6 +913,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-dependabot-security · pr partial · seen
 match: no
@@ -924,6 +930,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-dependabot-security · issue · fresh
 match: no
@@ -1047,6 +1055,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-failing-checks-on-my-prs · pr partial · seen
 match: no
@@ -1062,6 +1072,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template fix-failing-checks-on-my-prs · issue · fresh
 match: no
@@ -1185,6 +1197,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template heal-dependabot-then-merge · pr partial · seen
 match: no
@@ -1200,6 +1214,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template heal-dependabot-then-merge · issue · fresh
 match: no
@@ -1773,6 +1789,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template re-run-flaky-checks-once · pr partial · seen
 match: no
@@ -1788,6 +1806,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template re-run-flaky-checks-once · issue · fresh
 match: no
@@ -2351,6 +2371,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template tell-me-about-security-failures · pr partial · seen
 match: no
@@ -2366,6 +2388,8 @@ pending:
   when: once its checks finish
   at: nil
   fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+  assume checks.pending: {"status":"known"}
+  assume checks.state: {"status":"known","text":"failure"}
 
 == template tell-me-about-security-failures · issue · fresh
 match: no

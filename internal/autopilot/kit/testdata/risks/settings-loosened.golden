@@ -4,5 +4,5 @@ warning: History kept drops from 90 days to 14 days: the routines' history older
 warning: Run logs kept drops from 30 days to 7 days: older agent run logs are deleted, for good.
 warning: Agents at once goes up from 2 to 3: more of your routines' agents run at the same time.
 warning: Agent runs a day goes up from 20 to 100: your routines may start that many agent runs a day.
-warning: GitHub actions a day goes up from 50 to 200: your routines may send GitHub that many actions a day.
+warning: GitHub actions a day goes up from 500 to 1000: your routines may send GitHub that many actions a day.
 warning: Ask before catching up after goes up from 24 hours to 1 week: after a gap shorter than that, routines catch up without asking you.

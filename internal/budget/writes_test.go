@@ -42,6 +42,17 @@ func allowN(t *testing.T, tr *Tracker, clk *testutil.Clock, n int) {
 	}
 }
 
+// allowMinute allows a minute's worth of edits, the lane's pace, half a second apart, so
+// every one stays within the minute.
+func allowMinute(t *testing.T, tr *Tracker, clk *testutil.Clock) {
+	t.Helper()
+
+	for range WritesPerMinute {
+		require.NoError(t, tr.AllowWrite(github.ResourceCore))
+		clk.Advance(time.Second / 2)
+	}
+}
+
 func TestReserveIsAHundredthOfTheBudget(t *testing.T) {
 	t.Parallel()
 
@@ -99,11 +110,11 @@ func TestAllowWriteKeepsThePacePerMinute(t *testing.T) {
 
 	tr, clk, _ := newTestTracker()
 
-	allowN(t, tr, clk, WritesPerMinute)
+	allowMinute(t, tr, clk)
 
 	err := tr.AllowWrite(github.ResourceCore)
 	require.ErrorIs(t, err, ErrWritePace)
-	assert.Equal(t, brand.Name+" made 30 changes on GitHub in the last minute, the most it makes to stay clear of "+
+	assert.Equal(t, brand.Name+" made 60 changes on GitHub in the last minute, the most it makes to stay clear of "+
 		"GitHub's limits. Try again in 30 seconds.", uierr.Message(err))
 
 	// The first edit leaves the minute 60 seconds after it was sent.
@@ -116,15 +127,16 @@ func TestAllowWriteKeepsThePacePerHour(t *testing.T) {
 
 	tr, clk, _ := newTestTracker()
 
+	// Eight seconds apart, so an hour's worth all stay within the hour, under the minute's pace.
 	for range WritesPerHour {
 		require.NoError(t, tr.AllowWrite(github.ResourceCore))
-		clk.Advance(15 * time.Second)
+		clk.Advance(8 * time.Second)
 	}
 
 	err := tr.AllowWrite(github.ResourceCore)
 	require.ErrorIs(t, err, ErrWritePace)
-	assert.Contains(t, uierr.Message(err), "200 changes on GitHub in the last hour")
-	assert.Contains(t, uierr.Message(err), "Try again in 10 minutes.")
+	assert.Contains(t, uierr.Message(err), "400 changes on GitHub in the last hour")
+	assert.Contains(t, uierr.Message(err), "Try again in 7 minutes.")
 
 	clk.Set(start.Add(time.Hour + time.Second))
 	require.NoError(t, tr.AllowWrite(github.ResourceCore))

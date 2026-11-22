@@ -566,6 +566,7 @@ describe('what a card applies', () => {
       'defaultMode',
       'runsPerDay',
       'actionsPerDay',
+      'actionsPerHour',
       'keepAwake',
       'holdOnOutage',
       'catchUpHours',
@@ -577,7 +578,8 @@ describe('what a card applies', () => {
 
     expect(platform.setAutopilotDefaultMode).toHaveBeenCalledWith('ask')
     expect(platform.setAutopilotRunsPerDay).toHaveBeenCalledWith(20)
-    expect(platform.setAutopilotActionsPerDay).toHaveBeenCalledWith(50)
+    expect(platform.setAutopilotActionsPerDay).toHaveBeenCalledWith(500)
+    expect(platform.setAutopilotActionsPerHour).toHaveBeenCalledWith(120)
     expect(platform.setAutopilotKeepAwake).toHaveBeenCalledWith(false)
     expect(platform.setAutopilotHoldOnOutage).toHaveBeenCalledWith(true)
     expect(platform.setAutopilotCatchUpHours).toHaveBeenCalledWith(24)

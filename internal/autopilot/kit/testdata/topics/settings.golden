@@ -5,7 +5,8 @@ Settings → Autopilot holds limits over every routine together. A proposal's `s
 - `defaultMode`, New routines start in: `dryRun` (Dry run), `ask` (Ask first), or `auto` (Autopilot), default `ask`: the mode a routine the user makes starts in; a routine keeps its own once made.
 - `agentsAtOnce`, Agents at once: a whole number, 1 to 3 agents, default 2: the most coding agents the routines run at the same time.
 - `runsPerDay`, Agent runs a day: a whole number, 1 to 200 runs, default 20: the most coding agent runs the routines start in a day, together.
-- `actionsPerDay`, GitHub actions a day: a whole number, 1 to 200 actions, default 50: the most actions on GitHub the routines send in a day, together.
+- `actionsPerDay`, GitHub actions a day: a whole number, 1 to 2000 actions, default 500: the most actions on GitHub the routines send in a day, together.
+- `actionsPerHour`, GitHub actions an hour: a whole number, 10 to 300 actions, default 120: the most actions on GitHub the routines send in an hour, together, kept under GitHub's own limits.
 - `dailyCap`, Daily cap: `{"amount": 5, "unit": "usd"}`: the most the routines' agents use in a day, in whole dollars (1 to 500) or in tokens (100000 to 50000000), as `unit` says, `usd` or `tokens`; an `amount` of 0 is none, the default. A cap counts only the runs budgeted in its own unit.
 - `keepAwake`, Keep the Mac awake while agents work: `true` or `false`, default `false`.
 - `holdOnOutage`, Hold agent starts while their provider reports an outage: `true` or `false`, default `true`: holds a routine's agent while its provider's status page reports a major outage.

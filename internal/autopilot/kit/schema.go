@@ -344,6 +344,8 @@ func proposalLimits() map[schemaAt]schemaNode {
 		limitAt[SettingsChange]("runsPerDay"):   limitSpan(autopilotprefs.MinRunsPerDay, autopilotprefs.MaxRunsPerDay),
 		limitAt[SettingsChange]("actionsPerDay"): limitSpan(autopilotprefs.MinActionsPerDay,
 			autopilotprefs.MaxActionsPerDay),
+		limitAt[SettingsChange]("actionsPerHour"): limitSpan(autopilotprefs.MinActionsPerHour,
+			autopilotprefs.MaxActionsPerHour),
 		limitAt[SettingsChange]("catchUpHours"): limitSpan(autopilotprefs.MinCatchUpHours, autopilotprefs.MaxCatchUpHours),
 		limitAt[SettingsChange]("historyDays"):  limitSpan(autopilotprefs.MinHistoryDays, autopilotprefs.MaxHistoryDays),
 		limitAt[SettingsChange]("logDays"):      limitSpan(autopilotprefs.MinLogDays, autopilotprefs.MaxLogDays),

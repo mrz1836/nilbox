@@ -56,6 +56,13 @@ func (s *Service) SetAutopilotActionsPerDay(ctx context.Context, n int) (Setting
 	return s.saveAutopilot(ctx, func(c *autopilotprefs.Config) { c.ActionsPerDay = n })
 }
 
+// SetAutopilotActionsPerHour stores how many GitHub actions Autopilot sends an hour, across
+// every routine, autopilotprefs.MinActionsPerHour to MaxActionsPerHour, and returns the
+// settings with it.
+func (s *Service) SetAutopilotActionsPerHour(ctx context.Context, n int) (Settings, error) {
+	return s.saveAutopilot(ctx, func(c *autopilotprefs.Config) { c.ActionsPerHour = n })
+}
+
 // SetAutopilotDailyCap stores the most Autopilot's agents may spend a day, and returns the
 // settings with it: an amount of 0 for no cap, or whole dollars (autopilotprefs.MinCapUSD
 // to MaxCapUSD) or tokens (MinCapTokens to MaxCapTokens), as its unit says.
@@ -179,6 +186,10 @@ func rangeRefusal(c autopilotprefs.Config) string {
 			"Choose %d to %d GitHub actions a day.",
 		},
 		{
+			c.ActionsPerHour, autopilotprefs.MinActionsPerHour, autopilotprefs.MaxActionsPerHour,
+			"Choose %d to %d GitHub actions an hour.",
+		},
+		{
 			c.CatchUpHours, autopilotprefs.MinCatchUpHours, autopilotprefs.MaxCatchUpHours,
 			"Choose %d to %d hours before Autopilot asks to catch up.",
 		},
@@ -238,6 +249,8 @@ func (s *Service) autopilotFields() []portableField {
 			func(c *autopilotprefs.Config, n int) { c.RunsPerDay = n }, ""),
 		number("GitHub actions a day", func(a PortableAutopilot) *int { return a.ActionsPerDay },
 			func(c *autopilotprefs.Config, n int) { c.ActionsPerDay = n }, ""),
+		number("GitHub actions an hour", func(a PortableAutopilot) *int { return a.ActionsPerHour },
+			func(c *autopilotprefs.Config, n int) { c.ActionsPerHour = n }, ""),
 		field("Autopilot's daily cap", func(a PortableAutopilot) bool { return a.DailyCap != nil },
 			func(a PortableAutopilot, c *autopilotprefs.Config) { c.DailyCap = *a.DailyCap },
 			func(a PortableAutopilot) string { return capWords(*a.DailyCap) }),

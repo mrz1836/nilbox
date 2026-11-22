@@ -265,7 +265,11 @@ func TestGitHubActionsKeepToAutopilotsShareOfTheWriteGate(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		const n = autopilot.ActionsPerMinute + 2
+		// The pace a minute at the default GitHub actions an hour, a sixth of it, and two more.
+		const (
+			perMinute = autopilotprefs.DefaultActionsPerHour / 6
+			n         = perMinute + 2
+		)
 
 		s := sim.New(t)
 		for i := 1; i <= n; i++ {
@@ -280,7 +284,7 @@ func TestGitHubActionsKeepToAutopilotsShareOfTheWriteGate(t *testing.T) {
 		s.Refresh()
 		s.Refresh()
 
-		assert.Len(t, s.GitHub.Jobs(), autopilot.ActionsPerMinute, "at most ten a minute")
+		assert.Len(t, s.GitHub.Jobs(), perMinute, "at most a sixth of the hour's a minute")
 		assert.Equal(t, 2, held(s), "the rest wait on the pace")
 
 		s.Advance(2*time.Minute, false)
@@ -313,7 +317,7 @@ func TestABacklogsRunOnThemSendsItAtThePace(t *testing.T) {
 		assert.Len(t, got, n, "Run on them gives each its OK")
 
 		s.Refresh()
-		assert.Len(t, s.GitHub.Jobs(), autopilot.ActionsPerMinute, "at the pace")
+		assert.Len(t, s.GitHub.Jobs(), autopilotprefs.DefaultActionsPerHour/6, "at the pace")
 
 		s.Advance(3*time.Minute, false)
 		assert.Len(t, s.GitHub.Jobs(), n)

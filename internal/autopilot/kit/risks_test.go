@@ -260,7 +260,7 @@ func TestRiskLinesArePinned(t *testing.T) {
 			after := defaults
 			after.DefaultMode, after.HoldOnOutage = autopilotprefs.ModeAuto, false
 			after.HistoryDays, after.LogDays = 14, 7
-			after.AgentsAtOnce, after.RunsPerDay, after.ActionsPerDay, after.CatchUpHours = 3, 100, 200, 168
+			after.AgentsAtOnce, after.RunsPerDay, after.ActionsPerDay, after.CatchUpHours = 3, 100, 1000, 168
 
 			return kit.SettingsRisks(defaults, after)
 		},

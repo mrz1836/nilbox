@@ -92,18 +92,19 @@ type Portable struct {
 // backup lacks it. The routines are a backup section of their own, and the engine's own
 // state is no setting.
 type PortableAutopilot struct {
-	Enabled       *bool                    `json:"enabled,omitempty"`
-	Paused        *bool                    `json:"paused,omitempty"`
-	DefaultMode   *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
-	AgentsAtOnce  *int                     `json:"agentsAtOnce,omitempty"`
-	RunsPerDay    *int                     `json:"runsPerDay,omitempty"`
-	ActionsPerDay *int                     `json:"actionsPerDay,omitempty"`
-	DailyCap      *autopilotprefs.DailyCap `json:"dailyCap,omitempty"`
-	KeepAwake     *bool                    `json:"keepAwake,omitempty"`
-	HoldOnOutage  *bool                    `json:"holdOnOutage,omitempty"`
-	CatchUpHours  *int                     `json:"catchUpHours,omitempty"`
-	HistoryDays   *int                     `json:"historyDays,omitempty"`
-	LogDays       *int                     `json:"logDays,omitempty"`
+	Enabled        *bool                    `json:"enabled,omitempty"`
+	Paused         *bool                    `json:"paused,omitempty"`
+	DefaultMode    *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
+	AgentsAtOnce   *int                     `json:"agentsAtOnce,omitempty"`
+	RunsPerDay     *int                     `json:"runsPerDay,omitempty"`
+	ActionsPerDay  *int                     `json:"actionsPerDay,omitempty"`
+	ActionsPerHour *int                     `json:"actionsPerHour,omitempty"`
+	DailyCap       *autopilotprefs.DailyCap `json:"dailyCap,omitempty"`
+	KeepAwake      *bool                    `json:"keepAwake,omitempty"`
+	HoldOnOutage   *bool                    `json:"holdOnOutage,omitempty"`
+	CatchUpHours   *int                     `json:"catchUpHours,omitempty"`
+	HistoryDays    *int                     `json:"historyDays,omitempty"`
+	LogDays        *int                     `json:"logDays,omitempty"`
 }
 
 // legacyRefreshGitHubStatus is the refresh kind the service status check had while it read
@@ -222,7 +223,7 @@ func portableOf(set Settings) Portable {
 func portableAutopilot(c autopilotprefs.Config) *PortableAutopilot {
 	return &PortableAutopilot{
 		Enabled: &c.Enabled, Paused: &c.Paused, DefaultMode: &c.DefaultMode, AgentsAtOnce: &c.AgentsAtOnce, RunsPerDay: &c.RunsPerDay,
-		ActionsPerDay: &c.ActionsPerDay, DailyCap: &c.DailyCap, KeepAwake: &c.KeepAwake, HoldOnOutage: &c.HoldOnOutage,
+		ActionsPerDay: &c.ActionsPerDay, ActionsPerHour: &c.ActionsPerHour, DailyCap: &c.DailyCap, KeepAwake: &c.KeepAwake, HoldOnOutage: &c.HoldOnOutage,
 		CatchUpHours: &c.CatchUpHours, HistoryDays: &c.HistoryDays, LogDays: &c.LogDays,
 	}
 }

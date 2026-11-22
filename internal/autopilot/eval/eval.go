@@ -27,6 +27,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 )
@@ -177,6 +178,12 @@ type Pending struct {
 	// FireKey is the occurrence it fires for then, as the decision's FireKey will be, which
 	// tells a routine whether it handled that occurrence already.
 	FireKey string `json:"fireKey"`
+
+	// Assume are the facts the trigger makes so as it holds, by field, which the item's
+	// conditions are decided with in place of what they are now (Plan.ConditionsWhenDue):
+	// Checks pass, while its checks run, holds only once every one passed, so the checks'
+	// state is passing then. Nil for a trigger that makes nothing so (settling, a schedule).
+	Assume map[catalog.FieldID]facts.Value `json:"assume,omitempty"`
 }
 
 // Evaluate decides whether s matches the item f describes at now, with what the

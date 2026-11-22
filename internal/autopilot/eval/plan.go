@@ -2,6 +2,7 @@ package eval
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
@@ -107,7 +108,7 @@ func (p *Plan) Evaluate(f facts.Facts, h History, now time.Time) Decision {
 
 	if trig == No {
 		if s := out.soon; s != nil {
-			d.Pending = &Pending{When: s.when, At: s.at, FireKey: fireKey(p.spec, s.key, f, h, now)}
+			d.Pending = &Pending{When: s.when, At: s.at, FireKey: fireKey(p.spec, s.key, f, h, now), Assume: s.assume}
 		}
 
 		return d
@@ -139,6 +140,24 @@ func (p *Plan) Evaluate(f facts.Facts, h History, now time.Time) Decision {
 // so whenever the trigger holds, Evaluate's decision is this one.
 func (p *Plan) Conditions(f facts.Facts, h History, now time.Time) Result {
 	return p.conditions.decide(f, h, now).result
+}
+
+// ConditionsWhenDue decides the plan's conditions on the item f describes as it will stand
+// once its trigger, on its way, holds (pending, a decision's Pending): with the facts that
+// trigger makes so (Pending.Assume) in place of what they are now, the rest as they are. So
+// "the checks' state is passing" counts a pull request whose checks still run, for a routine
+// that fires when they pass, as it will then. With no pending trigger it is Conditions.
+func (p *Plan) ConditionsWhenDue(f facts.Facts, h History, now time.Time, pending *Pending) Result {
+	if pending == nil || len(pending.Assume) == 0 {
+		return p.Conditions(f, h, now)
+	}
+
+	due := f
+	due.Values = make(map[catalog.FieldID]facts.Value, len(f.Values)+len(pending.Assume))
+	maps.Copy(due.Values, f.Values)
+	maps.Copy(due.Values, pending.Assume)
+
+	return p.Conditions(due, h, now)
 }
 
 // decide decides whether the trigger holds for the item, with the occurrence's fire key,

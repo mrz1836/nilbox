@@ -289,6 +289,10 @@ func settingRows() []settingRow {
 		{SettingAgentsAtOnce, "Agents at once", count(func(c autopilotprefs.Config) int { return c.AgentsAtOnce })},
 		{SettingRunsPerDay, "Agent runs a day", count(func(c autopilotprefs.Config) int { return c.RunsPerDay })},
 		{SettingActionsPerDay, "GitHub actions a day", count(func(c autopilotprefs.Config) int { return c.ActionsPerDay })},
+		{
+			SettingActionsPerHour, "GitHub actions an hour",
+			count(func(c autopilotprefs.Config) int { return c.ActionsPerHour }),
+		},
 		{SettingDailyCap, "Daily cap", func(c autopilotprefs.Config) string { return capAmount(c.DailyCap) }},
 		{
 			SettingKeepAwake, "Keep the Mac awake while agents work",
@@ -352,7 +356,8 @@ func (c SettingsChange) named() map[SettingKey]bool {
 	return map[SettingKey]bool{
 		SettingDefaultMode: c.DefaultMode != nil, SettingAgentsAtOnce: c.AgentsAtOnce != nil,
 		SettingRunsPerDay: c.RunsPerDay != nil, SettingActionsPerDay: c.ActionsPerDay != nil,
-		SettingDailyCap: c.DailyCap != nil, SettingKeepAwake: c.KeepAwake != nil,
+		SettingActionsPerHour: c.ActionsPerHour != nil,
+		SettingDailyCap:       c.DailyCap != nil, SettingKeepAwake: c.KeepAwake != nil,
 		SettingHoldOnOutage: c.HoldOnOutage != nil, SettingCatchUpHours: c.CatchUpHours != nil,
 		SettingHistoryDays: c.HistoryDays != nil, SettingLogDays: c.LogDays != nil,
 	}
@@ -414,6 +419,7 @@ func applySettings(c autopilotprefs.Config, s SettingsChange) autopilotprefs.Con
 	applySetting(&c.AgentsAtOnce, s.AgentsAtOnce)
 	applySetting(&c.RunsPerDay, s.RunsPerDay)
 	applySetting(&c.ActionsPerDay, s.ActionsPerDay)
+	applySetting(&c.ActionsPerHour, s.ActionsPerHour)
 	applySetting(&c.DailyCap, s.DailyCap)
 	applySetting(&c.KeepAwake, s.KeepAwake)
 	applySetting(&c.HoldOnOutage, s.HoldOnOutage)

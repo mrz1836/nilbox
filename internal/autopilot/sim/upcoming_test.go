@@ -192,3 +192,22 @@ func TestARoutineInAskFirstSaysItAsksOnlyWhenItWould(t *testing.T) {
 		})
 	}
 }
+
+func TestARoutineThatCountsOnlyPassingChecksSaysItWillRunWhileTheyRun(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		// The routine fires when the checks pass, and counts only items whose checks pass:
+		// while they run, it will run, as the checks will have passed when it does.
+		sp := pinSyncs(catalog.EventChecksPassed)
+		sp.Conditions.Of = append(sp.Conditions.Of,
+			spec.Clause{Field: catalog.FieldChecksState, Op: catalog.OpOneOf, Values: []string{"success"}})
+
+		s, _ := syncsRunning(t, sp, autopilotprefs.ModeAuto)
+
+		got := upcoming(t, s, 1)
+		require.Len(t, got, 1)
+		assert.Equal(t, "when its checks pass", got[0].When)
+		assert.Empty(t, upcoming(t, s, 2), "its title still rules the other out")
+	})
+}

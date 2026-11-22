@@ -121,7 +121,8 @@
       "defaultMode": "ask",
       "agentsAtOnce": 2,
       "runsPerDay": 20,
-      "actionsPerDay": 50,
+      "actionsPerDay": 500,
+      "actionsPerHour": 120,
       "dailyCap": {
         "amount": 0,
         "unit": "usd"

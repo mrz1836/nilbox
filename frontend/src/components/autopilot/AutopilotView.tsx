@@ -24,6 +24,7 @@ import {
   type ActivityFilter,
   type ActivityResult,
   type AutopilotRequest,
+  type GitHubReads,
 } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
 import { formatCount } from '../../lib/format'
@@ -846,6 +847,17 @@ export default function AutopilotView({
 
   const working = (routineId: number) => autopilot.glance?.working.filter((w) => w.routineId === routineId).length ?? 0
   const problem = (routineId: number) => engine?.problems.find((p) => p.routineId === routineId)?.detail ?? ''
+  // githubReads is how the app reads GitHub on its own, which is when Autopilot learns of what
+  // it acts on, as the cadence line says it; null until the settings load.
+  const githubReads: GitHubReads | null =
+    settings === null
+      ? null
+      : {
+          inboxEvery: settings.refresh.inbox,
+          checksEvery: settings.refresh.checks,
+          lastAt: kit.inbox.snapshot?.lastRefreshedAt ?? '',
+          reading: kit.inbox.refreshing,
+        }
   // pastRulesOff reports a routine whose merge goes past the rules while that is off.
   const pastRulesOff = (r: AutopilotRoutine) => pastRulesBlocked(r, settings?.autopilot.mergePastRules ?? null)
   const statusOf = (r: AutopilotRoutine) =>
@@ -1411,7 +1423,8 @@ export default function AutopilotView({
       <section
         aria-labelledby={named ? `${id}-title` : undefined}
         aria-label={shown === 'routine' ? chosen?.name : undefined}
-        className={`min-w-0 overflow-y-auto ${watching ? 'w-[30rem] shrink-0 border-r border-border' : 'flex-1'}`}
+        // Positioned, so it holds and clips what is positioned inside it, as Settings' does.
+        className={`relative min-w-0 overflow-y-auto ${watching ? 'w-[30rem] shrink-0 border-r border-border' : 'flex-1'}`}
       >
         <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-5">
           <div className="flex flex-wrap items-center gap-3">
@@ -1442,7 +1455,14 @@ export default function AutopilotView({
             </div>
           </div>
           <Banners autopilot={autopilot} settings={settings} onSettingsSaved={onSettingsSaved} />
-          {shown === 'activity' && <Cadence glance={autopilot.glance} engine={autopilot.engine} />}
+          {shown === 'activity' && (
+            <Cadence
+              glance={autopilot.glance}
+              engine={autopilot.engine}
+              reads={githubReads}
+              onRefresh={kit.inbox.refresh}
+            />
+          )}
           {shown === 'activity' && (ready.readiness?.notReady ?? 0) > 0 && (
             <NotReadyBanner count={ready.readiness?.notReady ?? 0} onSettings={onSettings} />
           )}
@@ -1600,7 +1620,17 @@ export default function AutopilotView({
               }}
               builder={editable(chosen) ? builderFor(chosen) : undefined}
               heldText={catalog.data === undefined ? undefined : dryRunWhy(catalog.data, chosen.dryRunOnly)}
-              cadence={chosen.enabled ? <Cadence glance={autopilot.glance} engine={autopilot.engine} /> : undefined}
+              cadence={
+                chosen.enabled ? (
+                  <Cadence
+                    glance={autopilot.glance}
+                    engine={autopilot.engine}
+                    reads={githubReads}
+                    onRefresh={kit.inbox.refresh}
+                    compact
+                  />
+                ) : undefined
+              }
               pastRulesOff={chosen.enabled && pastRulesOff(chosen)}
               onSettings={onSettings}
               watching={

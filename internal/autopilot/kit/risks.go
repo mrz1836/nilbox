@@ -760,6 +760,8 @@ func countRisks(before, after autopilotprefs.Config) []Risk {
 			"many agent runs a day."},
 		{before.ActionsPerDay, after.ActionsPerDay, "GitHub actions a day goes up from %d to %d: your routines may " +
 			"send GitHub that many actions a day."},
+		{before.ActionsPerHour, after.ActionsPerHour, "GitHub actions an hour goes up from %d to %d: your routines " +
+			"may send GitHub that many actions an hour."},
 	} {
 		if c.now > c.was {
 			risks = append(risks, cardWarning(c.text, c.was, c.now))

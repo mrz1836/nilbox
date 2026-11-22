@@ -101,37 +101,94 @@ export function liveOf(glance: AutopilotGlance | null, engine: AutopilotEngine |
 }
 
 // onTitle is the Autopilot tab's tooltip while it runs and nothing else is to say.
-export const onTitle = 'Autopilot is on: it checks your routines every minute and after each inbox refresh'
+export const onTitle = 'Autopilot is on: it checks your routines after each read of GitHub, and every minute'
 
-// Cadence is when Autopilot runs the routines, in words, and when it last checked them ('' for not yet).
-export interface Cadence {
-  text: string
-  lastAt: string
+// everyWords says an interval in seconds as "every ..." ends: "45 seconds", "minute",
+// "5 minutes", "hour".
+export function everyWords(seconds: number): string {
+  if (seconds > 0 && seconds % 3600 === 0) {
+    return seconds === 3600 ? 'hour' : `${String(seconds / 3600)} hours`
+  }
+
+  if (seconds > 0 && seconds % 60 === 0) {
+    return seconds === 60 ? 'minute' : `${String(seconds / 60)} minutes`
+  }
+
+  return `${String(seconds)} seconds`
 }
 
-// cadenceOf says when Autopilot runs the routines: every minute, after each inbox refresh,
-// and at once on a change to one, with its last check; or that it waits for the first
-// refresh since the app started, or that no routine is on. It says nothing (null) while
-// Autopilot is off, paused, run by another copy, or signed out, which the banners say.
-export function cadenceOf(glance: AutopilotGlance | null, engine: AutopilotEngine | null): Cadence | null {
+// GitHubReads is how the app reads GitHub on its own, which is when Autopilot learns of what
+// it acts on: the inbox, its routines' searches among it, every inboxEvery seconds, and the
+// checks still running every checksEvery (0 for off); lastAt is the inbox's last read ('' for
+// none yet), reading whether one runs now.
+export interface GitHubReads {
+  inboxEvery: number
+  checksEvery: number
+  lastAt: string
+  reading: boolean
+}
+
+// Cadence is when Autopilot runs, as Activity says it: running is whether it checks routines
+// now (false while it starts, or with no routine on), what it says then (text), when it last
+// checked them (lastAt, '' for not yet), when the app reads GitHub next (nextAt, '' while
+// not known), whether it reads it now, and how often it does each, in a sentence (how).
+export interface Cadence {
+  running: boolean
+  text: string
+  lastAt: string
+  nextAt: string
+  reading: boolean
+  how: string
+}
+
+// howWords says how often Autopilot learns of what it acts on, and acts: what the app reads
+// from GitHub, how often, and that Autopilot checks the routines right after.
+export function howWords(reads: Pick<GitHubReads, 'inboxEvery' | 'checksEvery'>): string {
+  const checks = reads.checksEvery > 0 ? `, and the checks still running every ${everyWords(reads.checksEvery)}` : ''
+
+  return (
+    `${brand.name} reads your inbox and your routines’ searches from GitHub every ${everyWords(reads.inboxEvery)}` +
+    `${checks}. Autopilot checks your routines right after each read, and every minute, and acts as soon as one ` +
+    'matches.'
+  )
+}
+
+// cadenceOf says when Autopilot runs: that it runs, its last check, and when the app reads
+// GitHub next, with how often it does each; or that it waits for the first read since the app
+// started, or that no routine is on. It says nothing (null) while Autopilot is off, paused,
+// run by another copy, or signed out, which the banners say.
+export function cadenceOf(
+  glance: AutopilotGlance | null,
+  engine: AutopilotEngine | null,
+  reads: GitHubReads | null,
+): Cadence | null {
   if (glance === null || !glance.on || glance.paused || engine === null || engine.elsewhere || engine.signedOut) {
     return null
   }
 
+  const how = reads === null ? '' : howWords(reads)
+  const reading = reads?.reading ?? false
+  const nextAt =
+    reads === null || reads.lastAt === '' || Number.isNaN(Date.parse(reads.lastAt))
+      ? ''
+      : new Date(Date.parse(reads.lastAt) + reads.inboxEvery * 1000).toISOString()
+  const quiet = { lastAt: '', nextAt: '', reading, how }
+
   if (glance.enabled === 0) {
-    return { text: 'No routine is on, so Autopilot has nothing to run. Switch one on to start it.', lastAt: '' }
+    return {
+      ...quiet,
+      running: false,
+      text: 'No routine is on, so Autopilot has nothing to run. Switch one on to start it.',
+    }
   }
 
   const last = engine.lastCycle
 
   if (last === null || last.waiting === 'refresh') {
-    return { text: 'Starting: it checks your routines once the inbox’s first refresh is in.', lastAt: '' }
+    return { ...quiet, running: false, text: 'Starting: it checks your routines once the first read of GitHub is in.' }
   }
 
-  return {
-    text: 'Checks your routines every minute, after each inbox refresh, and at once when you change one',
-    lastAt: last.at,
-  }
+  return { running: true, text: 'Running', lastAt: last.at, nextAt, reading, how }
 }
 
 // troubled is how many of the user's routines are broken or have a problem the engine
@@ -551,11 +608,13 @@ export function chipView(match: AutopilotMatch | undefined, upcoming: readonly A
 // the clock decides, how long until then ("in 2m"), or "any moment" once it is due (the next
 // cycle runs it); else the trigger's own words ("when its checks pass").
 export function upcomingWhen(u: Pick<AutopilotUpcoming, 'when' | 'at'>, now: Date): string {
-  if (u.at === null) {
-    return u.when
-  }
+  return u.at === null ? u.when : untilWords(now, u.at)
+}
 
-  const left = formatUntil(now, u.at)
+// untilWords says how long until iso as a sentence ends: "in 2m", or "any moment" once it
+// is due.
+export function untilWords(now: Date, iso: string): string {
+  const left = formatUntil(now, iso)
 
   return left === 'now' ? 'any moment' : `in ${left}`
 }
@@ -598,6 +657,30 @@ export function plannedText(steps: readonly Pick<AutopilotMatchStep, 'kind' | 'l
       s.kind === 'github' && s.actions.length > 0 ? s.actions.map((a) => actionLabels[a]).join(', then ') : s.label,
     )
     .join(', then ')
+}
+
+// launchHold says why a launch on an item waits while a routine handles it there, '' when none
+// does: its newest match is queued to act at once, or works, or checks its work, and isn't a
+// Dry run's. One waiting for the user's OK, or blocked on something only they fix, leaves the
+// item to them, and so does a routine that will run only once its trigger holds.
+export function launchHold(
+  m: Pick<AutopilotMatch, 'dryRun' | 'state' | 'routine' | 'steps' | 'step'> | undefined,
+): string {
+  if (m === undefined || m.dryRun) {
+    return ''
+  }
+
+  const merges = m.steps[m.step]?.kind === 'merge'
+
+  switch (m.state) {
+    case 'queued':
+      return `${m.routine} is about to ${merges ? 'merge this' : 'run on this'}. Launch an agent here once it has.`
+    case 'running':
+    case 'verifying':
+      return `${m.routine} is working on this. Launch an agent here once it is done, or stop it from its ⚡ chip’s run.`
+    default:
+      return ''
+  }
 }
 
 // routineTarget opens the routine id in the Autopilot tab.

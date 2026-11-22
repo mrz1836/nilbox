@@ -61,6 +61,12 @@ func settingTable() []settingWords {
 				"actions") + ": the most actions on GitHub the routines send in a day, together",
 		},
 		{
+			key: "actionsPerHour", label: "GitHub actions an hour",
+			words: numbers(autopilotprefs.MinActionsPerHour, autopilotprefs.MaxActionsPerHour, d.ActionsPerHour,
+				"actions") + ": the most actions on GitHub the routines send in an hour, together, kept under " +
+				"GitHub's own limits",
+		},
+		{
 			key: "dailyCap", label: "Daily cap",
 			words: "`{\"amount\": 5, \"unit\": \"" + string(autopilotprefs.UnitUSD) + "\"}`: the most the routines' " +
 				"agents use in a day, in whole dollars (" + strconv.Itoa(autopilotprefs.MinCapUSD) + " to " +

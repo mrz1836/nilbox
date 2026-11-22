@@ -176,7 +176,7 @@ func TestASettingsChangeSaysEachSettingItChangesInTheWindowsWords(t *testing.T) 
 
 	auto := autopilotprefs.ModeAuto
 	s := settingsChecked(t, kit.SettingsChange{
-		DefaultMode: &auto, AgentsAtOnce: new(1), RunsPerDay: new(100), ActionsPerDay: new(50),
+		DefaultMode: &auto, AgentsAtOnce: new(1), RunsPerDay: new(100), ActionsPerDay: new(autopilotprefs.DefaultActionsPerDay),
 		DailyCap:  &autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens},
 		KeepAwake: new(true), HoldOnOutage: new(false), CatchUpHours: new(168),
 		HistoryDays: new(14),
@@ -196,9 +196,10 @@ func TestASettingsChangeSaysEachSettingItChangesInTheWindowsWords(t *testing.T) 
 	}, s.Changes, "a value set to what it is isn't a change, and a shorter history shortens the logs with it")
 
 	want := autopilotprefs.Config{
-		DefaultMode: auto, AgentsAtOnce: 1, RunsPerDay: 100, ActionsPerDay: 50,
-		DailyCap:  autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens},
-		KeepAwake: true, CatchUpHours: 168, HistoryDays: 14, LogDays: 14,
+		DefaultMode: auto, AgentsAtOnce: 1, RunsPerDay: 100, ActionsPerDay: autopilotprefs.DefaultActionsPerDay,
+		ActionsPerHour: autopilotprefs.DefaultActionsPerHour,
+		DailyCap:       autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens},
+		KeepAwake:      true, CatchUpHours: 168, HistoryDays: 14, LogDays: 14,
 	}
 	assert.Equal(t, want, s.After, "the whole of the settings once applied")
 
@@ -215,7 +216,7 @@ func TestASettingsChangeSaysWhatItSetsWhateverTheSettingsAreNow(t *testing.T) {
 
 	auto := autopilotprefs.ModeAuto
 	every := kit.SettingsChange{
-		DefaultMode: &auto, AgentsAtOnce: new(2), RunsPerDay: new(100), ActionsPerDay: new(50),
+		DefaultMode: &auto, AgentsAtOnce: new(2), RunsPerDay: new(100), ActionsPerDay: new(50), ActionsPerHour: new(200),
 		DailyCap:  &autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD},
 		KeepAwake: new(true), HoldOnOutage: new(true), CatchUpHours: new(168),
 		HistoryDays: new(14), LogDays: new(7),
@@ -226,6 +227,7 @@ func TestASettingsChangeSaysWhatItSetsWhateverTheSettingsAreNow(t *testing.T) {
 		{Key: "agentsAtOnce", Label: "Agents at once", After: "2"},
 		{Key: "runsPerDay", Label: "Agent runs a day", After: "100"},
 		{Key: "actionsPerDay", Label: "GitHub actions a day", After: "50"},
+		{Key: "actionsPerHour", Label: "GitHub actions an hour", After: "200"},
 		{Key: "dailyCap", Label: "Daily cap", After: "$5"},
 		{Key: "keepAwake", Label: "Keep the Mac awake while agents work", After: "On"},
 		{Key: "holdOnOutage", Label: "Hold agent starts while their provider reports an outage", After: "On"},

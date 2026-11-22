@@ -30,7 +30,8 @@ A step names one by its `starter` key when it has one, else by its `nickname` (t
 - `defaultMode`, New routines start in: `ask` (Ask first)
 - `agentsAtOnce`, Agents at once: `2`
 - `runsPerDay`, Agent runs a day: `20`
-- `actionsPerDay`, GitHub actions a day: `50`
+- `actionsPerDay`, GitHub actions a day: `500`
+- `actionsPerHour`, GitHub actions an hour: `120`
 - `dailyCap`, Daily cap: `{"amount":5,"unit":"usd"}`
 - `keepAwake`, Keep the Mac awake while agents work: `false`
 - `holdOnOutage`, Hold agent starts while their provider reports an outage: `true`

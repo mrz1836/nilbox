@@ -69,16 +69,17 @@ type RoutineChange struct {
 // field for Autopilot's switch or for Pause, which are the user's alone, so a proposal
 // that names either is refused as it is read.
 type SettingsChange struct {
-	DefaultMode   *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
-	AgentsAtOnce  *int                     `json:"agentsAtOnce,omitempty"`
-	RunsPerDay    *int                     `json:"runsPerDay,omitempty"`
-	ActionsPerDay *int                     `json:"actionsPerDay,omitempty"`
-	DailyCap      *autopilotprefs.DailyCap `json:"dailyCap,omitempty"`
-	KeepAwake     *bool                    `json:"keepAwake,omitempty"`
-	HoldOnOutage  *bool                    `json:"holdOnOutage,omitempty"`
-	CatchUpHours  *int                     `json:"catchUpHours,omitempty"`
-	HistoryDays   *int                     `json:"historyDays,omitempty"`
-	LogDays       *int                     `json:"logDays,omitempty"`
+	DefaultMode    *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
+	AgentsAtOnce   *int                     `json:"agentsAtOnce,omitempty"`
+	RunsPerDay     *int                     `json:"runsPerDay,omitempty"`
+	ActionsPerDay  *int                     `json:"actionsPerDay,omitempty"`
+	ActionsPerHour *int                     `json:"actionsPerHour,omitempty"`
+	DailyCap       *autopilotprefs.DailyCap `json:"dailyCap,omitempty"`
+	KeepAwake      *bool                    `json:"keepAwake,omitempty"`
+	HoldOnOutage   *bool                    `json:"holdOnOutage,omitempty"`
+	CatchUpHours   *int                     `json:"catchUpHours,omitempty"`
+	HistoryDays    *int                     `json:"historyDays,omitempty"`
+	LogDays        *int                     `json:"logDays,omitempty"`
 }
 
 // RulesChange is a change to the rules routines lean on: bots to trust or no longer trust,

@@ -297,12 +297,15 @@ export function SettingsView({
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* Each section gets a scroller of its own, so it opens at its top: one kept across
             sections would keep a long section's place, and macOS's web view shows a short
-            section scrolled past its own end. */}
+            section scrolled past its own end. It is positioned, so it holds what is positioned
+            inside it (a screen reader's sr-only words, say) and clips it: otherwise those place
+            themselves against the column around it, run below the window, and give the app's
+            main area a scroll of its own, which moves the whole page, menu and all. */}
           <section
             key={section}
             ref={contentScroller}
             aria-labelledby={headingId}
-            className="min-h-0 flex-1 overflow-y-auto"
+            className="relative min-h-0 flex-1 overflow-y-auto"
           >
             <div className="mx-auto max-w-2xl px-8 py-7">
               <div className="flex items-center gap-2">

@@ -95,25 +95,35 @@ func (p *pass) room(r *routineRun, sr *stepRun, agent, github bool) verdict {
 	return p.spend(r, sr.Step.Agent)
 }
 
-// pace holds a GitHub action while Autopilot sent ActionsPerMinute in the last minute, or
-// ActionsPerHour in the last hour, a third of the write gate's edit lane, so the user's
-// own clicks always have room; and while the gate refused the last one, until it said the
-// next may go. A manual run keeps to it too: it is about GitHub's limits, not a cap.
+// pace holds a GitHub action while Autopilot sent its pace a minute (actionsPerMinute) in
+// the last minute, or its setting's GitHub actions an hour in the last hour, under the write
+// gate's edit lane, so the user's own clicks always have room; and while the gate refused
+// the last one, until it said the next may go. A manual run keeps to it too: it is about
+// GitHub's limits, not a cap.
 func (p *pass) pace() verdict {
+	perMinute, perHour := actionsPerMinute(p.cfg.ActionsPerHour), p.cfg.ActionsPerHour
+
 	switch {
 	case p.now.Before(p.e.writesHeld):
 		return wait(BlockWritesHeld, p.e.writesHeldWords)
-	case p.counts.paceMinute >= ActionsPerMinute:
+	case p.counts.paceMinute >= perMinute:
 		return wait(BlockWritesHeld, "Autopilot sent "+
-			textutil.Counted(ActionsPerMinute, "GitHub action", "GitHub actions")+
+			textutil.Counted(perMinute, "GitHub action", "GitHub actions")+
 			" in the last minute: the next goes in a moment, so your own changes always have room.")
-	case p.counts.paceHour >= ActionsPerHour:
+	case p.counts.paceHour >= perHour:
 		return wait(BlockWritesHeld, "Autopilot sent "+
-			textutil.Counted(ActionsPerHour, "GitHub action", "GitHub actions")+
-			" in the last hour: the next goes as that eases, so your own changes always have room.")
+			textutil.Counted(perHour, "GitHub action", "GitHub actions")+
+			" in the last hour, the most Settings → Autopilot allows an hour: the next goes as that eases.")
 	}
 
 	return verdict{}
+}
+
+// actionsPerMinute is the most GitHub actions Autopilot sends in a minute at perHour an hour:
+// a sixth of it, so an hour's worth goes out over ten minutes or more, at least one, and
+// never more than MaxActionsPerMinute.
+func actionsPerMinute(perHour int) int {
+	return min(max(perHour/6, 1), MaxActionsPerMinute)
 }
 
 // askFirst holds a start for the user's OK: a routine that asks first, and an Autopilot
@@ -157,10 +167,11 @@ func (p *pass) limits(r *routineRun, m *match, id int64, agent, github bool) ver
 
 	switch {
 	case agent && p.counts.agentRuns >= p.cfg.RunsPerDay:
-		return wait(BlockCapRuns, "Autopilot ran "+textutil.Counted(p.cfg.RunsPerDay, "agent", "agents")+" today.")
+		return wait(BlockCapRuns, untilTomorrow+"Autopilot ran "+
+			textutil.Counted(p.cfg.RunsPerDay, "agent", "agents")+" today, "+capInSettings)
 	case github && p.counts.actions >= p.cfg.ActionsPerDay:
-		return wait(BlockCapActions, "Autopilot sent "+
-			textutil.Counted(p.cfg.ActionsPerDay, "GitHub action", "GitHub actions")+" today.")
+		return wait(BlockCapActions, untilTomorrow+"Autopilot sent "+
+			textutil.Counted(p.cfg.ActionsPerDay, "GitHub action", "GitHub actions")+" today, "+capInSettings)
 	}
 
 	if last := p.lastTry(r.id(), id); first && !last.IsZero() && p.now.Sub(last) < r.spec.Limits.Wait() {
@@ -169,6 +180,13 @@ func (p *pass) limits(r *routineRun, m *match, id int64, agent, github bool) ver
 
 	return verdict{}
 }
+
+// untilTomorrow and capInSettings word a start a daily cap holds back: it starts by itself the
+// next day, and the cap is the user's to change.
+const (
+	untilTomorrow = "It waits until tomorrow: "
+	capInSettings = "the most Settings → Autopilot allows in a day."
+)
 
 // firstTry checks a match's first run, which is its try (first): the routine's tries on the
 // item, and its runs a day; a later run of the match passes.
@@ -184,7 +202,8 @@ func (p *pass) firstTry(r *routineRun, id int64, first bool) verdict {
 	case h.Tries >= lim.Tries():
 		return verdict{closeAs: StateSkipped, reason: ReasonTries, words: gaveUpWords(lim.Tries())}
 	case p.counts.routineRuns[r.id()] >= lim.Runs():
-		return wait(BlockCapRuns, "The routine ran "+textutil.Counted(lim.Runs(), "time", "times")+" today.")
+		return wait(BlockCapRuns, untilTomorrow+"the routine ran "+textutil.Counted(lim.Runs(), "time", "times")+
+			" today, the most its limits allow in a day (its runs a day).")
 	}
 
 	return verdict{}
@@ -210,13 +229,13 @@ func (p *pass) spend(r *routineRun, a *spec.AgentStep) verdict {
 	amount, unit := runBudget(a)
 
 	if c := p.cfg.DailyCap; !c.Off() && c.Unit == unit && p.counts.spend[unit]+amount > float64(c.Amount) {
-		return wait(BlockCapSpend, "It would go over today's cap.")
+		return wait(BlockCapSpend, untilTomorrow+"it would go over today's cap (Daily cap, in Settings → Autopilot).")
 	}
 
 	if b := r.spec.Limits.BudgetPerDay; b != nil {
 		limit, limitUnit := budgetOf(b)
 		if limitUnit == unit && p.counts.routineSpend[r.id()][unit]+amount > limit {
-			return wait(BlockCapSpend, "It would go over the routine's budget for today.")
+			return wait(BlockCapSpend, untilTomorrow+"it would go over the routine's budget for today (its limits).")
 		}
 	}
 

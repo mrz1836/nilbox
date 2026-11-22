@@ -452,7 +452,7 @@ export interface SettingChange {
  * settings name it with (SettingsChange's JSON names): the window applies each through the
  * setter Settings → Autopilot uses for it.
  */
-export type SettingKey = "defaultMode" | "agentsAtOnce" | "runsPerDay" | "actionsPerDay" | "dailyCap" | "keepAwake" | "holdOnOutage" | "catchUpHours" | "historyDays" | "logDays";
+export type SettingKey = "defaultMode" | "agentsAtOnce" | "runsPerDay" | "actionsPerDay" | "actionsPerHour" | "dailyCap" | "keepAwake" | "holdOnOutage" | "catchUpHours" | "historyDays" | "logDays";
 
 /**
  * The values of SettingKey, by the names of their Go constants.
@@ -465,6 +465,7 @@ export const SettingKey = {
     SettingAgentsAtOnce: "agentsAtOnce",
     SettingRunsPerDay: "runsPerDay",
     SettingActionsPerDay: "actionsPerDay",
+    SettingActionsPerHour: "actionsPerHour",
     SettingDailyCap: "dailyCap",
     SettingKeepAwake: "keepAwake",
     SettingHoldOnOutage: "holdOnOutage",
@@ -483,6 +484,7 @@ export interface SettingsChange {
     "agentsAtOnce"?: number | null;
     "runsPerDay"?: number | null;
     "actionsPerDay"?: number | null;
+    "actionsPerHour"?: number | null;
     "dailyCap"?: autopilotprefs$0.DailyCap | null;
     "keepAwake"?: boolean | null;
     "holdOnOutage"?: boolean | null;

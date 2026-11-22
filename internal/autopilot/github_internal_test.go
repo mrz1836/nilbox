@@ -32,9 +32,11 @@ func TestThePaceCountsTheGitHubActionsOfTheLastMinuteAndHour(t *testing.T) {
 		spend: map[autopilotprefs.Unit]float64{}, routineSpend: map[int64]map[autopilotprefs.Unit]float64{},
 	}
 	day := dayStart(now)
+	perHour := autopilotprefs.DefaultActionsPerHour
 
-	for i := range ActionsPerHour {
-		d.add(githubRun(int64(i/2), now.Add(-time.Duration(i)*45*time.Second), RunDone), day)
+	// The hour's worth, 29 seconds apart, so every one is within the hour.
+	for i := range perHour {
+		d.add(githubRun(int64(i/2), now.Add(-time.Duration(i)*29*time.Second), RunDone), day)
 	}
 
 	d.add(githubRun(100, now.Add(-2*time.Hour), RunDone), day)
@@ -44,18 +46,18 @@ func TestThePaceCountsTheGitHubActionsOfTheLastMinuteAndHour(t *testing.T) {
 		Outcome: string(RunDone), QueuedAt: now, StartedAt: new(now),
 	}, day)
 
-	assert.Equal(t, 2, d.paceMinute, "the two started under a minute ago")
-	assert.Equal(t, ActionsPerHour, d.paceHour, "not one two hours old, one that sent nothing, nor an agent's")
-	assert.Equal(t, ActionsPerHour+1, d.actions, "today's GitHub actions count each one sent")
-	assert.Equal(t, ActionsPerHour/2+2, d.routineRuns[1], "a match is one of its routine's runs, its actions many")
+	assert.Equal(t, 3, d.paceMinute, "the three started under a minute ago")
+	assert.Equal(t, perHour, d.paceHour, "not one two hours old, one that sent nothing, nor an agent's")
+	assert.Equal(t, perHour+1, d.actions, "today's GitHub actions count each one sent")
+	assert.Equal(t, perHour/2+2, d.routineRuns[1], "a match is one of its routine's runs, its actions many")
 
-	p := &pass{e: &Engine{}, now: now, counts: d}
+	p := &pass{e: &Engine{}, now: now, counts: d, cfg: autopilotprefs.Config{ActionsPerHour: perHour}}
 	v := p.pace()
 	assert.Equal(t, BlockWritesHeld, v.block)
-	assert.Contains(t, v.words, "60 GitHub actions in the last hour")
+	assert.Contains(t, v.words, "120 GitHub actions in the last hour, the most Settings → Autopilot allows an hour")
 
-	p.counts.paceHour, p.counts.paceMinute = 0, ActionsPerMinute
-	assert.Contains(t, p.pace().words, "10 GitHub actions in the last minute")
+	p.counts.paceHour, p.counts.paceMinute = 0, actionsPerMinute(perHour)
+	assert.Contains(t, p.pace().words, "20 GitHub actions in the last minute")
 
 	p.counts.paceMinute = 0
 	assert.True(t, p.pace().through())
@@ -170,4 +172,14 @@ func TestTheGitHubDispatcherSendsTheJobsActionAndSaysHowItWent(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, none.Sent)
 	assert.Equal(t, "It had no GitHub notification to mark done.", none.Summary)
+}
+
+func TestThePaceAMinuteFollowsTheHoursSetting(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 10, actionsPerMinute(60))
+	assert.Equal(t, 20, actionsPerMinute(autopilotprefs.DefaultActionsPerHour))
+	assert.Equal(t, 33, actionsPerMinute(200))
+	assert.Equal(t, MaxActionsPerMinute, actionsPerMinute(autopilotprefs.MaxActionsPerHour), "never past the gate's room")
+	assert.Equal(t, 1, actionsPerMinute(autopilotprefs.MinActionsPerHour/10), "at least one")
 }

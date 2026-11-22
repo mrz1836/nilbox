@@ -26,6 +26,8 @@ import {
   backlogText,
   cadenceOf,
   checkText,
+  everyWords,
+  howWords,
   chipOf,
   chipView,
   describeAttach,
@@ -40,6 +42,7 @@ import {
   inActivity,
   inChunks,
   itemText,
+  launchHold,
   liveOf,
   matchingWords,
   maxIDs,
@@ -693,27 +696,84 @@ describe('what runs next', () => {
   })
 })
 
-describe('cadenceOf', () => {
-  const on = autopilotGlance({ routines: 1, enabled: 1 })
-
-  it('says when Autopilot checks the routines, and when it last did', () => {
-    expect(cadenceOf(on, autopilotEngine())).toEqual({
-      text: 'Checks your routines every minute, after each inbox refresh, and at once when you change one',
-      lastAt: '2026-06-15T11:59:00Z',
+describe('launchHold', () => {
+  const merge = githubStep({ kind: 'merge', label: 'Merge it', actions: [] })
+  const reply = githubStep({ kind: 'github', label: 'Reply', status: 'done', actions: ['reply'] })
+  const at = (state: AutopilotState, overrides: Partial<AutopilotMatch> = {}) =>
+    autopilotMatch({
+      state,
+      reason: '',
+      closedAt: null,
+      routine: 'Merge syncs',
+      steps: [reply, merge],
+      step: 1,
+      ...overrides,
     })
+
+  it('holds a launch while a routine is about to act on the item, or works on it', () => {
+    expect(launchHold(at('queued'))).toBe('Merge syncs is about to merge this. Launch an agent here once it has.')
+    expect(launchHold(at('queued', { step: 0 }))).toBe(
+      'Merge syncs is about to run on this. Launch an agent here once it has.',
+    )
+    expect(launchHold(at('running'))).toMatch(/^Merge syncs is working on this/)
+    expect(launchHold(at('verifying'))).toMatch(/^Merge syncs is working on this/)
   })
 
-  it('says it waits for the first refresh, or that no routine is on', () => {
-    expect(cadenceOf(on, autopilotEngine({ lastCycle: null }))?.text).toMatch(/^Starting/)
-    expect(cadenceOf({ ...on, enabled: 0 }, autopilotEngine())?.text).toMatch(/^No routine is on/)
+  it('leaves the launch to the user while the routine waits on them, ended, or only records', () => {
+    expect(launchHold(at('waiting', { blockedBy: 'ask' }))).toBe('')
+    expect(launchHold(at('blocked', { blockedBy: 'past_rules_off' }))).toBe('')
+    expect(launchHold(at('done', { reason: 'ran' }))).toBe('')
+    expect(launchHold(at('queued', { dryRun: true }))).toBe('')
+    expect(launchHold(undefined)).toBe('')
+  })
+})
+
+describe('cadenceOf', () => {
+  const on = autopilotGlance({ routines: 1, enabled: 1 })
+  const reads = { inboxEvery: 300, checksEvery: 45, lastAt: '2026-06-15T11:58:00Z', reading: false }
+  const how =
+    `${brand.name} reads your inbox and your routines’ searches from GitHub every 5 minutes, and the checks ` +
+    'still running every 45 seconds. Autopilot checks your routines right after each read, and every minute, and ' +
+    'acts as soon as one matches.'
+
+  it('says it runs, when it last checked, when GitHub is read next, and how often it does each', () => {
+    expect(cadenceOf(on, autopilotEngine(), reads)).toEqual({
+      running: true,
+      text: 'Running',
+      lastAt: '2026-06-15T11:59:00Z',
+      nextAt: '2026-06-15T12:03:00.000Z',
+      reading: false,
+      how,
+    })
+    expect(cadenceOf(on, autopilotEngine(), { ...reads, reading: true })?.reading).toBe(true)
+    expect(cadenceOf(on, autopilotEngine(), { ...reads, lastAt: '' })?.nextAt, 'never read yet').toBe('')
+    expect(cadenceOf(on, autopilotEngine(), null)).toMatchObject({ running: true, nextAt: '', how: '' })
+  })
+
+  it('says how often without the checks a user turned off', () => {
+    expect(howWords({ inboxEvery: 600, checksEvery: 0 })).toBe(
+      `${brand.name} reads your inbox and your routines’ searches from GitHub every 10 minutes. Autopilot checks ` +
+        'your routines right after each read, and every minute, and acts as soon as one matches.',
+    )
+    expect(everyWords(45)).toBe('45 seconds')
+    expect(everyWords(60)).toBe('minute')
+    expect(everyWords(300)).toBe('5 minutes')
+    expect(everyWords(3600)).toBe('hour')
+    expect(everyWords(7200)).toBe('2 hours')
+  })
+
+  it('says it waits for the first read, or that no routine is on', () => {
+    expect(cadenceOf(on, autopilotEngine({ lastCycle: null }), reads)).toMatchObject({ running: false, how })
+    expect(cadenceOf(on, autopilotEngine({ lastCycle: null }), reads)?.text).toMatch(/^Starting/)
+    expect(cadenceOf({ ...on, enabled: 0 }, autopilotEngine(), reads)?.text).toMatch(/^No routine is on/)
   })
 
   it('says nothing while the banners say what stops everything', () => {
-    expect(cadenceOf({ ...on, paused: true }, autopilotEngine())).toBeNull()
-    expect(cadenceOf({ ...on, on: false }, autopilotEngine())).toBeNull()
-    expect(cadenceOf(on, autopilotEngine({ elsewhere: true }))).toBeNull()
-    expect(cadenceOf(on, autopilotEngine({ signedOut: true }))).toBeNull()
-    expect(cadenceOf(on, null)).toBeNull()
+    expect(cadenceOf({ ...on, paused: true }, autopilotEngine(), reads)).toBeNull()
+    expect(cadenceOf({ ...on, on: false }, autopilotEngine(), reads)).toBeNull()
+    expect(cadenceOf(on, autopilotEngine({ elsewhere: true }), reads)).toBeNull()
+    expect(cadenceOf(on, autopilotEngine({ signedOut: true }), reads)).toBeNull()
+    expect(cadenceOf(on, null, reads)).toBeNull()
   })
 })
 

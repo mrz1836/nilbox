@@ -202,6 +202,15 @@ export function SetAutopilotActionsPerDay(n: number): $CancellablePromise<$model
 }
 
 /**
+ * SetAutopilotActionsPerHour stores how many GitHub actions Autopilot sends an hour, across
+ * every routine, autopilotprefs.MinActionsPerHour to MaxActionsPerHour, and returns the
+ * settings with it.
+ */
+export function SetAutopilotActionsPerHour(n: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(242739848, n);
+}
+
+/**
  * SetAutopilotAgentsAtOnce stores how many agents Autopilot runs at once,
  * autopilotprefs.MinAgentsAtOnce to MaxAgentsAtOnce, and returns the settings with it.
  */

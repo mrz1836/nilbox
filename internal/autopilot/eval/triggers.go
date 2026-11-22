@@ -24,11 +24,13 @@ type fired struct {
 }
 
 // soon is a trigger on its way: when it holds, as a sentence ends, the moment it does
-// when the clock alone decides it, and the natural fire key it holds with.
+// when the clock alone decides it, the natural fire key it holds with, and the facts it
+// makes so as it does (Pending.Assume).
 type soon struct {
-	when string
-	at   *time.Time
-	key  string
+	when   string
+	at     *time.Time
+	key    string
+	assume map[catalog.FieldID]facts.Value
 }
 
 // yes, no, and unknownOf make a trigger's outcome.
@@ -39,6 +41,35 @@ func no(actual string) fired       { return fired{result: No, actual: actual} }
 // or, nil, once GitHub reports it.
 func waiting(actual, when, key string, at *time.Time) fired {
 	return fired{result: No, actual: actual, soon: &soon{when: when, at: at, key: key}}
+}
+
+// waitingOn is waiting on GitHub alone, for a trigger that makes assume so as it holds.
+func waitingOn(actual, when, key string, assume map[catalog.FieldID]facts.Value) fired {
+	return fired{result: No, actual: actual, soon: &soon{when: when, key: key, assume: assume}}
+}
+
+// allPassed are the checks' facts once every check on the head passed, as Checks pass
+// holds: passed of them, still running or not.
+func allPassed(passed int) map[catalog.FieldID]facts.Value {
+	return map[catalog.FieldID]facts.Value{
+		catalog.FieldChecksState:      facts.Text("success"),
+		catalog.FieldChecksFailed:     facts.Number(0),
+		catalog.FieldChecksPending:    facts.Number(0),
+		catalog.FieldChecksPassed:     facts.Number(passed),
+		catalog.FieldFailedNames:      facts.List(nil, false),
+		catalog.FieldRequiredFailed:   facts.Bool(false),
+		catalog.FieldAwaitingApproval: facts.Bool(false),
+	}
+}
+
+// allFinished are the checks' facts once every check on the head finished with one or more
+// failed, as Checks fail holds while it waits for them: what failed, and how many, is known
+// only then.
+func allFinished() map[catalog.FieldID]facts.Value {
+	return map[catalog.FieldID]facts.Value{
+		catalog.FieldChecksState:   facts.Text("failure"),
+		catalog.FieldChecksPending: facts.Number(0),
+	}
 }
 
 func unknownOf(v facts.Value) fired {
@@ -156,8 +187,8 @@ func checksFailed(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired
 
 	if t.WaitsForChecks() {
 		if pending.Number > 0 {
-			return waiting(textutil.Counted(pending.Number, "check is", "checks are")+" still running",
-				"once its checks finish", key, nil)
+			return waitingOn(textutil.Counted(pending.Number, "check is", "checks are")+" still running",
+				"once its checks finish", key, allFinished())
 		}
 
 		if s := settled(t, f, now, key); s.result != Yes {
@@ -187,7 +218,7 @@ func checksPassed(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired
 	case pending.Number > 0 && awaiting.Bool:
 		return no(running) // runs a maintainer must approve first aren't on their way
 	case pending.Number > 0:
-		return waiting(running, "when its checks pass", key, nil)
+		return waitingOn(running, "when its checks pass", key, allPassed(passed.Number+pending.Number))
 	case passed.Number == 0:
 		return no("it has no checks")
 	case awaiting.Bool:

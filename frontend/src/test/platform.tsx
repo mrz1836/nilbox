@@ -673,6 +673,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setAutopilotAgentsAtOnce: (agentsAtOnce) => stored(autopilotSettings({ agentsAtOnce })),
     setAutopilotRunsPerDay: (runsPerDay) => stored(autopilotSettings({ runsPerDay })),
     setAutopilotActionsPerDay: (actionsPerDay) => stored(autopilotSettings({ actionsPerDay })),
+    setAutopilotActionsPerHour: (actionsPerHour) => stored(autopilotSettings({ actionsPerHour })),
     setAutopilotDailyCap: (dailyCap) => stored(autopilotSettings({ dailyCap })),
     setAutopilotKeepAwake: (keepAwake) => stored(autopilotSettings({ keepAwake })),
     setAutopilotHoldOnOutage: (holdOnOutage) => stored(autopilotSettings({ holdOnOutage })),

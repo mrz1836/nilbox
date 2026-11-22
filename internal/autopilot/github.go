@@ -23,8 +23,9 @@ import (
 // stored), its own Decide must still offer the action, enabled and with no warning the
 // user didn't accept, and it is pinned to the head that read found, so a push since sends
 // nothing. Every action is its own run, recorded before it is sent, so a quit never sends
-// one twice; the write gate paces them, and Autopilot takes at most a third of its edit
-// lane (ActionsPerMinute, ActionsPerHour). A merge, an approval, a close, and approving
+// one twice; the write gate paces them, and Autopilot keeps under its edit lane, to its
+// GitHub actions an hour (autopilotprefs.Config.ActionsPerHour) and a pace a minute that
+// follows (actionsPerMinute). A merge, an approval, a close, and approving
 // workflow runs are none of them, and nothing here can name one.
 
 // errNoAction is a GitHub job with no action to send.

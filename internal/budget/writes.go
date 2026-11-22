@@ -35,9 +35,11 @@ import (
 
 const (
 	// WritesPerMinute and WritesPerHour are the most edits the app sends GitHub in a
-	// minute and in an hour.
-	WritesPerMinute = 30
-	WritesPerHour   = 200
+	// minute and in an hour, Autopilot's included: under GitHub's own limits on requests
+	// that create content (80 a minute and 500 an hour), with room left for the user's other
+	// tools, which share them.
+	WritesPerMinute = 60
+	WritesPerHour   = 400
 
 	// ChoresPerMinute and ChoresPerHour are the most chores the app sends GitHub in a
 	// minute and in an hour, and ChoreGap the least time between two.

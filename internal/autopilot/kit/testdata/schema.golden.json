@@ -1063,7 +1063,12 @@
         "actionsPerDay": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 200
+          "maximum": 2000
+        },
+        "actionsPerHour": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 300
         },
         "dailyCap": {
           "$ref": "#/$defs/DailyCap"

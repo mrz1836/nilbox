@@ -145,7 +145,7 @@ func TestAutopilotSettersRefuseOutOfRangeAndStoreNothing(t *testing.T) {
 		{func() (Settings, error) { return svc.SetAutopilotRunsPerDay(ctx, 201) }, "Choose 1 to 200 agent runs a day."},
 		{
 			func() (Settings, error) { return svc.SetAutopilotActionsPerDay(ctx, 0) },
-			"Choose 1 to 200 GitHub actions a day.",
+			"Choose 1 to 2000 GitHub actions a day.",
 		},
 		{
 			func() (Settings, error) { return svc.SetAutopilotCatchUpHours(ctx, 0) },

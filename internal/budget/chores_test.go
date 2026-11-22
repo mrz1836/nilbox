@@ -149,7 +149,7 @@ func TestChoresLeaveEditLaneUntouched(t *testing.T) {
 	require.ErrorIs(t, tr.AllowChore(github.ResourceCore), ErrWritePace, "the chore lane is full for the minute")
 
 	// Edits still go, as many as ever.
-	allowN(t, tr, clk, WritesPerMinute)
+	allowMinute(t, tr, clk)
 	require.ErrorIs(t, tr.AllowWrite(github.ResourceCore), ErrWritePace)
 
 	// And edits never use up the chores: the first chores have left the minute by now.
@@ -278,7 +278,7 @@ func TestRetryInSaysWhenTheNextEditMayGo(t *testing.T) {
 	err := tr.AllowWrite(github.ResourceCore)
 	require.ErrorIs(t, err, ErrWritePace)
 	assert.Equal(t, time.Minute, RetryIn(err))
-	assert.Equal(t, ErrWritePace.Error()+": 30 in the last minute", err.Error(), "the wait adds nothing to the text")
+	assert.Equal(t, ErrWritePace.Error()+": 60 in the last minute", err.Error(), "the wait adds nothing to the text")
 
 	assert.Zero(t, RetryIn(nil))
 	assert.Zero(t, RetryIn(errDiskFull), "an error that is no refusal")

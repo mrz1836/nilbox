@@ -1,8 +1,10 @@
 package eval_test
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -91,7 +93,7 @@ func TestDecisionsGoldenWritesEveryField(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, 5, reflect.TypeFor[eval.Decision]().NumField(), "writeDecision writes every field of a decision")
-	assert.Equal(t, 3, reflect.TypeFor[eval.Pending]().NumField(), "writeDecision writes every field of a pending trigger")
+	assert.Equal(t, 4, reflect.TypeFor[eval.Pending]().NumField(), "writeDecision writes every field of a pending trigger")
 	assert.Equal(t, 5, reflect.TypeFor[eval.Trace]().NumField(), "writeDecision writes every field of a trace")
 }
 
@@ -157,6 +159,15 @@ func writeDecision(b *strings.Builder, name string, d eval.Decision) {
 		}
 
 		fmt.Fprintf(b, "pending:\n  when: %s\n  at: %s\n  fireKey: %s\n", text(p.When), at, text(p.FireKey))
+
+		for _, field := range slices.Sorted(maps.Keys(p.Assume)) {
+			value, err := json.Marshal(p.Assume[field])
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Fprintf(b, "  assume %s: %s\n", field, value)
+		}
 	}
 }
 

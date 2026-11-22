@@ -1143,6 +1143,7 @@ export const {
   SetAutopilotAgentsAtOnce: setAutopilotAgentsAtOnce,
   SetAutopilotRunsPerDay: setAutopilotRunsPerDay,
   SetAutopilotActionsPerDay: setAutopilotActionsPerDay,
+  SetAutopilotActionsPerHour: setAutopilotActionsPerHour,
   SetAutopilotDailyCap: setAutopilotDailyCap,
   SetAutopilotKeepAwake: setAutopilotKeepAwake,
   SetAutopilotHoldOnOutage: setAutopilotHoldOnOutage,

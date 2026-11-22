@@ -26,11 +26,12 @@ export interface Config {
     "agentsAtOnce": number;
 
     /**
-     * RunsPerDay is how many agent runs it starts a day, and ActionsPerDay how many
-     * GitHub actions it sends a day, across every routine.
+     * RunsPerDay is how many agent runs it starts a day, ActionsPerDay how many GitHub
+     * actions it sends a day, and ActionsPerHour how many in an hour, across every routine.
      */
     "runsPerDay": number;
     "actionsPerDay": number;
+    "actionsPerHour": number;
 
     /**
      * DailyCap is the most its agents may spend a day.

@@ -38,8 +38,10 @@ const (
 	// KeyRunsPerDay is how many agent runs Autopilot starts a day, across its routines.
 	KeyRunsPerDay = "autopilot.runsPerDay"
 
-	// KeyActionsPerDay is how many GitHub actions Autopilot sends a day.
-	KeyActionsPerDay = "autopilot.actionsPerDay"
+	// KeyActionsPerDay is how many GitHub actions Autopilot sends a day, and
+	// KeyActionsPerHour how many in an hour.
+	KeyActionsPerDay  = "autopilot.actionsPerDay"
+	KeyActionsPerHour = "autopilot.actionsPerHour"
 
 	// KeyDailyCap is the daily cap's amount, 0 for none, in KeyDailyCapUnit's unit.
 	KeyDailyCap = "autopilot.dailyCap"
@@ -155,10 +157,14 @@ const (
 	// scripts.
 	MinAgentsAtOnce, MaxAgentsAtOnce   = 1, 3
 	MinRunsPerDay, MaxRunsPerDay       = 1, 200
-	MinActionsPerDay, MaxActionsPerDay = 1, 200
-	MinCatchUpHours, MaxCatchUpHours   = 1, 168
-	MinHistoryDays, MaxHistoryDays     = 7, 365
-	MinLogDays, MaxLogDays             = 1, 90
+	MinActionsPerDay, MaxActionsPerDay = 1, 2000
+
+	// MaxActionsPerHour keeps Autopilot under the app's own write lane (budget.WritesPerHour,
+	// 400 an hour), with 100 an hour left for the user's own clicks.
+	MinActionsPerHour, MaxActionsPerHour = 10, 300
+	MinCatchUpHours, MaxCatchUpHours     = 1, 168
+	MinHistoryDays, MaxHistoryDays       = 7, 365
+	MinLogDays, MaxLogDays               = 1, 90
 
 	// A dollar cap is whole dollars, and a token cap tokens.
 	MinCapUSD, MaxCapUSD       = 1, 500
@@ -177,14 +183,15 @@ func (b bounds) holds(n int) bool {
 
 // The defaults of a fresh database.
 const (
-	DefaultAgentsAtOnce  = 2
-	DefaultRunsPerDay    = 20
-	DefaultActionsPerDay = 50
-	DefaultCatchUpHours  = 24
-	DefaultHistoryDays   = 90
-	DefaultLogDays       = 30
-	DefaultHoldOnOutage  = true
-	DefaultDailyCapUnit  = UnitUSD
+	DefaultAgentsAtOnce   = 2
+	DefaultRunsPerDay     = 20
+	DefaultActionsPerDay  = 500
+	DefaultActionsPerHour = 120
+	DefaultCatchUpHours   = 24
+	DefaultHistoryDays    = 90
+	DefaultLogDays        = 30
+	DefaultHoldOnOutage   = true
+	DefaultDailyCapUnit   = UnitUSD
 )
 
 // DailyCap is the most Autopilot's agents may spend a day, across its routines: an amount
@@ -240,10 +247,11 @@ type Config struct {
 	// AgentsAtOnce is how many agents Autopilot runs at once.
 	AgentsAtOnce int `json:"agentsAtOnce"`
 
-	// RunsPerDay is how many agent runs it starts a day, and ActionsPerDay how many
-	// GitHub actions it sends a day, across every routine.
-	RunsPerDay    int `json:"runsPerDay"`
-	ActionsPerDay int `json:"actionsPerDay"`
+	// RunsPerDay is how many agent runs it starts a day, ActionsPerDay how many GitHub
+	// actions it sends a day, and ActionsPerHour how many in an hour, across every routine.
+	RunsPerDay     int `json:"runsPerDay"`
+	ActionsPerDay  int `json:"actionsPerDay"`
+	ActionsPerHour int `json:"actionsPerHour"`
 
 	// DailyCap is the most its agents may spend a day.
 	DailyCap DailyCap `json:"dailyCap"`
@@ -275,19 +283,19 @@ func Defaults() Config {
 		DefaultMode:   DefaultMode,
 		AgentsAtOnce:  DefaultAgentsAtOnce,
 		RunsPerDay:    DefaultRunsPerDay,
-		ActionsPerDay: DefaultActionsPerDay,
-		DailyCap:      DailyCap{Unit: DefaultDailyCapUnit},
-		HoldOnOutage:  DefaultHoldOnOutage,
-		CatchUpHours:  DefaultCatchUpHours,
-		HistoryDays:   DefaultHistoryDays,
-		LogDays:       DefaultLogDays,
+		ActionsPerDay: DefaultActionsPerDay, ActionsPerHour: DefaultActionsPerHour,
+		DailyCap:     DailyCap{Unit: DefaultDailyCapUnit},
+		HoldOnOutage: DefaultHoldOnOutage,
+		CatchUpHours: DefaultCatchUpHours,
+		HistoryDays:  DefaultHistoryDays,
+		LogDays:      DefaultLogDays,
 	}
 }
 
 // Keys returns every key the settings are stored under.
 func Keys() []string {
 	return []string{
-		KeyEnabled, KeyPaused, KeyDefaultMode, KeyAgentsAtOnce, KeyRunsPerDay, KeyActionsPerDay, KeyDailyCap, KeyDailyCapUnit,
+		KeyEnabled, KeyPaused, KeyDefaultMode, KeyAgentsAtOnce, KeyRunsPerDay, KeyActionsPerDay, KeyActionsPerHour, KeyDailyCap, KeyDailyCapUnit,
 		KeyKeepAwake, KeyHoldOnOutage, KeyCatchUpHours, KeyHistoryDays, KeyLogDays, KeyMergePastRules,
 	}
 }
@@ -305,12 +313,14 @@ func Decode(stored map[string]string) Config {
 		AgentsAtOnce:  number(stored[KeyAgentsAtOnce], bounds{MinAgentsAtOnce, MaxAgentsAtOnce}, d.AgentsAtOnce),
 		RunsPerDay:    number(stored[KeyRunsPerDay], bounds{MinRunsPerDay, MaxRunsPerDay}, d.RunsPerDay),
 		ActionsPerDay: number(stored[KeyActionsPerDay], bounds{MinActionsPerDay, MaxActionsPerDay}, d.ActionsPerDay),
-		DailyCap:      decodeCap(stored[KeyDailyCap], stored[KeyDailyCapUnit]),
-		KeepAwake:     prefval.Bool(stored[KeyKeepAwake], false),
-		HoldOnOutage:  prefval.Bool(stored[KeyHoldOnOutage], d.HoldOnOutage),
-		CatchUpHours:  number(stored[KeyCatchUpHours], bounds{MinCatchUpHours, MaxCatchUpHours}, d.CatchUpHours),
-		HistoryDays:   number(stored[KeyHistoryDays], bounds{MinHistoryDays, MaxHistoryDays}, d.HistoryDays),
-		LogDays:       number(stored[KeyLogDays], bounds{MinLogDays, MaxLogDays}, d.LogDays),
+		ActionsPerHour: number(stored[KeyActionsPerHour], bounds{MinActionsPerHour, MaxActionsPerHour},
+			d.ActionsPerHour),
+		DailyCap:     decodeCap(stored[KeyDailyCap], stored[KeyDailyCapUnit]),
+		KeepAwake:    prefval.Bool(stored[KeyKeepAwake], false),
+		HoldOnOutage: prefval.Bool(stored[KeyHoldOnOutage], d.HoldOnOutage),
+		CatchUpHours: number(stored[KeyCatchUpHours], bounds{MinCatchUpHours, MaxCatchUpHours}, d.CatchUpHours),
+		HistoryDays:  number(stored[KeyHistoryDays], bounds{MinHistoryDays, MaxHistoryDays}, d.HistoryDays),
+		LogDays:      number(stored[KeyLogDays], bounds{MinLogDays, MaxLogDays}, d.LogDays),
 
 		MergePastRules: prefval.Bool(stored[KeyMergePastRules], false),
 	}
@@ -363,6 +373,7 @@ func (c Config) Check() error {
 		{"agents at once", c.AgentsAtOnce, bounds{MinAgentsAtOnce, MaxAgentsAtOnce}},
 		{"agent runs a day", c.RunsPerDay, bounds{MinRunsPerDay, MaxRunsPerDay}},
 		{"GitHub actions a day", c.ActionsPerDay, bounds{MinActionsPerDay, MaxActionsPerDay}},
+		{"GitHub actions an hour", c.ActionsPerHour, bounds{MinActionsPerHour, MaxActionsPerHour}},
 		{"hours before catching up", c.CatchUpHours, bounds{MinCatchUpHours, MaxCatchUpHours}},
 		{"days of history", c.HistoryDays, bounds{MinHistoryDays, MaxHistoryDays}},
 		{"days of run logs", c.LogDays, bounds{MinLogDays, MaxLogDays}},
@@ -391,14 +402,14 @@ func (c Config) Encode() map[string]string {
 		KeyDefaultMode:   string(c.DefaultMode),
 		KeyAgentsAtOnce:  strconv.Itoa(c.AgentsAtOnce),
 		KeyRunsPerDay:    strconv.Itoa(c.RunsPerDay),
-		KeyActionsPerDay: strconv.Itoa(c.ActionsPerDay),
-		KeyDailyCap:      strconv.Itoa(c.DailyCap.Amount),
-		KeyDailyCapUnit:  string(c.DailyCap.Unit),
-		KeyKeepAwake:     prefval.EncodeBool(c.KeepAwake),
-		KeyHoldOnOutage:  prefval.EncodeBool(c.HoldOnOutage),
-		KeyCatchUpHours:  strconv.Itoa(c.CatchUpHours),
-		KeyHistoryDays:   strconv.Itoa(c.HistoryDays),
-		KeyLogDays:       strconv.Itoa(c.LogDays),
+		KeyActionsPerDay: strconv.Itoa(c.ActionsPerDay), KeyActionsPerHour: strconv.Itoa(c.ActionsPerHour),
+		KeyDailyCap:     strconv.Itoa(c.DailyCap.Amount),
+		KeyDailyCapUnit: string(c.DailyCap.Unit),
+		KeyKeepAwake:    prefval.EncodeBool(c.KeepAwake),
+		KeyHoldOnOutage: prefval.EncodeBool(c.HoldOnOutage),
+		KeyCatchUpHours: strconv.Itoa(c.CatchUpHours),
+		KeyHistoryDays:  strconv.Itoa(c.HistoryDays),
+		KeyLogDays:      strconv.Itoa(c.LogDays),
 
 		KeyMergePastRules: prefval.EncodeBool(c.MergePastRules),
 	}

@@ -2761,7 +2761,8 @@ yet costs one GraphQL point; after that, it is remembered.
 
 **Within your budget.** Each edit spends what the table says, which the [API budget
 gauge](#the-window) counts like every other request. Nilbox also keeps its own pace well under
-GitHub's limits on writes: at most 30 edits a minute and 200 an hour, and none while the REST
+GitHub's limits on writes: at most 60 edits a minute and 400 an hour, Autopilot's included, and
+none while the REST
 budget is down to its last hundredth (50 of 5,000 points), which it leaves for `gh` and your
 agents. When GitHub asks it to slow down, it waits as long as GitHub says. An edit held back for
 any of these sends nothing, and the toast says why and when to try again.
@@ -2879,9 +2880,12 @@ sheet doesn't show it as if it were open: opened on it, the sheet closes; steppe
 **←** or **→**, it steps past it the same way, or back to the card you came from when it was the
 last; reached by a link, it goes back to the sheet the link was in. A toast says what became of
 it, as in **acme-org/api#12 was merged**, with **Open on GitHub**, and the card leaves the inbox
-at once: that read already stored it, so finding out costs no request more. While an action you
-started runs, or the sheet shows what one left (as **pushed to since you opened it**), it stays
-open, saying **No longer open**.
+at once: that read already stored it, so finding out costs no request more. The same happens
+when a routine merges the pull request you have open, or a refresh finds it merged or closed: its
+card leaves the inbox, the sheet builds itself again from what Nilbox stored, sees it ended, and
+moves on with that toast, again with no request. While an action you started runs, or the sheet
+shows what one left (as **pushed to since you opened it**), it stays open, saying **No longer
+open**.
 
 **One button.** The action button runs the action that fits the pull request, and says exactly
 what it does, as in **Approve & squash-merge**:
@@ -3480,13 +3484,16 @@ it reads as. Below them:
   reported, the real measure. A run in your terminal reports neither; the item's
   [session panel](#following-a-session) counts its session's tokens.
 
-**When it runs.** There is no schedule to set: while Autopilot is on, it checks every routine
-that is on every minute, after each refresh of the inbox, and at once when you change or switch
-one on, and a routine acts the moment what it waits for holds. Below Activity's title, a line
-says so, with its last check: *Checks your routines every minute, after each inbox refresh,
-and at once when you change one · last check 20s ago*. It says *Starting* until the first
-refresh since Nilbox opened is in, and that no routine is on while none is; the banners say
-what stops everything else.
+**When it runs.** There is no schedule to set. Autopilot learns of what it acts on when Nilbox
+reads GitHub: your inbox and your routines' searches every 5 minutes, and the checks still
+running on your pull requests every 45 seconds (**Settings → Refresh** sets both). Right after
+each read, every minute, and at once when you change or switch a routine on, it checks every
+routine that is on, and one acts as soon as what it waits for holds. Below Activity's title, a
+line says so as it goes: *● Running · last check 20s ago · reads GitHub again in 3m*, with
+**Refresh now**, which reads the inbox from GitHub at once, as the inbox's **Refresh** does;
+under it, how often it reads each, in your settings' numbers. A routine's pane shows the first
+line while the routine is on. It says *Starting* until the first read since Nilbox opened is in,
+and that no routine is on while none is; the banners say what stops everything else.
 
 **Activity** lists what the routines did, under a heading for each day, newest first:
 
@@ -3534,21 +3541,31 @@ which opens its card in [Needs you](#needs-you) while it waits.
 accent's color, as something still to come: **⚡ Runs when its checks pass** on your pull
 request whose checks still run, **⚡ Runs in 2m** while they settle, counting down, **⚡ Runs at
 09:00** for a schedule due later today. It shows only when the routine will run by itself, with
-nothing more from anyone: it is on and not in Dry run, its **If** counts the item for sure, its
-**When** is on its way (checks still running, or passed and settling; checks that failed,
-waiting for the rest; a schedule due today; a quiet spell due within a day), and it hasn't
-already run on that occurrence (a commit it ran on whose checks run again shows nothing). A
-**When** that waits on something no one can foresee (a comment, a label, an approval, a new
-commit) never shows, so a routine never marks everything it watches. While Autopilot is paused,
-off, or run by another copy of Nilbox, no chip says so. What goes on now comes first: a match
-that waits for you or works shows its own chip, and once the routine ran, the chip says what it
-did. Click it for **Up next**: each routine that will run, how (*Runs by itself*, or *Asks you
-first* when it is in Ask first with a step that asks, an agent's or one on GitHub, since local
-steps run by themselves either way), when, and what it will do (*Then: Comment one of my
-replies, then Merge it*), with **Open routine** and **Leave this one alone**, which tells it
-never to run on this item, the line staying with **Undo**, and Activity's *Left alone* line
-letting it act again later. The item's history follows below. It costs nothing: Autopilot notes
-what will run as it checks the routines each minute, and the inbox reads it from memory.
+nothing more from anyone: it is on and not in Dry run, its **If** counts the item for sure as
+the item will stand when its **When** holds (*the checks' state is passing* counts a pull
+request whose checks still run, for a routine that fires when they pass), its **When** is on
+its way (checks still running, or passed and settling; checks that failed, waiting for the
+rest; a schedule due today; a quiet spell due within a day), and it hasn't already run on that
+occurrence (a commit it ran on whose checks run again shows nothing). A **When** that waits on
+something no one can foresee (a comment, a label, an approval, a new commit) never shows, so a
+routine never marks everything it watches. While Autopilot is paused, off, or run by another
+copy of Nilbox, no chip says so. What goes on now comes first: a match that waits for you or
+works shows its own chip, and once the routine ran, the chip says what it did. Click it for
+**Up next**: each routine that will run, how (*Runs by itself*, or *Asks you first* when it is
+in Ask first with a step that asks, an agent's or one on GitHub, since local steps run by
+themselves either way), when, and what it will do (*Then: Comment one of my replies, then Merge
+it*), with **Open routine** and **Leave this one alone**, which tells it never to run on this
+item, the line staying with **Undo**, and Activity's *Left alone* line letting it act again
+later. The item's history follows below. It costs nothing: Autopilot notes what will run as it
+checks the routines each minute, and the inbox reads it from memory.
+
+**While a routine acts on an item, launching waits.** Once a routine's match on an item is
+**⚡ Queued**, about to act, or works or checks its work, the item's agent button and its **▾**
+wait, saying why on hover (*Merge syncs is about to merge this. Launch an agent here once it
+has.*), so you don't start work on a pull request about to be merged. Watching or taking over the
+routine's own agent is unaffected, and a match that waits for your OK, or for something you fix,
+leaves the item to you. In **Needs you**, **Queued** says once, in full, what every queued match
+waits on when it is the same for all (the hour's pace, say), and each row names its pull request.
 
 ### Building a routine
 
@@ -4346,9 +4363,10 @@ one waits for your OK (**Send it**), and the rest go once you've said yes. Each 
 - **is a run of its own,** recorded before it is sent, so a quit never sends one twice: one the
   app quit while sending waits for you, worded so you check the item on GitHub first (**Send
   it again**). A step's actions together are one try.
-- **is paced below you:** at most 10 a minute and 60 an hour, a third of what the app sends
-  GitHub, so your own clicks always have room, and at most **GitHub actions a day** (Settings
-  → Autopilot). When GitHub, or the app's own pace, asks to wait, the actions wait until then,
+- **is paced below you:** at most **GitHub actions an hour** (Settings → Autopilot, 120 by
+  default, up to 300) and a sixth of that a minute, under what the app sends GitHub (400 an
+  hour, itself under GitHub's 500 for writes), so your own clicks always have room, and at most
+  **GitHub actions a day**. When GitHub, or the app's own pace, asks to wait, the actions wait until then,
   as **⚡ Queued**.
 - **waits for your OK on an outside contributor's item,** in every mode, since what it says is
   visible to them.
@@ -4484,7 +4502,8 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **New routines start in** | Ask first | The mode a routine you make starts in; a routine keeps its own once made |
 | **Agents at once** | 2 | The most coding agents your routines will run at the same time, at most 3 |
 | **Agent runs a day** | 20 | The most coding agent runs your routines will start in a day, together |
-| **GitHub actions a day** | 50 | The most actions on GitHub your routines will send in a day, together |
+| **GitHub actions a day** | 500 | The most actions on GitHub your routines will send in a day, together, up to 2,000 |
+| **GitHub actions an hour** | 120 | The most they send in an hour, 60 to 300, and a sixth of that a minute: GitHub allows about 500 writes an hour, which your own clicks and tools share |
 | **Daily cap** | Off | The most your routines' coding agents will use in a day, in dollars ($1 to $500) or tokens (100,000 to 50 million); see [budgets and caps](#budgets-and-caps) |
 | **Keep the Mac awake while agents work** | Off | Keeps the Mac from going to sleep on its own while a routine's agent works |
 | **Hold agent starts while their provider reports an outage** | On | Holds a routine's agent while its provider's status page reports a major outage |
@@ -4518,7 +4537,9 @@ Three limits bound what the routines' agents spend, each set in dollars or in to
 - **A routine's own Daily budget** (its limits) and the **Daily cap** above, across every
   routine, both off by default. Before each start, today's use, plus the budgets of the runs
   still working, plus the new run's budget, must fit under each; otherwise the start waits
-  (*It would go over today's cap.*) and starts the next day, once. A cap counts the runs
+  (*It waits until tomorrow: it would go over today's cap (Daily cap, in Settings → Autopilot).*)
+  and starts the next day, once. The day's counts word the same way: *It waits until tomorrow:
+  Autopilot sent 50 GitHub actions today, the most Settings → Autopilot allows in a day.* A cap counts the runs
   budgeted in its own unit, so a dollar cap can't hold back a run budgeted in tokens, nor
   count a Codex run.
 - **Tokens are the real measure.** Every run shows its tokens, in and out, with what it read

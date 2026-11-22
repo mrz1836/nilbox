@@ -32,6 +32,7 @@ SettingsChange {
   agentsAtOnce?: number
   runsPerDay?: number
   actionsPerDay?: number
+  actionsPerHour?: number
   dailyCap?: DailyCap
   keepAwake?: boolean
   holdOnOutage?: boolean

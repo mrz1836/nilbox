@@ -56,8 +56,9 @@ const whyLeftAlone = "You told it to leave this one alone."
 // noteUpcoming notes r as a routine that will run on f's item, decided d with history h,
 // when it is one (Upcoming): d's trigger is on its way, r acts, has no record of the
 // occurrence d's trigger fires for then that keeps it from running (reopensRow), and its
-// conditions count the item for sure. The item is one r doesn't leave alone, which
-// evaluateItem checked.
+// conditions count the item for sure as it will stand then (ConditionsWhenDue: a condition
+// that the checks pass counts a pull request whose checks Checks pass waits on). The item
+// is one r doesn't leave alone, which evaluateItem checked.
 func (p *pass) noteUpcoming(r *routineRun, f facts.Facts, h eval.History, d eval.Decision) {
 	if d.Pending == nil || r.mode == autopilotprefs.ModeDryRun {
 		return
@@ -67,7 +68,7 @@ func (p *pass) noteUpcoming(r *routineRun, f facts.Facts, h eval.History, d eval
 		return
 	}
 
-	if r.plan.Conditions(f, h, p.now) != eval.Yes {
+	if r.plan.ConditionsWhenDue(f, h, p.now, d.Pending) != eval.Yes {
 		return
 	}
 

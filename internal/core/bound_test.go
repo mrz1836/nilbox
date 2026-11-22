@@ -738,6 +738,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetAutopilotActionsPerDay": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
 			return s.SetAutopilotActionsPerDay(ctx, 10)
 		}),
+		"settings.Service.SetAutopilotActionsPerHour": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotActionsPerHour(ctx, 200)
+		}),
 		"settings.Service.SetAutopilotDailyCap": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
 			return s.SetAutopilotDailyCap(ctx, autopilotprefs.DailyCap{Amount: 25, Unit: autopilotprefs.UnitUSD})
 		}),

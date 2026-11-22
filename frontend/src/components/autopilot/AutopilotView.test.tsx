@@ -51,6 +51,7 @@ import {
   routineReady,
   routineSpec,
   settings as settingsOf,
+  snapshot,
   snoozeTemplate,
 } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
@@ -849,13 +850,26 @@ describe('Activity', () => {
     expect(list.getByText(/^Dry run · would have run/)).toHaveTextContent('Dry run · would have run 2h ago')
   })
 
-  it('says when Autopilot checks the routines, and when it last did', async () => {
+  it('says it runs, when it last checked, when it reads GitHub next and how often, with Refresh now', async () => {
     platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 4, enabled: 1 }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:58:00Z' }))
     renderTab()
 
-    expect(await screen.findByTestId('autopilot-cadence')).toHaveTextContent(
-      /^Checks your routines every minute, after each inbox refresh, and at once when you change one · last check /,
-    )
+    const line = await screen.findByTestId('autopilot-cadence')
+    const cadence = within(line)
+
+    await waitFor(() => {
+      expect(line).toHaveTextContent(/^Running· last check 1m ago· reads GitHub again in 3mRefresh now/)
+    })
+    expect(
+      cadence.getByText(
+        /reads your inbox and your routines’ searches from GitHub every 5 minutes, and the checks still running every 45 seconds/,
+      ),
+    ).toBeInTheDocument()
+
+    await userEvent.click(cadence.getByRole('button', { name: 'Refresh now' }))
+
+    expect(platform.refreshInbox).toHaveBeenCalled()
   })
 
   it('says, across the top, that Autopilot is paused, with Resume, and that another copy runs it', async () => {
@@ -1636,6 +1650,23 @@ async function needsYouSection() {
 describe('Needs you', () => {
   beforeEach(() => {
     platform.listRoutines.mockResolvedValue(routines())
+  })
+
+  it('says once, in full, what every queued match waits on, and names each one’s pull request', async () => {
+    const pace =
+      'Autopilot sent 120 GitHub actions in the last hour: the next goes as that eases, so your own changes always have room.'
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(22, 'queued', 'writes_held', pace, { item: itemRef({ id: 2, number: 9, title: 'Sync the first one' }) }),
+      open(23, 'queued', 'writes_held', pace, { item: itemRef({ id: 3, number: 10, title: 'Sync the second one' }) }),
+    ])
+    renderTab()
+
+    const queued = within(await screen.findByRole('region', { name: 'Queued' }))
+
+    expect(queued.getByRole('note')).toHaveTextContent(pace)
+    expect(queued.getAllByText(pace)).toHaveLength(1)
+    expect(queued.getByText('Sync the first one')).toBeInTheDocument()
+    expect(queued.getByText('Sync the second one')).toBeInTheDocument()
   })
 
   it('asks for the OK of what waits, runs or skips it, and lists what is queued', async () => {

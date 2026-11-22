@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
@@ -102,4 +103,37 @@ func TestConditionsDecideWhileTheTriggerDoesNot(t *testing.T) {
 	assert.Equal(t, eval.No, plan.Evaluate(fits, eval.History{}, now).Match, "its checks failed, so it doesn't fire")
 	assert.Equal(t, eval.Yes, plan.Conditions(fits, eval.History{}, now), "its title fits")
 	assert.Equal(t, eval.No, plan.Conditions(build(other), eval.History{}, now), "its title doesn't")
+}
+
+// TestConditionsWhenDueDecideAsTheTriggerWillLeaveTheItem decides a routine that fires when
+// the checks pass, and counts only items whose checks pass, on a pull request whose checks
+// still run: as they stand now its conditions rule it out, as they will when it fires they
+// count it, and a condition the trigger makes nothing of still decides.
+func TestConditionsWhenDueDecideAsTheTriggerWillLeaveTheItem(t *testing.T) {
+	t.Parallel()
+
+	plan := eval.Prepare(routine(spec.Trigger{Event: catalog.EventChecksPassed}, spec.Conditions{Of: []spec.Clause{
+		{Field: catalog.FieldChecksState, Op: catalog.OpOneOf, Values: []string{"success"}},
+		{Field: catalog.FieldTitle, Op: catalog.OpStartsWith, Value: "build(deps)"},
+	}}))
+
+	running := prRow()
+	running.Details.ChecksState, running.Details.ChecksFailed, running.Details.ChecksPending = "PENDING", 0, 2
+	running.Checks = nil
+	f := build(running)
+
+	d := plan.Evaluate(f, eval.History{}, now)
+	require.NotNil(t, d.Pending, "its checks still run")
+	assert.Equal(t, "when its checks pass", d.Pending.When)
+	assert.Equal(t, eval.No, plan.Conditions(f, eval.History{}, now), "as it stands now")
+	assert.Equal(t, eval.Yes, plan.ConditionsWhenDue(f, eval.History{}, now, d.Pending), "as it will once they pass")
+	assert.Equal(t, eval.No, plan.Conditions(f, eval.History{}, now), "the item's own facts are left as they are")
+
+	other := running
+	other.Title = "Update the docs"
+	g := build(other)
+
+	assert.Equal(t, eval.No, plan.ConditionsWhenDue(g, eval.History{}, now, plan.Evaluate(g, eval.History{}, now).Pending),
+		"its title still rules it out")
+	assert.Equal(t, eval.No, plan.ConditionsWhenDue(f, eval.History{}, now, nil), "with no trigger on its way, as now")
 }

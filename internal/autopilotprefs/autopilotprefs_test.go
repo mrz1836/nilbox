@@ -15,7 +15,7 @@ func TestDefaults(t *testing.T) {
 	d := autopilotprefs.Defaults()
 
 	assert.Equal(t, autopilotprefs.Config{
-		DefaultMode: autopilotprefs.ModeAsk, AgentsAtOnce: 2, RunsPerDay: 20, ActionsPerDay: 50,
+		DefaultMode: autopilotprefs.ModeAsk, AgentsAtOnce: 2, RunsPerDay: 20, ActionsPerDay: 500, ActionsPerHour: 120,
 		DailyCap: autopilotprefs.DailyCap{Unit: autopilotprefs.UnitUSD}, HoldOnOutage: true, CatchUpHours: 24,
 		HistoryDays: 90, LogDays: 30,
 	}, d)
@@ -81,7 +81,8 @@ func TestEncodeReadsBackAsItself(t *testing.T) {
 
 	c := autopilotprefs.Config{
 		Enabled: true, Paused: true, DefaultMode: autopilotprefs.ModeDryRun, AgentsAtOnce: 3, RunsPerDay: 200, ActionsPerDay: 1,
-		DailyCap: autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens}, KeepAwake: true,
+		ActionsPerHour: 300,
+		DailyCap:       autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens}, KeepAwake: true,
 		CatchUpHours: 168, HistoryDays: 7, LogDays: 7, MergePastRules: true,
 	}
 	require.NoError(t, c.Check())
@@ -178,15 +179,17 @@ func TestCheckTakesEveryEndOfEachRange(t *testing.T) {
 	low := autopilotprefs.Config{
 		DefaultMode: autopilotprefs.ModeAuto, AgentsAtOnce: autopilotprefs.MinAgentsAtOnce,
 		RunsPerDay: autopilotprefs.MinRunsPerDay, ActionsPerDay: autopilotprefs.MinActionsPerDay,
-		DailyCap:     autopilotprefs.DailyCap{Amount: autopilotprefs.MinCapUSD, Unit: autopilotprefs.UnitUSD},
-		CatchUpHours: autopilotprefs.MinCatchUpHours, HistoryDays: autopilotprefs.MinHistoryDays,
+		ActionsPerHour: autopilotprefs.MinActionsPerHour,
+		DailyCap:       autopilotprefs.DailyCap{Amount: autopilotprefs.MinCapUSD, Unit: autopilotprefs.UnitUSD},
+		CatchUpHours:   autopilotprefs.MinCatchUpHours, HistoryDays: autopilotprefs.MinHistoryDays,
 		LogDays: autopilotprefs.MinLogDays,
 	}
 	high := autopilotprefs.Config{
 		DefaultMode: autopilotprefs.ModeAsk, AgentsAtOnce: autopilotprefs.MaxAgentsAtOnce,
 		RunsPerDay: autopilotprefs.MaxRunsPerDay, ActionsPerDay: autopilotprefs.MaxActionsPerDay,
-		DailyCap:     autopilotprefs.DailyCap{Amount: autopilotprefs.MaxCapTokens, Unit: autopilotprefs.UnitTokens},
-		CatchUpHours: autopilotprefs.MaxCatchUpHours, HistoryDays: autopilotprefs.MaxHistoryDays,
+		ActionsPerHour: autopilotprefs.MaxActionsPerHour,
+		DailyCap:       autopilotprefs.DailyCap{Amount: autopilotprefs.MaxCapTokens, Unit: autopilotprefs.UnitTokens},
+		CatchUpHours:   autopilotprefs.MaxCatchUpHours, HistoryDays: autopilotprefs.MaxHistoryDays,
 		LogDays: autopilotprefs.MaxLogDays,
 	}
 

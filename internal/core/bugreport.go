@@ -223,9 +223,10 @@ func autopilotSettingsLine(c autopilotprefs.Config) string {
 	}
 
 	return fmt.Sprintf("Paused: %s · new routines: %s · agents at once: %d · runs a day: %d · "+
-		"actions a day: %d · daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · "+
+		"actions a day: %d · actions an hour: %d · daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · "+
 		"history: %d days, logs: %d · merge own past the rules: %s",
-		onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
+		onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, c.ActionsPerHour, daily,
+		onOff(c.KeepAwake),
 		onOff(c.HoldOnOutage), c.CatchUpHours, c.HistoryDays, c.LogDays, onOff(c.MergePastRules))
 }
 

@@ -84,7 +84,22 @@ describe('AutopilotSection', () => {
     expect(screen.getByRole('combobox', { name: 'Agents at once' })).toHaveValue('2')
     expect(labels('Agents at once')).toEqual(['1 agent', '2 agents (default)', '3 agents'])
     expect(screen.getByRole('combobox', { name: 'Agent runs a day' })).toHaveValue('20')
-    expect(screen.getByRole('combobox', { name: 'GitHub actions a day' })).toHaveValue('50')
+    expect(screen.getByRole('combobox', { name: 'GitHub actions a day' })).toHaveValue('500')
+    expect(labels('GitHub actions a day')).toEqual([
+      '50 actions',
+      '100 actions',
+      '200 actions',
+      '500 actions (default)',
+      '1,000 actions',
+      '2,000 actions',
+    ])
+    expect(screen.getByRole('combobox', { name: 'GitHub actions an hour' })).toHaveValue('120')
+    expect(labels('GitHub actions an hour')).toEqual([
+      '60 actions',
+      '120 actions (default)',
+      '200 actions',
+      '300 actions',
+    ])
     expect(screen.getByRole('combobox', { name: 'Daily cap' })).toHaveValue('off')
     expect(screen.getByText(/so they can’t count Codex’s runs, which report none/)).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
@@ -133,7 +148,8 @@ describe('AutopilotSection', () => {
   it.each([
     ['Agents at once', '3', 'setAutopilotAgentsAtOnce', 3, { agentsAtOnce: 3 }],
     ['Agent runs a day', '50', 'setAutopilotRunsPerDay', 50, { runsPerDay: 50 }],
-    ['GitHub actions a day', '10', 'setAutopilotActionsPerDay', 10, { actionsPerDay: 10 }],
+    ['GitHub actions a day', '1000', 'setAutopilotActionsPerDay', 1000, { actionsPerDay: 1000 }],
+    ['GitHub actions an hour', '300', 'setAutopilotActionsPerHour', 300, { actionsPerHour: 300 }],
     ['Ask before catching up after', '168', 'setAutopilotCatchUpHours', 168, { catchUpHours: 168 }],
     ['Run logs kept', '60', 'setAutopilotLogDays', 60, { logDays: 60 }],
   ] as const)('stores %s as it is chosen', async (name, value, setter, sent, change) => {
