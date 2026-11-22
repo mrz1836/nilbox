@@ -840,6 +840,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 
 			return c.Autopilot.LatestMatches(ctx, []int64{ids.item})
 		},
+		"autopilot.Service.Upcoming": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			return c.Autopilot.Upcoming(ctx, []int64{ids.item})
+		},
 		"autopilot.Service.Explain": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			return c.Autopilot.Explain(ctx, boundRoutine(ctx, t, c, "Bound explain").ID, ids.item)
 		},

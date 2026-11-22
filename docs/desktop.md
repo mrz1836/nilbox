@@ -3530,6 +3530,26 @@ change it made with where it stands (*Still there*, *Changed since*, *Undone*, *
 back*), an **Undo** for one still there, and **Show in Activity** for a match Activity lists,
 which opens its card in [Needs you](#needs-you) while it waits.
 
+**What runs next.** Before a routine runs on an item, the chip says it will, dashed, in the
+accent's color, as something still to come: **⚡ Runs when its checks pass** on your pull
+request whose checks still run, **⚡ Runs in 2m** while they settle, counting down, **⚡ Runs at
+09:00** for a schedule due later today. It shows only when the routine will run by itself, with
+nothing more from anyone: it is on and not in Dry run, its **If** counts the item for sure, its
+**When** is on its way (checks still running, or passed and settling; checks that failed,
+waiting for the rest; a schedule due today; a quiet spell due within a day), and it hasn't
+already run on that occurrence (a commit it ran on whose checks run again shows nothing). A
+**When** that waits on something no one can foresee (a comment, a label, an approval, a new
+commit) never shows, so a routine never marks everything it watches. While Autopilot is paused,
+off, or run by another copy of Nilbox, no chip says so. What goes on now comes first: a match
+that waits for you or works shows its own chip, and once the routine ran, the chip says what it
+did. Click it for **Up next**: each routine that will run, how (*Runs by itself*, or *Asks you
+first* when it is in Ask first with a step that asks, an agent's or one on GitHub, since local
+steps run by themselves either way), when, and what it will do (*Then: Comment one of my
+replies, then Merge it*), with **Open routine** and **Leave this one alone**, which tells it
+never to run on this item, the line staying with **Undo**, and Activity's *Left alone* line
+letting it act again later. The item's history follows below. It costs nothing: Autopilot notes
+what will run as it checks the routines each minute, and the inbox reads it from memory.
+
 ### Building a routine
 
 The builder is the routine itself, laid out top to bottom in the order it runs, each part edited

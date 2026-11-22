@@ -2013,6 +2013,43 @@ export interface Undone {
 }
 
 /**
+ * Upcoming is a routine that will run on an item by itself: its trigger is on its way
+ * (eval.Pending: checks still running or settling, a schedule due later today, a quiet
+ * spell due within a day), its conditions count the item for sure, it acts (not a Dry
+ * run), it doesn't leave the item alone, and it has no record of the occurrence the trigger
+ * fires for then, or only one that reopens. A trigger that waits on an event no one can
+ * foresee (a comment, a label, an approval) is never on its way, so a routine never marks
+ * every item it watches.
+ */
+export interface Upcoming {
+    "itemId": number;
+    "routineId": number;
+    "routine": string;
+
+    /**
+     * Mode is the routine's mode, and AsksFirst whether it waits for the user's OK before
+     * it does anything: in Ask first, before an agent or GitHub step, while a routine of
+     * local steps alone (a snooze, a pin) runs them by itself in either mode.
+     */
+    "mode": autopilotprefs$0.Mode;
+    "asksFirst": boolean;
+
+    /**
+     * Trigger is what it waits on; When says when it holds, as a sentence ends ("when its
+     * checks pass", "once its checks settle", "at 09:00"), and At when, when the clock
+     * alone decides it, nil while it waits on GitHub.
+     */
+    "trigger": catalog$0.Event;
+    "when": string;
+    "at": string | null;
+
+    /**
+     * Steps are what it will do, in order, as a match's steps show before they start.
+     */
+    "steps": MatchStep[] | null;
+}
+
+/**
  * Verdict is what Wait for the checks found of an agent's run.
  */
 export type Verdict = "fixed" | "still_failing" | "unknown" | "no_push" | "push_rejected" | "overtaken";

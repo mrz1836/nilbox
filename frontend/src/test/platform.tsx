@@ -239,12 +239,14 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     autopilotActivityFrom: () => Promise.resolve(activityPage({ days: [] })),
     autopilotItemHistory: (itemId) => Promise.resolve({ itemId, matches: [], open: 0 }),
     latestAutopilotMatches: () => Promise.resolve([]),
+    upcomingAutopilotRuns: () => Promise.resolve([]),
     undoAutopilot: (ids) => Promise.resolve({ putBack: ids ?? [], left: [], skipped: [], words: 'Put back 1 item.' }),
     tryRoutineAgain: () => Promise.resolve([]),
     approveAutopilotBacklog: () => Promise.resolve([]),
     skipAutopilotBacklog: (_routineId, ids) =>
       Promise.resolve(ids.map((id) => autopilotMatch({ id, state: 'dismissed', reason: 'you_skipped' }))),
     previewAutopilotActions: () => Promise.resolve([]),
+    leaveItemAlone: done,
     letRoutineActAgain: done,
     clearAutopilotHistory: () => Promise.resolve({ removed: 4, kept: 1 }),
     // The builder renders from the real catalog, and a draft reads with no problem.

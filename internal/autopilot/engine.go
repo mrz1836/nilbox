@@ -385,6 +385,10 @@ type Engine struct {
 	lastNotify time.Time
 	notifying  bool
 
+	// upcoming are the routines that will run on an item by themselves, by item, as the
+	// last cycle that decided every routine found them (upcoming.go).
+	upcoming map[int64][]Upcoming
+
 	// work tracks the workers, which Run waits for before it returns.
 	work sync.WaitGroup
 }
@@ -717,6 +721,7 @@ func (e *Engine) turnOff(ctx context.Context) {
 	}
 
 	e.glanced = nil
+	e.keepUpcoming(nil)
 	e.svc.rebuildWatches(ctx)
 	e.notify()
 }

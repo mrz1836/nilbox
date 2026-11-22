@@ -15,6 +15,7 @@ import type {
   AutopilotItemRef,
   AutopilotLeftAlone,
   AutopilotMatch,
+  AutopilotMatchStep,
   AutopilotMatching,
   AutopilotMode,
   AutopilotReadiness,
@@ -26,10 +27,12 @@ import type {
   AutopilotRun,
   AutopilotStepKind,
   AutopilotTarget,
+  AutopilotUpcoming,
   AutopilotVerdict,
   DescribeAttachRef,
 } from '../platform'
 import { counted, formatCount } from './format'
+import { formatUntil } from './time'
 
 // modeLabels name the modes, from the most careful.
 export const modeLabels: Readonly<Record<AutopilotMode, string>> = {
@@ -508,6 +511,98 @@ export function chipOf(m: AutopilotMatch): Chip {
 
   // A match that is done ran, unless it says it closed for another reason.
   return m.reason === '' || m.reason === 'would_run' ? reasonChips.ran : reasonChips[m.reason]
+}
+
+// ChipView is what an item's ⚡ chip shows: the newest match a routine has on it while that
+// is open (waiting on the user or on a limit, or at work), the routines that will run on it
+// by themselves next (next, the first of them, which the chip names), else that newest
+// match; null while there is neither.
+export type ChipView =
+  | { kind: 'match'; match: AutopilotMatch }
+  | { kind: 'upcoming'; upcoming: readonly AutopilotUpcoming[]; next: AutopilotUpcoming }
+  | null
+
+// openStates are a match's states while it is open: it waits, is blocked or queued, or works.
+const openStates: ReadonlySet<AutopilotMatch['state']> = new Set([
+  'waiting',
+  'blocked',
+  'queued',
+  'running',
+  'verifying',
+])
+
+// chipView decides what an item's ⚡ chip shows, of its newest match and the routines that
+// will run on it: what goes on now comes first, then what comes next, then what was.
+export function chipView(match: AutopilotMatch | undefined, upcoming: readonly AutopilotUpcoming[]): ChipView {
+  if (match !== undefined && openStates.has(match.state)) {
+    return { kind: 'match', match }
+  }
+
+  const [next] = upcoming
+
+  if (next !== undefined) {
+    return { kind: 'upcoming', upcoming, next }
+  }
+
+  return match === undefined ? null : { kind: 'match', match }
+}
+
+// upcomingWhen says when a routine that will run on an item does, as a sentence ends: for one
+// the clock decides, how long until then ("in 2m"), or "any moment" once it is due (the next
+// cycle runs it); else the trigger's own words ("when its checks pass").
+export function upcomingWhen(u: Pick<AutopilotUpcoming, 'when' | 'at'>, now: Date): string {
+  if (u.at === null) {
+    return u.when
+  }
+
+  const left = formatUntil(now, u.at)
+
+  return left === 'now' ? 'any moment' : `in ${left}`
+}
+
+// upcomingChipText is what the chip says of the routine that runs next: "Runs when its
+// checks pass", "Runs in 2m".
+export function upcomingChipText(u: Pick<AutopilotUpcoming, 'when' | 'at'>, now: Date): string {
+  return `Runs ${upcomingWhen(u, now)}`
+}
+
+// upcomingTitle says, for the chip's tooltip, which routine runs next and when, and how many
+// more will: "Merge syncs runs when its checks pass", "Fix it asks you first in 2m · 1 more".
+export function upcomingTitle(list: readonly AutopilotUpcoming[], now: Date): string {
+  const [first] = list
+
+  if (first === undefined) {
+    return ''
+  }
+
+  const verb = first.asksFirst ? 'asks you first' : 'runs'
+  const more = list.length > 1 ? ` · ${formatCount(list.length - 1)} more` : ''
+
+  return `${first.routine} ${verb} ${upcomingWhen(first, now)}${more}`
+}
+
+// upcomingLine says how a routine that will run on an item does it, and when: "Runs by itself
+// when its checks pass", "Asks you first, once its checks settle · in 2m".
+export function upcomingLine(u: Pick<AutopilotUpcoming, 'asksFirst' | 'when' | 'at'>, now: Date): string {
+  const how = u.asksFirst ? 'Asks you first,' : 'Runs by itself'
+  const until = u.at === null ? '' : ` · ${upcomingWhen(u, now)}`
+
+  return `${how} ${u.when}${until}`
+}
+
+// plannedText says what a routine's steps will do, in order: "Comment one of my replies,
+// then Merge it"; a GitHub step says its actions.
+export function plannedText(steps: readonly Pick<AutopilotMatchStep, 'kind' | 'label' | 'actions'>[]): string {
+  return steps
+    .map((s) =>
+      s.kind === 'github' && s.actions.length > 0 ? s.actions.map((a) => actionLabels[a]).join(', then ') : s.label,
+    )
+    .join(', then ')
+}
+
+// routineTarget opens the routine id in the Autopilot tab.
+export function routineTarget(id: number): AutopilotTarget {
+  return { routineId: id, matchId: 0, runId: 0, createdAt: '', activity: false }
 }
 
 // rowAutopilot is what a card's next step reads of the newest match a routine has on its

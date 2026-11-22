@@ -78,6 +78,7 @@ export type {
     TestResult,
     TestSearch,
     Undone,
+    Upcoming,
     Working,
     WorkingList,
     WorkingRun

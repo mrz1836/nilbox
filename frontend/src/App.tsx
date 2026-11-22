@@ -67,7 +67,7 @@ import { agentName, type LaunchOptions } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
-import { useAutopilot, useAutopilotChips } from './lib/useAutopilot'
+import { useAutopilot, useAutopilotChips, useAutopilotUpcoming } from './lib/useAutopilot'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
@@ -579,10 +579,13 @@ export function App() {
   const autopilotOn = config.settings?.autopilot.enabled === true
   // autopilot is Autopilot as the whole window shares it: what its tab counts, the
   // routines (whose names the rows give a routine's marks), and the engine; chips are the
-  // newest match a routine has on each inbox item, for its ⚡ chip, read only while
-  // Autopilot is on.
+  // newest match a routine has on each inbox item, for its ⚡ chip, and upcoming the routines
+  // that will run on each by themselves, which the chip says before they do, both read only
+  // while Autopilot is on.
   const autopilot = useAutopilot()
-  const chips = useAutopilotChips(autopilotOn ? config.items.map((i) => i.id).join(',') : '')
+  const inboxIds = autopilotOn ? config.items.map((i) => i.id).join(',') : ''
+  const chips = useAutopilotChips(inboxIds)
+  const upcoming = useAutopilotUpcoming(inboxIds)
   const [nav, go] = useReducer(navigate, startNav)
   // notificationsTab is the Notifications page's tab: the one chosen this run, or else the
   // one the settings remember.
@@ -1130,10 +1133,12 @@ export function App() {
   }
 
   // rows are what every row says of Autopilot: the routines' names, each inbox item's
-  // chip, the way to Activity, and the way to a background run's view.
+  // chip and the routines that will run on it, the way to Activity, and the way to a
+  // background run's view.
   const rows = {
     names: autopilot.names,
     chips,
+    upcoming,
     onShow: openAutopilot,
     onWatch: watchSession,
     terminal: config.settings?.terminal ?? null,

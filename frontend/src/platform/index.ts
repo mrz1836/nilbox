@@ -501,6 +501,10 @@ export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | '
   runs: AutopilotRun[]
 }
 export type AutopilotEffect = NonNullLists<autopilot.Effect>
+// AutopilotUpcoming is a routine that will run on an item by itself once its trigger, on its
+// way, holds (checks still running, settling, a schedule due later today): what its ⚡ chip
+// says before it runs there.
+export type AutopilotUpcoming = Omit<NonNullLists<autopilot.Upcoming>, 'steps'> & { steps: AutopilotMatchStep[] }
 // The agents' runs going, as Activity's Working lists them; a run's events, as the run view reads them; and today's runs, as a bug report
 // counts them.
 export type AutopilotWorkingList = NonNullLists<autopilot.WorkingList>
@@ -1381,10 +1385,12 @@ export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = servic
 // routines did before a match (0 for the newest), by day, and ActivityFrom what they did
 // from a match on and before another (0 for the newest), a stretch of the pages loaded read
 // again; ItemHistory one item's, which its
-// ⚡ chip opens; LatestMatches each item's newest match, which the chip says. Watching lists
+// ⚡ chip opens; LatestMatches each item's newest match, which the chip says, and Upcoming
+// the routines that will run on each item by themselves, from the engine's memory, which
+// the chip says before they do. Watching lists
 // the items a routine watches, which the inbox's ItemsByID turns into rows. Matching counts
 // what a routine matches now that it has no record of, the question SetEnabled and SetMode
-// take the answer to (current). Undo, TryAgain, LetActAgain, and ClearHistory are commands
+// take the answer to (current). Undo, TryAgain, LeaveAlone, LetActAgain, and ClearHistory are commands
 // the engine applies. Every read is of the database alone, and an "autopilot:updated" event
 // follows each change, at most four times a second.
 //
@@ -1405,6 +1411,7 @@ export const {
   Watching: routineWatching,
   Engine: getAutopilotEngine,
   Undo: undoAutopilot,
+  LeaveAlone: leaveItemAlone,
   LetActAgain: letRoutineActAgain,
   ClearHistory: clearAutopilotHistory,
   Catalog: getAutopilotCatalog,
@@ -1493,6 +1500,9 @@ export const autopilotItemHistory = autopilotService.ItemHistory as (id: number)
 export const latestAutopilotMatches = autopilotService.LatestMatches as (
   ids: number[] | null,
 ) => CancellablePromise<AutopilotMatch[]>
+export const upcomingAutopilotRuns = autopilotService.Upcoming as (
+  ids: number[] | null,
+) => CancellablePromise<AutopilotUpcoming[]>
 export const tryRoutineAgain = autopilotService.TryAgain as (
   id: number,
   itemID: number,

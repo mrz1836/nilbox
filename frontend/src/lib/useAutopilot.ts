@@ -7,11 +7,13 @@ import {
   latestAutopilotMatches,
   listRoutines,
   routineNames,
+  upcomingAutopilotRuns,
   type AutopilotEngine,
   type AutopilotGlance,
   type AutopilotMatch,
   type AutopilotReadiness,
   type AutopilotRoutine,
+  type AutopilotUpcoming,
 } from '../platform'
 import { inChunks } from './autopilot'
 import { all, andThen } from './call'
@@ -110,6 +112,39 @@ export function useAutopilotChips(ids: string): ReadonlyMap<number, AutopilotMat
   })
 
   return ids === '' ? noChips : (latest.data ?? noChips)
+}
+
+// noUpcoming is no item's routines that will run on it, shared so it stays the same.
+const noUpcoming: ReadonlyMap<number, readonly AutopilotUpcoming[]> = new Map()
+
+// useAutopilotUpcoming reads the routines that will run by themselves on each item among
+// ids, by item, for the ⚡ chips of their rows to say before they do: as ids change, and
+// whenever Autopilot says it changed (each of its cycles does), as many at a time as the
+// backend reads (inChunks). They come from the engine's memory, so a read costs nothing.
+// ids is a list joined with commas, so it compares as a value.
+export function useAutopilotUpcoming(ids: string): ReadonlyMap<number, readonly AutopilotUpcoming[]> {
+  const upcoming = useQuery(
+    () =>
+      andThen(all(inChunks(ids.split(',').map(Number)).map((chunk) => upcomingAutopilotRuns(chunk))), (pages) => {
+        const byItem = new Map<number, AutopilotUpcoming[]>()
+
+        for (const u of pages.flat()) {
+          byItem.set(u.itemId, [...(byItem.get(u.itemId) ?? []), u])
+        }
+
+        return byItem
+      }),
+    [ids],
+    { enabled: ids !== '', log: 'could not read which routines will run on the items' },
+  )
+
+  useOnAutopilot(() => {
+    if (ids !== '') {
+      void upcoming.refetch()
+    }
+  })
+
+  return ids === '' ? noUpcoming : (upcoming.data ?? noUpcoming)
 }
 
 // noMatches are Needs you's matches until they load, shared so they stay the same.

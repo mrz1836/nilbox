@@ -3781,7 +3781,14 @@ the event and the occurrence (`checks_failed:commit:<oid>`, `labeled:label:<name
 own once-per (item, head commit, or day) replaces the trigger's. A key holds only what is
 known: Falls behind waits for the base branch to be read, so one occurrence never fires
 twice, without its base and then with it. Checks fail and Checks pass wait for the checks
-to settle, the newest completion at least the settle time ago. The
+to settle, the newest completion at least the settle time ago. A trigger that doesn't hold
+yet but will by itself says so (`Decision.Pending`, its `When`, its `At` when the clock
+alone decides it, and the `FireKey` it fires for then, with the routine's own once-per):
+Checks pass while its checks run (none failed, none waiting on a maintainer) or settle;
+Checks fail, waiting for every check, once one failed while the rest run or settle; a
+schedule due later today; Goes quiet within a day of its spell (`soonQuiet`). A trigger
+that waits on an event no one can foresee is never pending. `Plan.Conditions` decides the
+conditions alone, as `Evaluate` runs them, which the engine asks of a pending decision. The
 property tests (`FuzzShuffledConditionsDecideAlike`, `FuzzNegationOfAnUnknownIsUnknown`,
 `FuzzNeverYesOnAnUnknownItNeeds`) run over generated specs and facts; the last checks that
 reading what was missing never turns a yes or a no into anything else.
@@ -4302,10 +4309,31 @@ begins, and only a stretch up to the newest says what the routines leave alone),
 given, at most 500, its newest match that did something there or waits to, in one query,
 `ListLatestItemMatches`: open, or closed as done, skipped, or dismissed, never a baseline or
 one that closed as the item or the routine moved on before it acted, with its runs and
-effects, for the chip on every row; the window asks in chunks of 500, `inChunks`), `Explain`
+effects, for the chip on every row; the window asks in chunks of 500, `inChunks`),
+`Upcoming` (for the items among the ids, the routines that will run there by themselves,
+from the engine's memory, none while Autopilot is off or paused, signed out, or run by
+another copy; see *What runs next* below), `Explain`
 (the decision now, and what the ledger knows:
 the record for the occurrence, the tries used, not in the watch, left alone), and `Engine`. No
 result holds a nil list.
+
+### What runs next (`upcoming.go`)
+
+What the user sees is the ⚡ chip's *What runs next* in `docs/desktop.md`. As a cycle decides
+each routine on each item it watches (`evaluateItem`), a decision whose trigger is pending
+goes to `noteUpcoming`: the routine acts (not Dry run), has no record of the pending
+`FireKey` but one that reopens (`reopensRow`), so a commit it ran on whose checks run again
+says nothing, and its `Plan.Conditions` is a sure yes; the item is one it doesn't leave
+alone, which `evaluateItem` checked first. Each becomes an `Upcoming` (the routine, its mode
+and whether it waits for an OK, `waitsForOK`: Ask first with a step `asksFirst` names, its
+trigger, `When` and `At`, and its steps as a match's show before they start,
+`plannedSteps`, once a cycle). A pass that decided every routine replaces the engine's map
+by item whole (`keepUpcoming`, under `Engine.mu`); turning Autopilot off empties it. So
+`Service.Upcoming` is a map lookup, no database, no GitHub, and the `autopilot:updated`
+every cycle sends keeps the window's copy current. `LeaveAlone(routine, item)` inserts the
+routine's hands-off row (`whyLeftAlone`), which Activity's Left alone line and
+`LetActAgain` already handle, forgets the item's entry at once (`dropUpcoming`), and wakes
+the engine.
 
 ### Verify, tries, the loop guard, and profile fallback
 
@@ -5342,7 +5370,14 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   again as the window's clock enters a new local day, so *today* turns over at midnight
   while nothing changes; `useAutopilotChips` reads `LatestMatches` for the ids a list
   shows, a chunk at a time (`all` and `andThen` in `lib/call.ts`, which keep the bound
-  calls' cancel). **`lib/useAutopilotActivity.ts`** holds one pager per tab, outside React
+  calls' cancel), and `useAutopilotUpcoming` reads `Upcoming` for the same ids, by item,
+  again on every `autopilot:updated`; App and the Watching list hand both to the rows
+  (`AutopilotRows.upcoming`). `AutopilotChip` shows `chipView`'s choice: an open match's
+  chip, else the routines that will run (dashed, `upcomingChipText`, its countdown through
+  `useNowAs`, `upcomingTitle` as its tooltip), else the newest match's; its panel's **Up
+  next** (`UpNextEntry`: `upcomingLine`, `plannedText`, **Open routine** through
+  `routineTarget`, **Leave this one alone** and its **Undo**) keeps the list it opened with
+  while it stays open, above the item's history. **`lib/useAutopilotActivity.ts`** holds one pager per tab, outside React
   (`useSyncExternalStore`), which keeps Activity as stretches, newest first, each ending
   where the next begins: Activity's newest page (100 matches) as the tab first shows, and a
   page more by `next` as the user asks for more, each a stretch of its own, never merged.

@@ -4,7 +4,7 @@ import { inChunks, rowAutopilot } from '../../lib/autopilot'
 import { all, andThen } from '../../lib/call'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
-import { useAutopilotChips, useOnAutopilot } from '../../lib/useAutopilot'
+import { useAutopilotChips, useAutopilotUpcoming, useOnAutopilot } from '../../lib/useAutopilot'
 import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import { itemsByID, routineWatching, type InboxItem } from '../../platform'
@@ -49,6 +49,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
     enabled: ids.data !== undefined,
   })
   const chips = useAutopilotChips(key)
+  const upcoming = useAutopilotUpcoming(key)
   const list = items.data ?? []
   const host = useSheetHost({ kit, items: list, listTitle: 'Watching' })
   const listRef = useRef<HTMLUListElement>(null)
@@ -123,7 +124,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
           refresh read them.
         </p>
       ) : (
-        <AutopilotRowsContext value={{ names: rows?.names ?? new Map(), chips, onShow: rows?.onShow }}>
+        <AutopilotRowsContext value={{ names: rows?.names ?? new Map(), chips, upcoming, onShow: rows?.onShow }}>
           <ul ref={listRef} aria-label="Watching" className="@container rounded-lg border border-border bg-surface">
             {list.map((item) => (
               <ItemRow

@@ -90,7 +90,8 @@ func TestDecisionsGolden(t *testing.T) {
 func TestDecisionsGoldenWritesEveryField(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, 4, reflect.TypeFor[eval.Decision]().NumField(), "writeDecision writes every field of a decision")
+	assert.Equal(t, 5, reflect.TypeFor[eval.Decision]().NumField(), "writeDecision writes every field of a decision")
+	assert.Equal(t, 3, reflect.TypeFor[eval.Pending]().NumField(), "writeDecision writes every field of a pending trigger")
 	assert.Equal(t, 5, reflect.TypeFor[eval.Trace]().NumField(), "writeDecision writes every field of a trace")
 }
 
@@ -130,7 +131,7 @@ func decideSection(t *testing.T, s goldenSection) string {
 
 // writeDecision writes one decision after a blank line: a line naming it, then every
 // field of the decision and of each step of its trace, one a line, in the order the
-// types declare them.
+// types declare them; a pending trigger only when there is one, so the files show where.
 func writeDecision(b *strings.Builder, name string, d eval.Decision) {
 	fmt.Fprintf(b, "\n== %s\n", name)
 	fmt.Fprintf(b, "match: %s\nfireKey: %s\nneeds: %s\n", text(string(d.Match)), text(d.FireKey), needsText(d.Needs))
@@ -147,6 +148,15 @@ func writeDecision(b *strings.Builder, name string, d eval.Decision) {
 	for _, tr := range d.Trace {
 		fmt.Fprintf(b, "  - path: %s\n    condition: %s\n    result: %s\n    actual: %s\n    need: %s\n",
 			text(tr.Path), text(tr.Condition), text(string(tr.Result)), text(tr.Actual), text(string(tr.Need)))
+	}
+
+	if p := d.Pending; p != nil {
+		at := "nil"
+		if p.At != nil {
+			at = p.At.UTC().Format(time.RFC3339)
+		}
+
+		fmt.Fprintf(b, "pending:\n  when: %s\n  at: %s\n  fireKey: %s\n", text(p.When), at, text(p.FireKey))
 	}
 }
 

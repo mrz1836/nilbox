@@ -155,6 +155,28 @@ type Decision struct {
 	// Needs are the data still missing, for an unknown decision: reading them may
 	// decide it.
 	Needs []facts.Need `json:"needs"`
+
+	// Pending is the trigger on its way, for a decision whose trigger doesn't hold yet but
+	// will without anyone doing anything (checks still running, settling, a schedule due
+	// later today); nil for any other, a trigger that waits on an event no one can foresee
+	// (a comment, a label, an approval) among them. The conditions aren't decided with it:
+	// Plan.Conditions decides them.
+	Pending *Pending `json:"pending,omitempty"`
+}
+
+// Pending is a trigger on its way: when it holds, and the occurrence it fires for then.
+type Pending struct {
+	// When says when it holds, as a sentence ends: "when its checks pass", "once its
+	// checks settle", "at 09:00".
+	When string `json:"when"`
+
+	// At is when it holds, when the clock alone decides it (settling, a schedule, a quiet
+	// spell); nil while it waits on GitHub (checks still running).
+	At *time.Time `json:"at"`
+
+	// FireKey is the occurrence it fires for then, as the decision's FireKey will be, which
+	// tells a routine whether it handled that occurrence already.
+	FireKey string `json:"fireKey"`
 }
 
 // Evaluate decides whether s matches the item f describes at now, with what the

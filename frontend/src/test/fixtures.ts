@@ -54,6 +54,7 @@ import type {
   AutopilotItemRef,
   AutopilotLeftAlone,
   AutopilotMatch,
+  AutopilotUpcoming,
   AutopilotRoutine,
   AutopilotRun,
   AutopilotRunEnding,
@@ -693,6 +694,26 @@ export function autopilotEffect(overrides: Partial<AutopilotEffect> = {}): Autop
     undoneAt: null,
     reversedAt: null,
     canUndo: true,
+    ...overrides,
+  }
+}
+
+// autopilotUpcoming is routine 7, Merge syncs, which will run by itself on item 1 when its
+// checks pass: it comments one of the user's replies, then merges it.
+export function autopilotUpcoming(overrides: Partial<AutopilotUpcoming> = {}): AutopilotUpcoming {
+  return {
+    itemId: 1,
+    routineId: 7,
+    routine: 'Merge syncs',
+    mode: 'auto',
+    asksFirst: false,
+    trigger: 'checks_passed',
+    when: 'when its checks pass',
+    at: null,
+    steps: [
+      githubStep({ kind: 'github', label: 'GitHub actions', actions: ['reply'] }),
+      githubStep({ kind: 'merge', label: 'Merge it', actions: [] }),
+    ],
     ...overrides,
   }
 }

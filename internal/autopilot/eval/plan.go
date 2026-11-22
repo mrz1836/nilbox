@@ -96,15 +96,20 @@ func prepareClause(c spec.Clause, path string) clausePlan {
 // Evaluate decides whether the plan's spec matches the item f describes at now, with what
 // the routine's ledger knows of it, as Evaluate does.
 func (p *Plan) Evaluate(f facts.Facts, h History, now time.Time) Decision {
-	trig, key, trace := p.trigger.decide(f, h, now)
+	out, trace := p.trigger.decide(f, h, now)
+	trig := out.result
 
 	d := Decision{Match: trig, Trace: []Trace{trace}, Needs: []facts.Need{}}
 
 	if trig == Yes {
-		d.FireKey = fireKey(p.spec, key, f, h, now)
+		d.FireKey = fireKey(p.spec, out.key, f, h, now)
 	}
 
 	if trig == No {
+		if s := out.soon; s != nil {
+			d.Pending = &Pending{When: s.when, At: s.at, FireKey: fireKey(p.spec, s.key, f, h, now)}
+		}
+
 		return d
 	}
 
@@ -136,9 +141,9 @@ func (p *Plan) Conditions(f facts.Facts, h History, now time.Time) Result {
 	return p.conditions.decide(f, h, now).result
 }
 
-// decide decides whether the trigger holds for the item, and the occurrence's fire key.
-// A click's run holds whatever the trigger, once per click.
-func (t *triggerPlan) decide(f facts.Facts, h History, now time.Time) (Result, string, Trace) {
+// decide decides whether the trigger holds for the item, with the occurrence's fire key,
+// or is on its way. A click's run holds whatever the trigger, once per click.
+func (t *triggerPlan) decide(f facts.Facts, h History, now time.Time) (fired, Trace) {
 	tr := Trace{Path: "trigger", Condition: t.condition}
 
 	var out fired
@@ -157,7 +162,7 @@ func (t *triggerPlan) decide(f facts.Facts, h History, now time.Time) (Result, s
 
 	tr.Result, tr.Actual, tr.Need = out.result, out.actual, out.need
 
-	return out.result, out.key, tr
+	return out, tr
 }
 
 // decide decides a list of conditions in the order it runs, stopping at the first

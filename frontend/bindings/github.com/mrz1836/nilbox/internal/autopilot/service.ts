@@ -223,6 +223,16 @@ export function LatestMatches(ids: number[] | null): $CancellablePromise<$models
 }
 
 /**
+ * LeaveAlone has the routine id leave the item alone from now on, as it does an item whose
+ * change by it the user took back: it no longer decides on the item, so never runs there,
+ * until Let it act again, which Activity's Left alone line offers. The item's ⚡ chip offers
+ * it for a routine about to run there.
+ */
+export function LeaveAlone(id: number, itemID: number): $CancellablePromise<void> {
+    return $Call.ByID(1939188937, id, itemID);
+}
+
+/**
  * LetActAgain lets the routine id act on the item again, which it left alone since the
  * user reversed what it did there.
  */
@@ -543,6 +553,17 @@ export function TryAgain(id: number, itemID: number): $CancellablePromise<$model
  */
 export function Undo(ids: number[] | null): $CancellablePromise<$models.Undone> {
     return $Call.ByID(4032398701, ids);
+}
+
+/**
+ * Upcoming returns the routines that will run by themselves on the items among ids (at most
+ * as many as LatestMatches reads), by item in ids' order, each item's in the routines'
+ * order, as the engine's last cycle found them. It reads memory alone. It returns none while
+ * Autopilot is off or paused, no one is signed in, or another copy of the app runs the
+ * routines, since then nothing here runs by itself. Its list is never nil.
+ */
+export function Upcoming(ids: number[] | null): $CancellablePromise<$models.Upcoming[] | null> {
+    return $Call.ByID(2825927473, ids);
 }
 
 /**

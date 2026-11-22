@@ -8,6 +8,7 @@ import {
   autopilotGlance,
   autopilotHold,
   autopilotMatch,
+  autopilotUpcoming,
   claudeMissing,
   dryRunMatch,
   githubStep,
@@ -26,6 +27,7 @@ import {
   cadenceOf,
   checkText,
   chipOf,
+  chipView,
   describeAttach,
   describeExamples,
   describeSeesText,
@@ -52,6 +54,7 @@ import {
   pastRulesBlocked,
   pastRulesOffStatus,
   pendingText,
+  plannedText,
   readyOf,
   reviewPostLabel,
   reasonChips,
@@ -64,6 +67,10 @@ import {
   skipLabel,
   skippedBacklogText,
   troubled,
+  upcomingChipText,
+  upcomingLine,
+  upcomingTitle,
+  upcomingWhen,
 } from './autopilot'
 
 describe('autopilotBadge', () => {
@@ -645,6 +652,44 @@ describe('matchingWords', () => {
     expect(matchingWords({ count: 1, pullRequests: 1, issues: 0, unknown: 0, incomplete: true })).toBe(
       '1 pull request matches right now.',
     )
+  })
+})
+
+describe('what runs next', () => {
+  const now = new Date('2026-06-15T12:00:00Z')
+  const next = autopilotUpcoming()
+
+  it('puts what goes on now first, then what runs next, then what was', () => {
+    const ran = autopilotMatch()
+    const waiting = autopilotMatch({ state: 'waiting', blockedBy: 'ask', reason: '', closedAt: null })
+
+    expect(chipView(waiting, [next])).toEqual({ kind: 'match', match: waiting })
+    expect(chipView(ran, [next])).toEqual({ kind: 'upcoming', upcoming: [next], next })
+    expect(chipView(undefined, [next])).toEqual({ kind: 'upcoming', upcoming: [next], next })
+    expect(chipView(ran, [])).toEqual({ kind: 'match', match: ran })
+    expect(chipView(undefined, [])).toBeNull()
+  })
+
+  it('says when, in the trigger’s words, or counting down to a moment the clock decides', () => {
+    expect(upcomingWhen(next, now)).toBe('when its checks pass')
+    expect(upcomingWhen({ when: 'once its checks settle', at: '2026-06-15T12:02:00Z' }, now)).toBe('in 2m')
+    expect(upcomingWhen({ when: 'at 13:00', at: '2026-06-15T13:00:00Z' }, now)).toBe('in 1h')
+    expect(upcomingWhen({ when: 'once its checks settle', at: '2026-06-15T11:59:00Z' }, now)).toBe('any moment')
+    expect(upcomingChipText(next, now)).toBe('Runs when its checks pass')
+  })
+
+  it('says who runs next, how, and what each will do', () => {
+    expect(upcomingTitle([next], now)).toBe('Merge syncs runs when its checks pass')
+    expect(upcomingTitle([{ ...next, mode: 'ask', asksFirst: true }, next, next], now)).toBe(
+      'Merge syncs asks you first when its checks pass · 2 more',
+    )
+    expect(upcomingTitle([], now)).toBe('')
+    expect(upcomingLine(next, now)).toBe('Runs by itself when its checks pass')
+    expect(upcomingLine({ asksFirst: true, when: 'once its checks settle', at: '2026-06-15T12:02:00Z' }, now)).toBe(
+      'Asks you first, once its checks settle · in 2m',
+    )
+    expect(plannedText(next.steps)).toBe('Comment one of my replies, then Merge it')
+    expect(plannedText([])).toBe('')
   })
 })
 

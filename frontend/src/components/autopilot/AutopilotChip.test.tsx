@@ -3,9 +3,16 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AutopilotMatch, AutopilotTarget, InboxItem } from '../../platform'
+import type { AutopilotMatch, AutopilotTarget, AutopilotUpcoming, InboxItem } from '../../platform'
 import { at } from '../../test/clock'
-import { autopilotEffect, autopilotMatch, autopilotTarget, dryRunMatch, item } from '../../test/fixtures'
+import {
+  autopilotEffect,
+  autopilotMatch,
+  autopilotTarget,
+  autopilotUpcoming,
+  dryRunMatch,
+  item,
+} from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { expectWraps } from '../../test/wrap'
 import { ItemRow } from '../ItemRow'
@@ -18,25 +25,35 @@ const names = new Map([
   [4, 'Investigate new bugs'],
 ])
 
-// withRows renders inside the rows' Autopilot, with the chips given, as the window does.
-function withRows(chips: ReadonlyMap<number, AutopilotMatch>, onShow?: (target: AutopilotTarget) => void) {
+// withRows renders inside the rows' Autopilot, with the chips and the routines that will run
+// given, as the window does.
+function withRows(
+  chips: ReadonlyMap<number, AutopilotMatch>,
+  onShow?: (target: AutopilotTarget) => void,
+  upcoming: ReadonlyMap<number, readonly AutopilotUpcoming[]> = new Map(),
+) {
   const Clock = at()
 
   return function Rows({ children }: { children: ReactNode }) {
     return (
       <Clock>
-        <AutopilotRowsContext value={{ names, chips, onShow }}>{children}</AutopilotRowsContext>
+        <AutopilotRowsContext value={{ names, chips, upcoming, onShow }}>{children}</AutopilotRowsContext>
       </Clock>
     )
   }
 }
 
-function renderRow(it: InboxItem, chips: ReadonlyMap<number, AutopilotMatch> = new Map()) {
+function renderRow(
+  it: InboxItem,
+  chips: ReadonlyMap<number, AutopilotMatch> = new Map(),
+  upcoming: ReadonlyMap<number, readonly AutopilotUpcoming[]> = new Map(),
+  onShow?: (target: AutopilotTarget) => void,
+) {
   render(
     <ul>
       <ItemRow item={it} launch={null} />
     </ul>,
-    { wrapper: withRows(chips) },
+    { wrapper: withRows(chips, onShow, upcoming) },
   )
 }
 
@@ -175,5 +192,113 @@ describe('a routine’s marks on a row', () => {
 
     expect(screen.queryByText(/by the routine/)).not.toBeInTheDocument()
     expect(screen.getByTitle(/^Snoozed until/)).toBeInTheDocument()
+  })
+
+  describe('what runs next', () => {
+    const next = 'Autopilot: Merge syncs runs when its checks pass. Show what runs next'
+
+    it('says, dashed, which routine will run and when, before it does', () => {
+      renderRow(item(), new Map(), new Map([[1, [autopilotUpcoming()]]]))
+
+      const chip = screen.getByRole('button', { name: next })
+
+      expect(chip).toHaveTextContent('Runs when its checks pass')
+      expect(chip).toHaveAttribute('title', 'Merge syncs runs when its checks pass')
+      expect(chip).toHaveAttribute('data-upcoming')
+      expect(chip).toHaveClass('outline-dashed', 'text-accent')
+    })
+
+    it('counts down to a moment the clock decides, says when it is due, and how many more will run', () => {
+      const settling = autopilotUpcoming({
+        when: 'once its checks settle',
+        at: '2026-06-15T12:02:00Z',
+        mode: 'ask',
+        asksFirst: true,
+      })
+      const due = autopilotUpcoming({ itemId: 2, at: '2026-06-15T11:59:00Z' })
+
+      renderRow(item(), new Map(), new Map([[1, [settling, autopilotUpcoming({ routineId: 8, routine: 'Tell me' })]]]))
+      renderRow(item({ id: 2, number: 13, title: 'Another' }), new Map(), new Map([[2, [due]]]))
+
+      const chip = screen.getByRole('button', { name: /^Autopilot: Merge syncs asks you first in 2m · 1 more/ })
+
+      expect(chip).toHaveTextContent('Runs in 2m')
+      expect(screen.getByRole('button', { name: /^Autopilot: Merge syncs runs any moment/ })).toHaveTextContent(
+        'Runs any moment',
+      )
+    })
+
+    it('says what goes on now before what runs next, and what runs next before what was', () => {
+      const queued = autopilotMatch({ state: 'queued', reason: '', blockedBy: 'slot', closedAt: null })
+
+      renderRow(item(), new Map([[1, queued]]), new Map([[1, [autopilotUpcoming()]]]))
+      renderRow(
+        item({ id: 2, number: 13, title: 'Another' }),
+        new Map([[2, autopilotMatch({ item: { ...autopilotMatch().item, id: 2 } })]]),
+        new Map([[2, [autopilotUpcoming({ itemId: 2 })]]]),
+      )
+
+      expect(screen.getAllByRole('button', { name: /^Autopilot:/ }).map((b) => b.getAttribute('aria-label'))).toEqual([
+        expect.stringMatching(/^Autopilot: Queued/),
+        expect.stringMatching(/^Autopilot: Merge syncs runs when its checks pass/),
+      ])
+    })
+
+    it('opens Up next, how and when each runs and what it will do, above the item’s history', async () => {
+      const onShow = vi.fn<(target: AutopilotTarget) => void>()
+      platform.autopilotItemHistory.mockResolvedValue({ itemId: 1, matches: [autopilotMatch()], open: 0 })
+      renderRow(item(), new Map([[1, autopilotMatch()]]), new Map([[1, [autopilotUpcoming()]]]), onShow)
+
+      await userEvent.click(screen.getByRole('button', { name: next }))
+
+      const panel = within(screen.getByRole('dialog', { name: 'Autopilot' }))
+      const upNext = within(panel.getByRole('region', { name: 'Up next' }))
+
+      expect(upNext.getByText('Merge syncs')).toBeInTheDocument()
+      expect(upNext.getByText('Runs by itself when its checks pass')).toBeInTheDocument()
+      expect(upNext.getByText('Then: Comment one of my replies, then Merge it')).toBeInTheDocument()
+      expect(await panel.findByText('What the routines did with it')).toBeInTheDocument()
+
+      await userEvent.click(upNext.getByRole('button', { name: 'Open routine' }))
+
+      expect(onShow).toHaveBeenCalledExactlyOnceWith({
+        routineId: 7,
+        matchId: 0,
+        runId: 0,
+        createdAt: '',
+        activity: false,
+      })
+    })
+
+    it('leaves the item alone on a click, keeping the line with Undo, which lets it act again', async () => {
+      renderRow(item(), new Map(), new Map([[1, [autopilotUpcoming()]]]))
+
+      await userEvent.click(screen.getByRole('button', { name: next }))
+
+      const panel = within(screen.getByRole('dialog', { name: 'Autopilot' }))
+
+      expect(panel.queryByText('What the routines did with it')).not.toBeInTheDocument()
+
+      await userEvent.click(panel.getByRole('button', { name: 'Leave this one alone' }))
+
+      expect(platform.leaveItemAlone).toHaveBeenCalledExactlyOnceWith(7, 1)
+      expect(await panel.findByRole('status')).toHaveTextContent('It leaves this one alone now')
+
+      await userEvent.click(panel.getByRole('button', { name: 'Undo' }))
+
+      expect(platform.letRoutineActAgain).toHaveBeenCalledExactlyOnceWith(7, 1)
+      expect(await panel.findByText('Runs by itself when its checks pass')).toBeInTheDocument()
+    })
+
+    it('says why it couldn’t leave the item alone', async () => {
+      platform.leaveItemAlone.mockRejectedValue(new Error('Autopilot is off. Turn it on in Settings → Labs.'))
+      renderRow(item(), new Map(), new Map([[1, [autopilotUpcoming()]]]))
+
+      await userEvent.click(screen.getByRole('button', { name: next }))
+      await userEvent.click(screen.getByRole('button', { name: 'Leave this one alone' }))
+
+      expect(await screen.findByText(/Autopilot is off/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Leave this one alone' })).toBeInTheDocument()
+    })
   })
 })

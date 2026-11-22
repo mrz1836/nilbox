@@ -1,17 +1,34 @@
 import { createContext, use, useId, useState } from 'react'
 
-import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf } from '../../lib/autopilot'
+import {
+  chipOf,
+  chipView,
+  effectState,
+  effectVerb,
+  inActivity,
+  plannedText,
+  routineName,
+  routineTarget,
+  targetOf,
+  upcomingChipText,
+  upcomingLine,
+  upcomingTitle,
+} from '../../lib/autopilot'
 import { terminalLabel } from '../../lib/terminals'
 import { formatAgo, formatFull } from '../../lib/time'
 import { toneText } from '../../lib/tone'
 import { useMutation } from '../../lib/useMutation'
+import { useNowAs } from '../../lib/useNow'
 import { usePopover } from '../../lib/usePopover'
 import { useQuery } from '../../lib/useQuery'
 import {
   autopilotItemHistory,
+  leaveItemAlone,
+  letRoutineActAgain,
   undoAutopilot,
   type AutopilotMatch,
   type AutopilotTarget,
+  type AutopilotUpcoming,
   type InboxItem,
   type TerminalID,
 } from '../../platform'
@@ -23,12 +40,14 @@ import { RelativeTime } from '../RelativeTime'
 // AutopilotRows is what the rows need of Autopilot, which the window provides around the
 // inbox, and the Autopilot tab around a routine's Watching list: each routine's name by ID,
 // for the marks "Snoozed by ⚡ ...", the newest match a routine has on each item, by item,
-// for its ⚡ chip, onShow, which opens the Autopilot tab at a match in Activity or at a
-// run's view, and onWatch, which opens the run view of an agent's background run by its
-// session, as the session panel's and the launch button's Watch do.
+// for its ⚡ chip, the routines that will run on each item by themselves, which the chip
+// says before they do, onShow, which opens the Autopilot tab at a match in Activity, at a
+// routine, or at a run's view, and onWatch, which opens the run view of an agent's
+// background run by its session, as the session panel's and the launch button's Watch do.
 export interface AutopilotRows {
   names: ReadonlyMap<number, string>
   chips: ReadonlyMap<number, AutopilotMatch>
+  upcoming?: ReadonlyMap<number, readonly AutopilotUpcoming[]> | undefined
   onShow?: ((target: AutopilotTarget) => void) | undefined
   onWatch?: ((sessionId: string) => void) | undefined
   // terminal is the terminal chosen for launches, which Take over opens a run's
@@ -172,47 +191,206 @@ function ItemHistory({ itemId, onShow }: { itemId: number; onShow: AutopilotRows
   )
 }
 
+// noUpcoming is an item no routine will run on, shared so it stays the same.
+const noUpcoming: readonly AutopilotUpcoming[] = []
+
+interface UpNextEntryProps {
+  itemId: number
+  upcoming: AutopilotUpcoming
+  onShow: AutopilotRows['onShow']
+}
+
+// UpNextEntry is one routine that will run on the item: its name, how and when it runs,
+// what it will do, and the ways to see it (Open routine) or stop it running there (Leave
+// this one alone), which turns to Undo once it does, the line staying, so the user sees
+// what changed and can take it back.
+function UpNextEntry({ itemId, upcoming: u, onShow }: UpNextEntryProps) {
+  const leave = useMutation(() => leaveItemAlone(u.routineId, itemId))
+  const back = useMutation(() => letRoutineActAgain(u.routineId, itemId))
+  const [left, setLeft] = useState(false)
+  const line = useNowAs((now) => upcomingLine(u, now))
+  const planned = plannedText(u.steps)
+  const busy = leave.pending || back.pending
+
+  return (
+    <li className="flex flex-col gap-1 border-b border-border py-2 last:border-b-0">
+      <p className="truncate text-xs font-medium text-text" title={u.routine}>
+        {u.routine}
+      </p>
+      {left ? (
+        <p role="status" className="text-xs text-muted">
+          It leaves this one alone now, and never runs on it until you let it act again.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-text">{line}</p>
+          {planned !== '' && <p className="text-xs text-muted">{`Then: ${planned}`}</p>}
+        </>
+      )}
+      <ErrorText error={leave.error || back.error} />
+      <div className="flex flex-wrap items-center gap-1">
+        {left ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void back.run().then((result) => {
+                if (result.ok) {
+                  setLeft(false)
+                }
+              })
+            }}
+            className={quietButtonClass}
+          >
+            Undo
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            title="It won't run on this item, now or later, until you let it act again from Activity"
+            onClick={() => {
+              void leave.run().then((result) => {
+                if (result.ok) {
+                  setLeft(true)
+                }
+              })
+            }}
+            className={quietButtonClass}
+          >
+            Leave this one alone
+          </button>
+        )}
+        {onShow !== undefined && (
+          <button
+            type="button"
+            onClick={() => {
+              onShow(routineTarget(u.routineId))
+            }}
+            className={quietButtonClass}
+          >
+            Open routine
+          </button>
+        )}
+      </div>
+    </li>
+  )
+}
+
+// UpNext is what will run on the item by itself, routine by routine, as the chip's panel
+// shows it first.
+function UpNext({
+  itemId,
+  list,
+  onShow,
+}: {
+  itemId: number
+  list: readonly AutopilotUpcoming[]
+  onShow: AutopilotRows['onShow']
+}) {
+  return (
+    <section aria-label="Up next" className="flex flex-col">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
+        <AutopilotIcon className="size-3.5 shrink-0 text-accent" />
+        Up next
+      </p>
+      <ul aria-label="What will run on it" className="flex flex-col">
+        {list.map((u) => (
+          <UpNextEntry key={u.routineId} itemId={itemId} upcoming={u} onShow={onShow} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+// UpcomingLabel is what the chip says of the routine that runs next, kept current as the
+// clock moves on ("Runs in 2m" counts down), and nothing in a list narrower than 48rem.
+function UpcomingLabel({ upcoming }: { upcoming: AutopilotUpcoming }) {
+  const text = useNowAs((now) => upcomingChipText(upcoming, now))
+
+  return <span className="@max-3xl:hidden">{text}</span>
+}
+
 export interface AutopilotChipProps {
   item: InboxItem
   // align puts the panel's left edge under the chip's, by default, or its right edge.
   align?: 'left' | 'right'
 }
 
-// AutopilotChip marks an item a routine touched, on its card's second line: "⚡ Snoozed",
-// "⚡ Would run", what the newest of the routines' matches on it says (chipOf); in a list
-// narrower than 48rem, the ⚡ alone. It opens the item's history with the routines in a
-// panel, which wraps its own text: the card's line, which it opens in, doesn't wrap, and
-// that would carry into the panel and run its sentences past its edge. The panel is never
-// wider than the window. An item no routine touched shows nothing.
+// AutopilotChip marks an item, on its card's second line, with what Autopilot does there,
+// now, next, or before (chipView): a routine's match while it is open (waiting on the user
+// or a limit, or at work), "⚡ Needs you"; else the routines that will run on it by
+// themselves, dashed, as what is still to come, saying when ("⚡ Runs when its checks pass",
+// "⚡ Runs in 2m", counting down); else what the newest of the routines' matches on it says
+// (chipOf), "⚡ Snoozed". In a list narrower than 48rem, the ⚡ alone. It opens a panel:
+// Up next, what will run, each with Open routine and Leave this one alone; then the item's
+// history with the routines. The panel keeps Up next as it opened while it stays open, so a
+// routine told to leave the item alone stays there with Undo rather than vanishing, and
+// wraps its own text: the card's line, which it opens in, doesn't wrap, and that would
+// carry into the panel and run its sentences past its edge. The panel is never wider than
+// the window. An item nothing touched, and nothing will, shows nothing.
 export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
   const id = useId()
   const rows = use(AutopilotRowsContext)
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
   const { open, toggle, triggerRef, close } = popover
+  const [opened, setOpened] = useState(noUpcoming)
+  const live = rows?.upcoming?.get(item.id) ?? noUpcoming
   const match = rows?.chips.get(item.id)
+  const next = open ? opened : live
+  const view = chipView(match, next)
+  const title = useNowAs((now) => (view?.kind === 'upcoming' ? upcomingTitle(view.upcoming, now) : ''))
 
-  if (rows === null || match === undefined) {
+  if (rows === null || view === null) {
     return null
   }
 
-  const chip = chipOf(match)
-  const what = `${chip.label} · ${match.routine}`
+  const onShow =
+    rows.onShow === undefined
+      ? undefined
+      : (target: AutopilotTarget) => {
+          close()
+          rows.onShow?.(target)
+        }
+  // chip is what the chip says of a match; null when it says what runs next.
+  const chip = view.kind === 'match' ? chipOf(view.match) : null
+  const upcoming = chip === null
+  const what = view.kind === 'match' && chip !== null ? `${chip.label} · ${view.match.routine}` : title
 
   return (
     <span className="relative inline-flex min-w-0 shrink-0">
       <button
         ref={triggerRef}
         type="button"
-        aria-label={`Autopilot: ${what}. Show what the routines did with it`}
+        aria-label={
+          upcoming
+            ? `Autopilot: ${what}. Show what runs next`
+            : `Autopilot: ${what}. Show what the routines did with it`
+        }
         title={what}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        onClick={toggle}
-        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-caption leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${toneText[chip.tone]}`}
+        data-upcoming={upcoming ? '' : undefined}
+        onClick={() => {
+          if (!open) {
+            setOpened(live)
+          }
+
+          toggle()
+        }}
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-caption leading-4 font-medium transition-colors ${
+          upcoming
+            ? 'text-accent outline-1 -outline-offset-1 outline-accent/55 outline-dashed hover:bg-accent/10 aria-expanded:outline-solid'
+            : `hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${toneText[chip.tone]}`
+        }`}
       >
         <AutopilotIcon className="size-3 shrink-0" />
-        <span className="@max-3xl:hidden">{chip.label}</span>
+        {view.kind === 'upcoming' ? (
+          <UpcomingLabel upcoming={view.next} />
+        ) : (
+          <span className="@max-3xl:hidden">{chip?.label}</span>
+        )}
       </button>
       <PopoverPanel
         state={popover}
@@ -220,24 +398,19 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         elevation="card"
         id={id}
         role="dialog"
-        aria-label="Autopilot history"
-        className="layer-popover flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal"
+        aria-label={next.length > 0 ? 'Autopilot' : 'Autopilot history'}
+        className="layer-popover flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto p-3 text-left break-words whitespace-normal"
       >
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
-          <AutopilotIcon className="size-3.5 shrink-0 text-accent" />
-          What the routines did with it
-        </p>
-        <ItemHistory
-          itemId={item.id}
-          onShow={
-            rows.onShow === undefined
-              ? undefined
-              : (target) => {
-                  close()
-                  rows.onShow?.(target)
-                }
-          }
-        />
+        {next.length > 0 && <UpNext itemId={item.id} list={next} onShow={onShow} />}
+        {match !== undefined && (
+          <section aria-label="History" className="flex flex-col gap-1">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
+              <AutopilotIcon className="size-3.5 shrink-0 text-accent" />
+              What the routines did with it
+            </p>
+            <ItemHistory itemId={item.id} onShow={onShow} />
+          </section>
+        )}
       </PopoverPanel>
     </span>
   )

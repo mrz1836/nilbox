@@ -18,11 +18,28 @@ type fired struct {
 	key    string
 	actual string
 	need   facts.Need
+
+	// soon is the trigger on its way, for a no that will turn yes by itself (waiting).
+	soon *soon
+}
+
+// soon is a trigger on its way: when it holds, as a sentence ends, the moment it does
+// when the clock alone decides it, and the natural fire key it holds with.
+type soon struct {
+	when string
+	at   *time.Time
+	key  string
 }
 
 // yes, no, and unknownOf make a trigger's outcome.
 func yes(key, actual string) fired { return fired{result: Yes, key: key, actual: actual} }
 func no(actual string) fired       { return fired{result: No, actual: actual} }
+
+// waiting is a no that turns yes by itself, when, for the occurrence key: at the moment at,
+// or, nil, once GitHub reports it.
+func waiting(actual, when, key string, at *time.Time) fired {
+	return fired{result: No, actual: actual, soon: &soon{when: when, at: at, key: key}}
+}
 
 func unknownOf(v facts.Value) fired {
 	return fired{result: Unknown, actual: v.Why, need: v.Need}
@@ -135,17 +152,20 @@ func checksFailed(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired
 		return no("no check failed")
 	}
 
+	key := commitKey(catalog.EventChecksFailed, f.Head.Text)
+
 	if t.WaitsForChecks() {
 		if pending.Number > 0 {
-			return no(textutil.Counted(pending.Number, "check is", "checks are") + " still running")
+			return waiting(textutil.Counted(pending.Number, "check is", "checks are")+" still running",
+				"once its checks finish", key, nil)
 		}
 
-		if s := settled(t, f, now); s.result != Yes {
+		if s := settled(t, f, now, key); s.result != Yes {
 			return s
 		}
 	}
 
-	return yes(commitKey(catalog.EventChecksFailed, f.Head.Text),
+	return yes(key,
 		textutil.Counted(failed.Number, "check", "checks")+" failed on "+short(f.Head.Text))
 }
 
@@ -157,28 +177,35 @@ func checksPassed(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired
 		return out
 	}
 
+	key := commitKey(catalog.EventChecksPassed, f.Head.Text)
+
+	running := textutil.Counted(pending.Number, "check is", "checks are") + " still running"
+
 	switch {
 	case failed.Number > 0:
 		return no(textutil.Counted(failed.Number, "check", "checks") + " failed")
+	case pending.Number > 0 && awaiting.Bool:
+		return no(running) // runs a maintainer must approve first aren't on their way
 	case pending.Number > 0:
-		return no(textutil.Counted(pending.Number, "check is", "checks are") + " still running")
+		return waiting(running, "when its checks pass", key, nil)
 	case passed.Number == 0:
 		return no("it has no checks")
 	case awaiting.Bool:
 		return no("workflow runs wait for a maintainer to approve them")
 	}
 
-	if s := settled(t, f, now); s.result != Yes {
+	if s := settled(t, f, now, key); s.result != Yes {
 		return s
 	}
 
-	return yes(commitKey(catalog.EventChecksPassed, f.Head.Text),
+	return yes(key,
 		"every check passed on "+short(f.Head.Text))
 }
 
 // settled reports checks that finished long enough ago to count as settled, so a
-// workflow that starts only after another finishes isn't missed.
-func settled(t spec.Trigger, f facts.Facts, now time.Time) fired {
+// workflow that starts only after another finishes isn't missed: while they settle, the
+// trigger is on its way, for the occurrence key, at the moment they will have.
+func settled(t spec.Trigger, f facts.Facts, now time.Time, key string) fired {
 	settle := t.Settle()
 	if settle == 0 {
 		return yes("", "")
@@ -189,8 +216,8 @@ func settled(t spec.Trigger, f facts.Facts, now time.Time) fired {
 	}
 
 	if since := now.Sub(f.ChecksDone.Since); since < settle {
-		return no("the last check finished " + elapsedWords(since) + " ago, and the checks settle after " +
-			elapsedWords(settle))
+		return waiting("the last check finished "+elapsedWords(since)+" ago, and the checks settle after "+
+			elapsedWords(settle), "once its checks settle", key, new(f.ChecksDone.Since.Add(settle)))
 	}
 
 	return yes("", "")
@@ -322,12 +349,26 @@ func newComments(t spec.Trigger, f facts.Facts, h History, _ time.Time) fired {
 
 func goesQuiet(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired {
 	idle := now.Sub(f.Updated)
-	if idle < time.Duration(t.QuietDays())*24*time.Hour {
-		return no("its last activity was " + elapsedWords(idle) + " ago")
+	quiet := time.Duration(t.QuietDays()) * 24 * time.Hour
+	key := string(catalog.EventGoesQuiet) + ":since:" + stamp(f.Updated)
+
+	if idle < quiet {
+		actual := "its last activity was " + elapsedWords(idle) + " ago"
+
+		// Within a day of it, the quiet spell is on its way: nothing but activity stops it.
+		if quiet-idle <= soonQuiet {
+			return waiting(actual, "if it stays quiet "+elapsedWords(quiet-idle)+" more", key, new(f.Updated.Add(quiet)))
+		}
+
+		return no(actual)
 	}
 
-	return yes(string(catalog.EventGoesQuiet)+":since:"+stamp(f.Updated), "quiet for "+elapsedWords(idle))
+	return yes(key, "quiet for "+elapsedWords(idle))
 }
+
+// soonQuiet is how close to its quiet spell an item is when Goes quiet counts as on its
+// way: any further, and it would mark every item a routine watches, days ahead.
+const soonQuiet = 24 * time.Hour
 
 // schedule holds from the scheduled time until the end of a day it is due, in now's own
 // location, once that day: a time missed while the Mac slept runs on waking, the same
@@ -343,11 +384,13 @@ func schedule(t spec.Trigger, _ facts.Facts, _ History, now time.Time) fired {
 	}
 
 	at := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
+	key := string(catalog.EventSchedule) + ":" + now.Format(time.DateOnly)
+
 	if now.Before(at) {
-		return no("it's due at " + t.Schedule.At)
+		return waiting("it's due at "+t.Schedule.At, "at "+t.Schedule.At, key, &at)
 	}
 
-	return yes(string(catalog.EventSchedule)+":"+now.Format(time.DateOnly), "it was due at "+t.Schedule.At)
+	return yes(key, "it was due at "+t.Schedule.At)
 }
 
 // clock reads "HH:MM".

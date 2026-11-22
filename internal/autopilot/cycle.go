@@ -78,9 +78,12 @@ type routineRun struct {
 	fresh     bool
 	firstPass bool
 
-	// plan is its spec prepared for deciding, the first time it decides (decide). A run
-	// is built afresh from the stored routine each cycle, so it is never out of date.
-	plan *eval.Plan
+	// plan is its spec prepared for deciding, the first time it decides (decide), and
+	// planned its steps as a match's show before they start, the first time an item it will
+	// run on asks (plannedSteps). A run is built afresh from the stored routine each cycle,
+	// so neither is ever out of date.
+	plan    *eval.Plan
+	planned []MatchStep
 }
 
 // id returns the routine's ID.
@@ -138,6 +141,10 @@ type pass struct {
 	// active holds, by routine and item, the routine's match running or verifying on the
 	// item: another of its matches there waits for it.
 	active map[[2]int64]int64
+
+	// upcoming are the routines that will run on an item by themselves, as this cycle
+	// decided them (noteUpcoming), which the engine keeps once every routine is decided.
+	upcoming []Upcoming
 
 	// notices are the notices the cycle's steps tell, handed over together as it ends.
 	notices []Job
@@ -320,6 +327,7 @@ func (p *pass) run(ctx context.Context) error {
 		}
 	}
 
+	p.e.keepUpcoming(p.upcoming)
 	p.settleOpen(ctx, open)
 	p.askReads(ctx)
 	p.e.checkReady(ctx, p)
@@ -711,7 +719,8 @@ func (p *pass) evaluateItem(ctx context.Context, r *routineRun, id int64, fromNo
 		return nil, nil //nolint:nilnil // an item not stored, or left alone, makes no match
 	}
 
-	d := r.decide(f, p.historyOf(r, id), p.now)
+	h := p.historyOf(r, id)
+	d := r.decide(f, h, p.now)
 	r.decided[id] = d
 
 	if err := p.see(ctx, r, f, d); err != nil {
@@ -726,6 +735,7 @@ func (p *pass) evaluateItem(ctx context.Context, r *routineRun, id int64, fromNo
 			p.checks = append(p.checks, id)
 		}
 	case eval.No:
+		p.noteUpcoming(r, f, h, d)
 	}
 
 	return nil, nil //nolint:nilnil // a decision that isn't yes makes no match

@@ -2101,6 +2101,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == checks fail · pr partial · manual
 match: yes
@@ -2299,6 +2303,10 @@ trace:
     result: no
     actual: the last check finished 6 minutes ago, and the checks settle after 30 minutes
     need: ""
+pending:
+  when: once its checks settle
+  at: 2026-11-16T12:24:00Z
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == checks fail, settling 30m · pr unread · fresh
 match: unknown
@@ -2332,6 +2340,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == checks fail, settling 30m · issue · fresh
 match: no
@@ -2440,6 +2452,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == checks fail, then paths and size · issue · fresh
 match: no
@@ -4632,6 +4648,10 @@ trace:
     result: no
     actual: its last activity was 90 minutes ago
     need: ""
+pending:
+  when: if it stays quiet 22 hours more
+  at: 2026-11-17T10:30:00Z
+  fireKey: goes_quiet:since:2026-11-16T10:30:00Z
 
 == goes quiet, 1 day · pr unread · fresh
 match: no
@@ -4643,6 +4663,10 @@ trace:
     result: no
     actual: its last activity was 90 minutes ago
     need: ""
+pending:
+  when: if it stays quiet 22 hours more
+  at: 2026-11-17T10:30:00Z
+  fireKey: goes_quiet:since:2026-11-16T10:30:00Z
 
 == goes quiet, 1 day · pr green · fresh
 match: yes
@@ -4665,6 +4689,10 @@ trace:
     result: no
     actual: its last activity was 1 minute ago
     need: ""
+pending:
+  when: if it stays quiet 23 hours more
+  at: 2026-11-17T11:59:00Z
+  fireKey: goes_quiet:since:2026-11-16T11:59:00Z
 
 == goes quiet, 1 day · issue · fresh
 match: yes
@@ -4687,6 +4715,10 @@ trace:
     result: no
     actual: its last activity was 90 minutes ago
     need: ""
+pending:
+  when: if it stays quiet 22 hours more
+  at: 2026-11-17T10:30:00Z
+  fireKey: goes_quiet:since:2026-11-16T10:30:00Z
 
 == goes quiet, 1 day · pr waiting on a maintainer · fresh
 match: no
@@ -4698,6 +4730,10 @@ trace:
     result: no
     actual: its last activity was 90 minutes ago
     need: ""
+pending:
+  when: if it stays quiet 22 hours more
+  at: 2026-11-17T10:30:00Z
+  fireKey: goes_quiet:since:2026-11-16T10:30:00Z
 
 == goes quiet, 1 day · pr without checks · fresh
 match: no
@@ -4709,6 +4745,10 @@ trace:
     result: no
     actual: its last activity was 90 minutes ago
     need: ""
+pending:
+  when: if it stays quiet 22 hours more
+  at: 2026-11-17T10:30:00Z
+  fireKey: goes_quiet:since:2026-11-16T10:30:00Z
 
 == manual · pr failing · fresh
 match: no
@@ -4984,6 +5024,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr unread · fresh
 match: no
@@ -4995,6 +5039,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr green · fresh
 match: no
@@ -5006,6 +5054,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr partial · fresh
 match: no
@@ -5017,6 +5069,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · issue · fresh
 match: no
@@ -5028,6 +5084,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr checks unread · fresh
 match: no
@@ -5039,6 +5099,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr waiting on a maintainer · fresh
 match: no
@@ -5050,6 +5114,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 13:00 · pr without checks · fresh
 match: no
@@ -5061,6 +5129,10 @@ trace:
     result: no
     actual: it's due at 13:00
     need: ""
+pending:
+  when: at 13:00
+  at: 2026-11-16T13:00:00Z
+  fireKey: schedule:2026-11-16
 
 == schedule every weekday at 11:59 · pr failing · fresh
 match: yes

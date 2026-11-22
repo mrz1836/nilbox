@@ -767,6 +767,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-dependabot-security-then-merge · pr partial · seen
 match: no
@@ -778,6 +782,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-dependabot-security-then-merge · issue · fresh
 match: no
@@ -897,6 +905,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-dependabot-security · pr partial · seen
 match: no
@@ -908,6 +920,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-dependabot-security · issue · fresh
 match: no
@@ -1027,6 +1043,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-failing-checks-on-my-prs · pr partial · seen
 match: no
@@ -1038,6 +1058,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template fix-failing-checks-on-my-prs · issue · fresh
 match: no
@@ -1157,6 +1181,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template heal-dependabot-then-merge · pr partial · seen
 match: no
@@ -1168,6 +1196,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template heal-dependabot-then-merge · issue · fresh
 match: no
@@ -1737,6 +1769,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template re-run-flaky-checks-once · pr partial · seen
 match: no
@@ -1748,6 +1784,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template re-run-flaky-checks-once · issue · fresh
 match: no
@@ -2307,6 +2347,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template tell-me-about-security-failures · pr partial · seen
 match: no
@@ -2318,6 +2362,10 @@ trace:
     result: no
     actual: 2 checks are still running
     need: ""
+pending:
+  when: once its checks finish
+  at: nil
+  fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
 
 == template tell-me-about-security-failures · issue · fresh
 match: no

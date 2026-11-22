@@ -51,6 +51,7 @@ import {
   autopilotAlert,
   autopilotEngine,
   autopilotMatch,
+  autopilotUpcoming,
   autopilotOff,
   autopilotTarget,
   activityPage,
@@ -2783,6 +2784,27 @@ describe('Autopilot (beta)', () => {
     ).toBeInTheDocument()
   })
 
+  it('says on a card which routine will run on it next, and refreshes it as Autopilot changes', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]) }))
+    platform.upcomingAutopilotRuns.mockResolvedValue([autopilotUpcoming()])
+    await renderApp()
+
+    const chip = await screen.findByRole('button', { name: /^Autopilot: Merge syncs runs when its checks pass/ })
+
+    expect(chip).toHaveTextContent('Runs when its checks pass')
+    expect(platform.upcomingAutopilotRuns).toHaveBeenCalledWith([1])
+
+    // The routine ran: the next cycle says nothing more will.
+    platform.upcomingAutopilotRuns.mockResolvedValue([])
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /^Autopilot: Merge syncs/ })).not.toBeInTheDocument()
+    })
+  })
+
   it('makes a routine from an item’s menu in the Autopilot tab’s builder, and Start from an item shows the inbox', async () => {
     platform.listRoutines.mockResolvedValue([])
     await renderApp()
@@ -2858,6 +2880,7 @@ describe('Autopilot (beta)', () => {
     expect(screen.queryByRole('button', { name: /^Autopilot: / })).not.toBeInTheDocument()
     expect(screen.queryByTitle(/by the routine/)).not.toBeInTheDocument()
     expect(platform.latestAutopilotMatches).not.toHaveBeenCalled()
+    expect(platform.upcomingAutopilotRuns).not.toHaveBeenCalled()
 
     // An item's menu offers no Autopilot ▸ either.
     const [more] = screen.getAllByRole('button', { name: 'More actions' })
