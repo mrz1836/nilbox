@@ -41,7 +41,9 @@ interface PictureProps {
 
 // Picture is a profile picture from src, a data: URL, in a circle, or a rounded square for a
 // bot. What stands in for it shows until it decodes, and instead of it when there is none or
-// it fails to decode; meanwhile it waits hidden, so it never shows as an empty box.
+// it fails to decode; meanwhile it waits hidden, so it never shows as an empty box. React
+// drops an image's load that comes before it mounts the image, which a picture the page
+// already holds often beats, so an image already loaded when it mounts counts as decoded.
 export function Picture({ src, className, shape = 'circle', children }: PictureProps) {
   // decoded is the picture that decoded, and failed the one that could not, so a new
   // picture waits for its own decoding and gets a fresh try.
@@ -55,6 +57,11 @@ export function Picture({ src, className, shape = 'circle', children }: PictureP
       {!shown && children}
       {loading && (
         <img
+          ref={(img) => {
+            if (img?.complete === true && img.naturalWidth > 0) {
+              setDecoded(src)
+            }
+          }}
           src={src}
           alt=""
           draggable={false}

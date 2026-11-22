@@ -34,6 +34,28 @@ describe('Avatar', () => {
     expect(screen.queryByText('O')).not.toBeInTheDocument()
   })
 
+  it('shows a picture that loaded before it mounted, whose load React drops', () => {
+    // A picture the page already holds can load before React mounts its image, and React
+    // drops that load; jsdom never loads one, so the image says it has.
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(40)
+
+    const { container } = render(<Avatar account={account({ name: 'octo user' })} size="md" />)
+
+    expect(picture(container)).toBeVisible()
+    expect(screen.queryByText('O')).not.toBeInTheDocument()
+  })
+
+  it('keeps the initial for a picture that was already broken when it mounted', () => {
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(0)
+
+    const { container } = render(<Avatar account={account({ name: 'octo user' })} size="md" />)
+
+    expect(picture(container)).not.toBeVisible()
+    expect(screen.getByText('O')).toBeInTheDocument()
+  })
+
   it("falls back to the name's initial when the picture cannot be shown", () => {
     const { container, rerender } = render(<Avatar account={account({ name: '  octo user' })} size="sm" />)
 
