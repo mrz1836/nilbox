@@ -256,7 +256,7 @@ func (q *Queries) GetIssueItem(ctx context.Context, id int64) (GetIssueItemRow, 
 const getReviewItem = `-- name: GetReviewItem :one
 SELECT
     i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
-    i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at,
+    i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at, i.state,
     i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, r.viewer_merge_method,
     r.merge_commit_allowed, r.squash_merge_allowed, r.rebase_merge_allowed, r.auto_merge_allowed,
@@ -288,6 +288,7 @@ type GetReviewItemRow struct {
 	HeadRef                string
 	ItemCreatedAt          time.Time
 	ItemUpdatedAt          time.Time
+	State                  string
 	ReasonReviewRequested  bool
 	ReasonAuthored         bool
 	ReasonAssigned         bool
@@ -338,9 +339,10 @@ type GetReviewItemRow struct {
 // account whose inbox lists it, the lists it is in, and its details when a refresh has
 // read them (a column of missing details is NULL), the held workflow runs and the merge
 // state among them, so the sheet can show the checks a refresh read since it last read the
-// pull request itself. It reads any stored item, listed or not, so a pull request a
-// routine's search watches opens from the routine's Watching list as from the inbox. It
-// returns sql.ErrNoRows when no item has id.
+// pull request itself, and the state the inbox last knew it in (MERGED or CLOSED once a
+// merge, a close, or a read found it so, else empty or OPEN). It reads any stored item,
+// listed or not, so a pull request a routine's search watches opens from the routine's
+// Watching list as from the inbox. It returns sql.ErrNoRows when no item has id.
 func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getReviewItem, id)
 	var i GetReviewItemRow
@@ -359,6 +361,7 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 		&i.HeadRef,
 		&i.ItemCreatedAt,
 		&i.ItemUpdatedAt,
+		&i.State,
 		&i.ReasonReviewRequested,
 		&i.ReasonAuthored,
 		&i.ReasonAssigned,

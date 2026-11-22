@@ -221,6 +221,10 @@ type ReviewItem struct {
 	Title  string
 	URL    string
 
+	// State is the state the inbox last knew the pull request in: MERGED or CLOSED once a
+	// merge, a close, or a read found it so, else empty or OPEN.
+	State string
+
 	AuthorLogin       string
 	AuthorType        string
 	AuthorAssociation string
@@ -348,7 +352,7 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 	return ReviewItem{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), NodeID: r.NodeID, Title: r.Title, URL: r.URL,
 		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
-		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft, HeadRef: r.HeadRef,
+		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft, HeadRef: r.HeadRef, State: r.State,
 		CreatedAt: r.ItemCreatedAt.UTC(), UpdatedAt: r.ItemUpdatedAt.UTC(),
 		ReviewRequested: r.ReasonReviewRequested || r.ReasonPushed, Authored: r.ReasonAuthored,
 		Assigned: r.ReasonAssigned,

@@ -197,3 +197,34 @@ func TestTheReadinessLeavesOutTheHeldRunsThatDontCount(t *testing.T) {
 		assert.Equal(t, c.says, r.Sentence, c.name)
 	}
 }
+
+func TestARebuildOfAPullRequestTheInboxRecordedEndedEndsTheSheet(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []string{github.StateMerged, github.StateClosed} {
+		t.Run(state, func(t *testing.T) {
+			t.Parallel()
+
+			// The sheet read it open, then a routine merged (or closed) it, which the inbox
+			// recorded and which dropped the sheet's cache: building it again, with no request,
+			// says so, so the window moves on from it.
+			h := newHarness(t)
+			assert.Equal(t, github.StateOpen, h.refreshed(t).State)
+
+			h.inbox.pull.State = state
+			sent := h.github.sentAll()
+
+			r, err := h.svc.Rebuild(t.Context(), pullID)
+			require.NoError(t, err)
+			assert.Equal(t, state, r.State)
+			assert.Equal(t, sent, h.github.sentAll(), "no request")
+		})
+	}
+
+	h := newHarness(t)
+	h.inbox.pull.State = github.StateOpen
+
+	r, err := h.svc.Rebuild(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Equal(t, github.StateOpen, r.State, "one the inbox knows open stays so")
+}

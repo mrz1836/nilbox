@@ -2656,6 +2656,27 @@ describe('ReviewSheet of a pull request no longer open', () => {
     expect(platform.refreshReview).toHaveBeenCalledTimes(2)
   })
 
+  it('hands on a pull request a routine merged while it was open, as its card leaves the list, with no read', async () => {
+    const onEnded = vi.fn()
+    const { rerender } = renderAt(<Harness onEnded={onEnded} item={item({ id: 1, details: details() })} />)
+
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+    })
+
+    // A routine merged it: the inbox recorded the merge and took the card out of its lists,
+    // so the sheet is built again from what the inbox stored, which says merged.
+    platform.rebuildReview.mockResolvedValue(ended('MERGED'))
+    rerender(<Harness onEnded={onEnded} item={undefined} />)
+
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
+    })
+    expect(platform.rebuildReview).toHaveBeenCalledWith(1)
+    expect(platform.refreshReview, 'no read of GitHub').toHaveBeenCalledOnce()
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
+  })
+
   it('shows a read that failed on an open pull request as its error, and hands nothing on', async () => {
     platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
     platform.openReview.mockResolvedValue(

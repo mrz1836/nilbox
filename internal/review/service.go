@@ -72,6 +72,10 @@ type StoredPull struct {
 	Title  string
 	URL    string
 
+	// State is the state the inbox last knew the pull request in: MERGED or CLOSED once a
+	// merge, a close, or a read found it so, else empty or OPEN.
+	State string
+
 	AuthorLogin       string
 	AuthorType        string
 	AuthorAssociation string
@@ -821,6 +825,12 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, prefs Prefs) 
 
 	if c != nil {
 		r.fill(c, matcher, pull.Viewer)
+	}
+
+	// A merge or a close the inbox recorded since, such as a routine's merge, which dropped the
+	// cache, ends the sheet as the read that finds it would: the window moves on from it.
+	if pull.State == github.StateMerged || pull.State == github.StateClosed {
+		r.State = pull.State
 	}
 
 	r.Counts, r.MoreChecks = shownCounts(pull, c), 0
