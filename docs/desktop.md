@@ -3456,10 +3456,13 @@ itself, in the [builder](#building-a-routine), with [Test](#testing-a-routine) b
 routine that belongs to another account, or that a newer Nilbox made, shows only the sentence
 it reads as. Below them:
 
-- **Watching** lists the items its watch finds now, as the last refresh read them, newest
-  activity first, as the inbox's own rows: their signals, ⚡ chip, triage buttons, **⋯** menu,
-  and launch button. Click a title to open its review or issue sheet, which steps through the
-  list. This is where an item that is in no inbox list shows up, such as a Dependabot pull
+- **Watching** lists the items its **Watch** finds now that its **If** counts, as the last
+  refresh read them, newest activity first: an item its conditions rule out isn't listed
+  (**Test** shows it, and why), while one that only waits on its **When**, such as a pull
+  request whose checks still run, is. A condition Nilbox can't decide without reading GitHub,
+  such as a check's name, doesn't rule an item out. The rows are the inbox's own rows: their
+  signals, ⚡ chip, triage buttons, **⋯** menu, and launch button. Click a title to open its
+  review or issue sheet, which steps through the list. This is where an item that is in no inbox list shows up, such as a Dependabot pull
   request a routine's search finds.
 - **Activity** is that routine's own lines, as below.
 - **This week** counts what its runs did in the last seven days: its agents' runs, the fixes
@@ -3487,7 +3490,7 @@ it reads as. Below them:
 dismissals**, **Dry runs**, **Notices**, or **Worth knowing**: what was left alone, what gave
 up, and what failed). Earlier days load as you scroll to the end, or with **Show earlier days**.
 **Open** shows the item, even when its routine is deleted: its card in the inbox while one of
-your lists holds it, else its row in the Watching list of a routine that still watches it (the
+your lists holds it, else its row in the Watching list of a routine that still lists it (the
 line's own first), marked once, else its review or issue sheet while Nilbox still has it, else
 its page on GitHub. A deleted routine's lines keep its name. Across the top, a banner says when
 something stops everything: *Autopilot is paused. Nothing new starts.* with **Resume**;

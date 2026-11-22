@@ -164,26 +164,31 @@ func (s *Sim) listedID(number int) (int64, bool) {
 	return 0, false
 }
 
-// watchedID returns the stored ID of the item number a routine watches.
+// watchedID returns the stored ID of the item number a routine's watch finds, whether or
+// not its conditions count it (a routine's Watching list leaves out what they rule out):
+// the rows of the routines' searches, as the last change to a routine built them, and of
+// the inbox lists.
 func (s *Sim) watchedID(number int) (int64, bool) {
 	s.t.Helper()
 
 	ctx := context.Background()
 
-	routines, err := s.Service.List(ctx)
+	set := autopilot.NewSearches(s.Service).Current()
+	keys := make([]string, 0, len(set.Searches))
+
+	for _, sr := range set.Searches {
+		keys = append(keys, sr.Key)
+	}
+
+	ids, err := s.Store.WatchedItems(ctx, keys, inbox.Lists{ReviewRequested: true, Authored: true, Assigned: true})
 	require.NoError(s.t, err)
 
-	for _, r := range routines {
-		ids, watchErr := s.Service.Watching(ctx, r.ID)
-		require.NoError(s.t, watchErr)
+	got, err := s.Inbox.ItemsByID(ctx, ids)
+	require.NoError(s.t, err)
 
-		got, itemsErr := s.Inbox.ItemsByID(ctx, ids)
-		require.NoError(s.t, itemsErr)
-
-		for _, it := range got {
-			if it.Number == number {
-				return it.ID, true
-			}
+	for _, it := range got {
+		if it.Number == number {
+			return it.ID, true
 		}
 	}
 

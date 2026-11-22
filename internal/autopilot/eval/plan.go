@@ -128,6 +128,14 @@ func (p *Plan) Evaluate(f facts.Facts, h History, now time.Time) Decision {
 	return d
 }
 
+// Conditions decides the plan's conditions alone on the item f describes at now, with
+// what the routine's ledger knows of it: whether the item is one of those the routine
+// counts, whether or not its trigger holds yet. The conditions run as Evaluate runs them,
+// so whenever the trigger holds, Evaluate's decision is this one.
+func (p *Plan) Conditions(f facts.Facts, h History, now time.Time) Result {
+	return p.conditions.decide(f, h, now).result
+}
+
 // decide decides whether the trigger holds for the item, and the occurrence's fire key.
 // A click's run holds whatever the trigger, once per click.
 func (t *triggerPlan) decide(f facts.Facts, h History, now time.Time) (Result, string, Trace) {

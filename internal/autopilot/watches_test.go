@@ -345,6 +345,7 @@ func TestWatchingReturnsTheRoutinesItems(t *testing.T) {
 	items := &fakeItems{
 		watched: map[string][]int64{query(t, orgSearch).Key: {7, 8}},
 		listed:  map[catalog.ListSource][]int64{catalog.SourceAuthored: {1}},
+		rows:    map[int64]facts.Row{1: failingPR(1, 10), 7: failingPR(7, 70), 8: failingPR(8, 80)},
 	}
 	r := itemsRig(t, items)
 
@@ -358,6 +359,90 @@ func TestWatchingReturnsTheRoutinesItems(t *testing.T) {
 
 	_, err = r.svc.Watching(t.Context(), 999)
 	require.ErrorIs(t, err, autopilot.ErrNotFound)
+}
+
+func TestWatchingListsOnlyWhatItsConditionsCount(t *testing.T) {
+	t.Parallel()
+
+	// passingPR is a pull request of the user's titled title, its checks passing, or still
+	// running when running.
+	passingPR := func(id int64, title string, running bool) facts.Row {
+		row := failingPR(id, int(id)*10)
+		row.Title, row.Author, row.AuthorType = title, viewer, "User"
+		row.Details.ChecksState, row.Details.ChecksFailed, row.Details.ChecksPassed = "SUCCESS", 0, 4
+
+		if running {
+			row.Details.ChecksState, row.Details.ChecksPending = "PENDING", 1
+		}
+
+		return row
+	}
+
+	items := &fakeItems{
+		listed: map[catalog.ListSource][]int64{catalog.SourceAuthored: {1, 2, 3, 4}},
+		rows: map[int64]facts.Row{
+			1: passingPR(1, "[Sync] Update project files from source repository (6207e6a)", false),
+			2: passingPR(2, "[Deps] Upgrade Go dependencies within major versions", false),
+			3: passingPR(3, "[Sync] Update project files from source repository (91c0d2f)", true),
+		},
+	}
+	r := itemsRig(t, items)
+
+	sp := notifySpec()
+	sp.Trigger = spec.Trigger{Event: catalog.EventChecksPassed}
+	sp.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldTitle, Op: catalog.OpStartsWith, Value: "[Sync] Update project files from source"},
+	}}
+	routine := r.save(t, draft("Sync", sp))
+
+	got, err := r.svc.Watching(t.Context(), routine.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1, 3}, got, "the title rules #2 out; #3 waits on its checks, which its trigger watches "+
+		"for; #4 isn't stored")
+
+	// A condition that waits on a read can't rule an item out.
+	names := notifySpec()
+	names.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldID("checks.failedNames"), Op: catalog.OpAnyContains, Values: []string{"security"}},
+	}}
+	items.rows[5] = failingPR(5, 50)
+	items.listed[catalog.SourceAuthored] = []int64{5}
+	unread := r.save(t, draft("Security", names))
+
+	got, err = r.svc.Watching(t.Context(), unread.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{5}, got, "its check names aren't read yet")
+}
+
+func TestWatchingDecidesWithTheRoutinesHistory(t *testing.T) {
+	t.Parallel()
+
+	items := &fakeItems{
+		listed: map[catalog.ListSource][]int64{catalog.SourceAuthored: {7, 8}},
+		rows:   map[int64]facts.Row{7: failingPR(7, 70), 8: failingPR(8, 80)},
+	}
+	r := itemsRig(t, items)
+
+	sp := notifySpec()
+	sp.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldLastOutcome, Op: catalog.OpNoneOf, Values: []string{catalog.OutcomeDone}},
+	}}
+	routine := r.save(t, draft("Once", sp))
+
+	now := startedAt()
+	testutil.Exec(t, r.db, `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, ?, ?, ?)`, viewer, now, now)
+	testutil.Exec(t, r.db, `INSERT INTO repos (id, owner, name, created_at, updated_at)
+		VALUES (1, 'acme-org', 'example-repo', ?, ?)`, now, now)
+	testutil.Exec(t, r.db, `INSERT INTO items (id, account_id, repo_id, kind, number, item_created_at, item_updated_at,
+		fetched_at) VALUES (7, 1, 1, 'pr', 70, ?, ?, ?)`, now, now, now)
+	testutil.Exec(t, r.db, `INSERT INTO autopilot_matches (routine_id, item_id, repo_owner, repo_name, kind, number,
+		fire_key, state, reason, created_at, updated_at, decided_at, closed_at)
+		VALUES (?, 7, 'acme-org', 'example-repo', 'pr', 70, 'checks_failed:commit:old', 'done', 'ran', ?, ?, ?, ?)`,
+		routine.ID, now, now, now, now)
+
+	got, err := r.svc.Watching(t.Context(), routine.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{8}, got, "its last run on #7 is done, as the ledger records it")
 }
 
 func TestTestTriesTheDraftOnItsItemsNow(t *testing.T) {

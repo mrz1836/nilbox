@@ -4001,10 +4001,15 @@ Autopilot (beta) is off; the engine builds the snapshot again as it is turned on
 people and the bots who opened them, the owners of their repositories, their labels, and
 their check names, each most common first, no list nil.
 
-**`Watching(id)`** returns the IDs of the items the routine watches, newest activity first:
-those in the inbox with the reasons it names, and those its searches' rows hold, stale ones included, so a
-search that failed still shows its items (`Items.WatchedItems`); the inbox's bound `ItemsByID`
-turns them into rows.
+**`Watching(id)`** returns the IDs of the items the routine watches and counts, newest activity
+first: those in the inbox with the reasons it names, and those its searches' rows hold, stale ones
+included, so a search that failed still shows its items (`Items.WatchedItems`), less those its
+conditions rule out (`counted`). Each item's conditions are decided on its stored facts
+(`Items.Facts`) and the routine's history there, built from the ledger as the engine's cycle
+builds it (`histories`), with `eval.Plan.Conditions`, which leaves the trigger out: an item
+waiting on it, such as a pull request whose checks still run, stays, and so does one whose
+decision waits on a read (check names, files), since only a definite no rules an item out. It
+never asks GitHub. The inbox's bound `ItemsByID` turns the IDs into rows.
 
 **`Test(draft)`** tries a draft on its items now, changing no routine and running nothing: its
 spec is checked as `Save` checks it (a `ProblemsError` with each problem); its searches are

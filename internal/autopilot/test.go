@@ -164,11 +164,11 @@ func (s *Service) Suggest(ctx context.Context) (Suggestions, error) {
 	return out, nil
 }
 
-// Watching returns the IDs of the stored items the routine id watches, newest activity
-// first: those in the inbox lists it names and those its searches return, as the last
-// refresh read them, a search that failed keeping its items. The inbox's ItemsByID turns
-// them into rows. A routine that is gone or deleted is refused; one that is broken
-// watches nothing.
+// Watching returns the IDs of the stored items the routine id watches and counts, newest
+// activity first: those in the inbox lists it names and those its searches return, as
+// the last refresh read them, a search that failed keeping its items, less those its
+// conditions rule out (counted). The inbox's ItemsByID turns them into rows. A routine
+// that is gone or deleted is refused; one that is broken watches nothing.
 func (s *Service) Watching(ctx context.Context, id int64) ([]int64, error) {
 	r, err := s.Get(ctx, id)
 	if err != nil {
@@ -189,7 +189,93 @@ func (s *Service) Watching(ctx context.Context, id int64) ([]int64, error) {
 		return []int64{}, uierr.New("The routine's items couldn't be read.", err)
 	}
 
-	return textutil.NonNil(ids), nil
+	counted, err := s.counted(ctx, r.ID, r.Spec, ids)
+	if err != nil {
+		return []int64{}, err
+	}
+
+	return textutil.NonNil(counted), nil
+}
+
+// counted returns, in their order, those of ids that the conditions of sp, the routine
+// id's, don't rule out, each decided on what the inbox stored of it and the routine's
+// history there, as the engine decides it. The trigger isn't asked: an item waiting on it,
+// such as a pull request whose checks still run, is one the routine watches for. A
+// condition that waits on a read, such as check names, can't rule an item out, so the
+// item stays; one the inbox doesn't store is left out. It never asks GitHub.
+func (s *Service) counted(ctx context.Context, id int64, sp spec.Spec, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return ids, nil
+	}
+
+	now := s.clock.Now().UTC()
+
+	all, err := s.items.Facts(ctx, ids, now)
+	if err != nil {
+		return nil, uierr.New("The items' facts couldn't be read.", err)
+	}
+
+	historyOf, err := s.histories(ctx, id, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := eval.Prepare(sp)
+	keep := make(map[int64]bool, len(all))
+
+	for _, f := range all {
+		keep[f.Item.ID] = plan.Conditions(f, historyOf(f.Item.ID), now) != eval.No
+	}
+
+	out := make([]int64, 0, len(keep))
+
+	for _, itemID := range ids {
+		if keep[itemID] {
+			out = append(out, itemID)
+		}
+	}
+
+	return out, nil
+}
+
+// histories reads what the ledger knows of the routine id and each item among ids, and
+// returns the history the evaluator decides an item with, as the engine's cycle builds it
+// (pass.historyOf).
+func (s *Service) histories(ctx context.Context, id int64, ids []int64) (func(int64) eval.History, error) {
+	l := s.ledger()
+
+	keys, err := l.keys(ctx, id)
+	if err != nil {
+		return nil, uierr.New("The routine's history couldn't be read.", err)
+	}
+
+	seen, err := l.baselines(ctx, id)
+	if err != nil {
+		return nil, uierr.New("The routine's history couldn't be read.", err)
+	}
+
+	reset, err := l.tries(ctx, id)
+	if err != nil {
+		return nil, uierr.New("The routine's tries couldn't be read.", err)
+	}
+
+	runs, err := l.itemRuns(ctx, ids)
+	if err != nil {
+		return nil, uierr.New("The items' runs couldn't be read.", err)
+	}
+
+	last := lastClosed(keys)
+
+	return func(itemID int64) eval.History {
+		b, ok := seen[itemID]
+
+		outcome := ""
+		if row, closed := last[itemID]; closed {
+			outcome = outcomeWord(row.State, row.Reason)
+		}
+
+		return history(id, runs[itemID], b, ok, reset[itemID], outcome)
+	}, nil
 }
 
 // TestResult is a draft tried on its items now: what each search found, and what the

@@ -18,11 +18,11 @@
 // The routines' searches reach the inbox as a snapshot the Service builds again after
 // every change to a routine (Searches, watches.go), which each refresh reads as it starts.
 // The builder reads the inbox through Items: what the stored items suggest (Suggest), the
-// items a routine watches (Watching), and a draft tried on its items now (Test). Describe
-// reads a draft as it is edited, asking GitHub nothing: its sentence, the problems that
-// keep it from being saved (the spec's own, and the prompts its steps name, checked
-// against the Library), and its warnings. Its checks, which Save's share, are the pure
-// draft leaf's (internal/autopilot/draft), so a routine checked outside the app's own
+// items a routine watches and counts (Watching), and a draft tried on its items now
+// (Test). Describe reads a draft as it is edited, asking GitHub nothing: its sentence, the
+// problems that keep it from being saved (the spec's own, and the prompts its steps name,
+// checked against the Library), and its warnings. Its checks, which Save's share, are the
+// pure draft leaf's (internal/autopilot/draft), so a routine checked outside the app's own
 // process reads as the builder reads it.
 //
 // The Engine runs the routines (engine.go): one loop, the only writer of the ledger

@@ -546,11 +546,11 @@ export function Undo(ids: number[] | null): $CancellablePromise<$models.Undone> 
 }
 
 /**
- * Watching returns the IDs of the stored items the routine id watches, newest activity
- * first: those in the inbox lists it names and those its searches return, as the last
- * refresh read them, a search that failed keeping its items. The inbox's ItemsByID turns
- * them into rows. A routine that is gone or deleted is refused; one that is broken
- * watches nothing.
+ * Watching returns the IDs of the stored items the routine id watches and counts, newest
+ * activity first: those in the inbox lists it names and those its searches return, as
+ * the last refresh read them, a search that failed keeping its items, less those its
+ * conditions rule out (counted). The inbox's ItemsByID turns them into rows. A routine
+ * that is gone or deleted is refused; one that is broken watches nothing.
  */
 export function Watching(id: number): $CancellablePromise<number[] | null> {
     return $Call.ByID(3078357006, id);
