@@ -3,11 +3,13 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentSession } from '../platform'
+import type { AgentSession, AutopilotMatch } from '../platform'
 import { at } from '../test/clock'
 import {
   agentSession,
   agents,
+  autopilotMatch,
+  githubStep,
   item,
   itemResolution,
   launchDefaults,
@@ -42,15 +44,21 @@ function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProp
 }
 
 // renderSlot renders the slot in a grid, as a card does, with the rows' Autopilot when
-// onWatch is given.
-function renderSlot(overrides: Partial<LaunchControlsProps> = {}, onWatch?: (sessionId: string) => void) {
+// onWatch or chips is given.
+function renderSlot(
+  overrides: Partial<LaunchControlsProps> = {},
+  onWatch?: (sessionId: string) => void,
+  chips?: ReadonlyMap<number, AutopilotMatch>,
+) {
   const Clock = at()
   const slot = <LaunchControls {...props(overrides)} />
   const wrapped: ReactNode =
-    onWatch === undefined ? (
+    onWatch === undefined && chips === undefined ? (
       slot
     ) : (
-      <AutopilotRowsContext value={{ names: new Map(), chips: new Map(), onWatch }}>{slot}</AutopilotRowsContext>
+      <AutopilotRowsContext value={{ names: new Map(), chips: chips ?? new Map(), onWatch }}>
+        {slot}
+      </AutopilotRowsContext>
     )
 
   return render(
@@ -505,5 +513,33 @@ describe('LaunchControls, card variant, for a situation', () => {
         conflictsPromptId: null,
       }),
     )
+  })
+
+  it('waits while a routine is about to merge the item, saying so, and opens again once it has', async () => {
+    const queued = autopilotMatch({
+      state: 'queued',
+      reason: '',
+      closedAt: null,
+      routine: 'Merge syncs',
+      steps: [githubStep({ kind: 'merge', label: 'Merge it', actions: [] })],
+      step: 0,
+    })
+    const { unmount } = renderSlot({}, undefined, new Map([[1, queued]]))
+
+    const open = await screen.findByRole('button', { name: 'Open in Claude' })
+    const hold = 'Merge syncs is about to merge this. Launch an agent here once it has.'
+
+    expect(open).toBeDisabled()
+    expect(open).toHaveAttribute('title', hold)
+    expect(options()).toBeDisabled()
+    expect(options()).toHaveAttribute('title', hold)
+    unmount()
+
+    // Waiting for the user's OK, the item is theirs to work on.
+    renderSlot({}, undefined, new Map([[1, { ...queued, state: 'waiting', blockedBy: 'ask' }]]))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    })
   })
 })

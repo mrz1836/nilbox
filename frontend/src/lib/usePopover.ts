@@ -36,6 +36,10 @@ export interface Popover<T extends HTMLElement, P extends HTMLElement> {
   side: Side
   // maxHeight is the most the panel may grow to, with the 'fit' placement, or undefined.
   maxHeight: number | undefined
+  // shift is how far, in pixels, the panel moves sideways from the edge it lines up with
+  // (right of it when positive), so it stays inside every area that clips it and the
+  // window (shiftInto); 0 when it fits where it opens.
+  shift: number
   toggle: () => void
   show: () => void
   // close hides the panel, moving focus back to the button when restoreFocus is set.
@@ -91,12 +95,54 @@ function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): 
   }
 }
 
+// clips reports an overflow that cuts off what runs past an element's edges, as a list that
+// scrolls does, sideways too: a box that scrolls one way clips both.
+const clips: ReadonlySet<string> = new Set(['auto', 'scroll', 'hidden', 'clip'])
+
+// shiftInto returns how far to move panel sideways so it stays inside every area that clips
+// it (each ancestor whose overflow cuts it off) and the window, panelGap from their edges:
+// 0 when it fits where it opens, else the least move that brings it in. A panel wider than
+// the room shows its start. It measures the panel where it lines up with its button, moved
+// by nothing. A panel not laid out (no width) stays where it is.
+export function shiftInto(panel: HTMLElement): number {
+  const rect = panel.getBoundingClientRect()
+
+  if (rect.width === 0) {
+    return 0
+  }
+
+  const gap = remToPx(panelGap, panel.ownerDocument)
+  let lo = 0
+  let hi = window.innerWidth
+
+  for (let node = panel.parentElement; node !== null; node = node.parentElement) {
+    if (clips.has(getComputedStyle(node).overflowX)) {
+      const box = node.getBoundingClientRect()
+
+      lo = Math.max(lo, box.left)
+      hi = Math.min(hi, box.right)
+    }
+  }
+
+  lo += gap
+  hi -= gap
+
+  const { left, right } = rect
+
+  if (right - left > hi - lo || left < lo) {
+    return lo - left
+  }
+
+  return right > hi ? hi - right : 0
+}
+
 // usePopover opens and closes a floating panel the way a desktop menu behaves: a click or
 // focus anywhere outside the button and the panel closes it, and Escape closes it and
 // puts focus back on the button. Escape is taken first, in the window's capture phase, and
 // marked handled (defaultPrevented), so a page-level Escape handler, and a modal dialog
 // the panel opened in (useModalDialog), can tell it was used and stay open. As the panel
-// opens, it is placed (see Placement) and focus moves as asked (see PopoverFocus).
+// opens, it is placed (see Placement), kept inside what clips it sideways (shift), and
+// focus moves as asked (see PopoverFocus).
 export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   placement = 'below',
   focus,
@@ -105,6 +151,7 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   const [open, setOpen] = useState(false)
   const [side, setSide] = useState<Side>('below')
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined)
+  const [shift, setShift] = useState(0)
   const triggerRef = useRef<T>(null)
   const panelRef = useRef<P>(null)
 
@@ -126,19 +173,31 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     setOpen((was) => !was || hold)
   }
 
-  // Place the panel before it paints, so it never shows on the wrong side first.
+  // A closed panel carries no shift, so the next opening measures it where it lines up.
+  if (!open && shift !== 0) {
+    setShift(0)
+  }
+
+  // Place the panel before it paints, so it never shows on the wrong side first, nor cut
+  // off at an edge: once each time it opens, measured where it lines up with its button, as
+  // a closed panel carries no shift. It is measured once, never again for the shift it gets,
+  // so a panel drawn by hand, which takes no shift, never moves it on and on.
   useLayoutEffect(() => {
     const trigger = triggerRef.current
     const panel = panelRef.current
 
-    if (!open || placement === 'below' || trigger === null || panel === null) {
+    if (!open || trigger === null || panel === null) {
       return
     }
 
-    const placed = place(trigger, panel, placement)
+    if (placement !== 'below') {
+      const placed = place(trigger, panel, placement)
 
-    setSide(placed.side)
-    setMaxHeight(placed.maxHeight)
+      setSide(placed.side)
+      setMaxHeight(placed.maxHeight)
+    }
+
+    setShift(shiftInto(panel))
   }, [open, placement])
 
   // Focus moves as the latest options ask, without opening the panel again when they change.
@@ -208,5 +267,5 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     }
   }, [open])
 
-  return { open, triggerRef, panelRef, side, maxHeight, toggle, show, close }
+  return { open, triggerRef, panelRef, side, maxHeight, shift, toggle, show, close }
 }

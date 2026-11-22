@@ -23,12 +23,14 @@ export const panelClass = 'rounded-lg border border-border bg-surface shadow-men
 
 export interface PopoverPanelProps extends HTMLAttributes<HTMLDivElement> {
   // state is the panel's state from usePopover: whether it is open, its ref, the side it
-  // opened on, and the height it keeps within, if any.
+  // opened on, the height it keeps within, if any, and how far it moves sideways to stay in
+  // view (0, or none, for not at all).
   state: {
     open: boolean
     panelRef: RefObject<HTMLDivElement | null>
     side: Side
     maxHeight: number | undefined
+    shift?: number
   }
   // align lines the panel's right or left edge up with the button's.
   align: 'left' | 'right'
@@ -51,10 +53,18 @@ export function PopoverPanel({
   children,
   ...rest
 }: PopoverPanelProps) {
-  const { open, panelRef, side, maxHeight } = state
+  const { open, panelRef, side, maxHeight, shift = 0 } = state
 
   if (!open) {
     return null
+  }
+
+  // The panel moves sideways off the edge it lines up with, in that edge's own terms, so
+  // the pop-in's transform stays its own.
+  const placed = {
+    ...style,
+    ...(maxHeight === undefined ? {} : { maxHeight }),
+    ...(shift === 0 ? {} : align === 'right' ? { right: -shift } : { left: shift }),
   }
 
   return (
@@ -62,7 +72,7 @@ export function PopoverPanel({
       ref={panelRef}
       tabIndex={-1}
       {...rest}
-      style={maxHeight === undefined ? style : { ...style, maxHeight }}
+      style={placed}
       className={`absolute rounded-lg border border-border bg-surface ${elevations[elevation]} outline-none motion-safe:animate-pop-in ${placements[side][align]} ${className}`}
     >
       {children}

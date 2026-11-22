@@ -1,5 +1,6 @@
-import { Suspense, useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react'
+import { Suspense, use, useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react'
 
+import { launchHold } from '../lib/autopilot'
 import { attempt } from '../lib/call'
 import { agentName as agentLabel, type LaunchOptions } from '../lib/launch'
 import { sinceWhen, stateLabel, stateText } from '../lib/sessions'
@@ -46,7 +47,7 @@ import {
   type Resolution,
   type Situation,
 } from '../platform'
-import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
+import { AutopilotRowsContext, useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ErrorText, linkClass, smallButtonClass } from './controls'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
@@ -224,6 +225,11 @@ export function LaunchControls({
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
+  // hold says why a launch here waits while a routine handles the item, as it is about to
+  // merge it ('' for none): every button that starts one waits with it, saying so, while
+  // Watch and Take over of a routine's own run stay as they are.
+  const hold = launchHold(use(AutopilotRowsContext)?.chips.get(item.id))
+  const held = hold !== ''
   const chosen = choices.agent !== '' || choices.promptId !== 0 || choices.profile !== ''
   // situationPrompt is the prompt for the card's situation, as the item's resolution names
   // it, only to name the launch: the launch, and the launch options, resolve it again with
@@ -487,10 +493,13 @@ export function LaunchControls({
     problem !== '' ? problem : base === null ? openLabel : `${openLabel} with “${promptName}” as ${profileName}`
   // firstTitle is the launch button's tooltip: what it would start, and that the launch
   // options open first.
-  const firstTitle =
-    problem !== '' ? problem : `${launchTitle}. The launch options open first, to check or change them.`
+  const firstTitle = held
+    ? hold
+    : problem !== ''
+      ? problem
+      : `${launchTitle}. The launch options open first, to check or change them.`
   const optionsLabel = `Launch options: ${chip}${changed ? ', changed for this launch' : ''}`
-  const optionsTitle = 'Prompt, profile, and options for this launch'
+  const optionsTitle = held ? hold : 'Prompt, profile, and options for this launch'
 
   // showOptions opens the launch options. The desktop's WebKit focuses no button on a
   // click. Focusing this one first makes it where the dialog gives focus back as it closes;
@@ -586,7 +595,7 @@ export function LaunchControls({
       type="button"
       // While a launch or a clone runs, the options wait with the button beside them, so
       // nothing starts a second launch.
-      disabled={busy || resolution === null}
+      disabled={busy || resolution === null || held}
       aria-label={optionsLabel}
       title={optionsTitle}
       aria-haspopup="dialog"
@@ -631,7 +640,7 @@ export function LaunchControls({
       return split(
         <button
           type="button"
-          disabled={busy || resolution === null}
+          disabled={busy || resolution === null || held}
           onClick={showOptions}
           aria-label={
             agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
@@ -967,7 +976,7 @@ export function LaunchControls({
     const peekLaunch = (
       <button
         type="button"
-        disabled={busy || resolution === null}
+        disabled={busy || resolution === null || held}
         title={optionsTitle}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -998,7 +1007,7 @@ export function LaunchControls({
         <div className={boxClass}>
           <button
             type="button"
-            disabled={busy || resolution === null}
+            disabled={busy || resolution === null || held}
             onClick={showOptions}
             aria-label={changed ? `${opening}, changed for this launch` : undefined}
             aria-haspopup="dialog"
@@ -1025,7 +1034,7 @@ export function LaunchControls({
           {running === null ? (
             <button
               type="button"
-              disabled={busy || resolution === null}
+              disabled={busy || resolution === null || held}
               onClick={showOptions}
               aria-haspopup="dialog"
               aria-expanded={open}
@@ -1071,7 +1080,7 @@ export function LaunchControls({
             type="button"
             // While a launch or a clone runs, the options wait with the button beside them,
             // so nothing starts a second launch.
-            disabled={busy || resolution === null}
+            disabled={busy || resolution === null || held}
             aria-label={optionsLabel}
             title={optionsTitle}
             aria-haspopup="dialog"
