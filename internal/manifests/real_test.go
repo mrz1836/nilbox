@@ -38,7 +38,7 @@ const (
 // and test-fixture manifests Deps leaves out.
 func seedFiles() map[string]string {
 	return map[string]string{
-		goModFile: fixtureGoMod, goSumFile: "github.com/acme-org/lib v1.2.3 h1:abc=\n", "tools/go.mod": fixtureTools,
+		goModFile: fixtureGoMod, goSumFile: "github.com/acme-org/lib v1.2.3 h1:abc=\n", toolsGoMod: fixtureTools,
 		webPackage: fixtureWeb, webLock: "lockfileVersion: '9.0'\n", "web/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
 		"web/packages/ui/package.json": fixtureUI, goWorkFile: "go 1.25.0\n\nuse (\n\t.\n\t./tools\n)\n",
 		"magefiles/magefile.go": "package main\n", "vendor/github.com/acme-org/lib/go.mod": "module github.com/acme-org/lib\n",
@@ -253,7 +253,7 @@ func TestReadsRealClones(t *testing.T) {
 	assert.Equal(t, templateTime, example.Oldest)
 	assert.Equal(t, []Tool{ToolMagex, ToolPNPM}, example.Tools)
 	assert.Equal(t, []string{goWorkFile, "web/pnpm-workspace.yaml"}, example.Workspaces)
-	assert.Equal(t, []string{goModFile, "tools/go.mod", webPackage, "web/packages/ui/package.json"}, modulePaths(example),
+	assert.Equal(t, []string{goModFile, toolsGoMod, webPackage, "web/packages/ui/package.json"}, modulePaths(example),
 		"no vendored, installed, or test-fixture manifest")
 
 	assert.Equal(t, []Module{
@@ -263,7 +263,7 @@ func TestReadsRealClones(t *testing.T) {
 			Workspaces: []string{},
 		},
 		{
-			Kind: KindGo, Path: "tools/go.mod", ChangedAt: templateTime, Subject: initialCommit,
+			Kind: KindGo, Path: toolsGoMod, ChangedAt: templateTime, Subject: initialCommit,
 			GoModule: "github.com/acme-org/example-repo/tools", GoVersion: "1.24", Direct: 1, Workspaces: []string{},
 		},
 		{
@@ -319,7 +319,7 @@ func TestARealCloneReadAgainCostsOnlyItsCommitsRead(t *testing.T) {
 	require.Len(t, modules, 4)
 
 	tools := modules[3]
-	assert.Equal(t, "tools/go.mod", tools.Path, "now the freshest, so the last")
+	assert.Equal(t, toolsGoMod, tools.Path, "now the freshest, so the last")
 	assert.Equal(t, "tools/go.sum", tools.Lockfile)
 	assert.Equal(t, "add the tools module's go.sum", tools.Subject, "its age is its lockfile's newest change")
 	assert.Greater(t, tools.ChangedAt, templateTime)

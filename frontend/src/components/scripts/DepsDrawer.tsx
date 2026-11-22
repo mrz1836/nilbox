@@ -1,4 +1,4 @@
-import { depsText, moduleTitle, versionText } from '../../lib/manifests'
+import { canMark, depsText, markTitle, moduleTitle, uncountedTitle, versionText } from '../../lib/manifests'
 import { formatAgo, formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import {
@@ -9,13 +9,13 @@ import {
   type ManifestsModule,
 } from '../../platform'
 import { quietButtonClass } from '../controls'
-import { AlertIcon, FolderIcon, TerminalIcon } from '../icons'
+import { AlertIcon, CircleCheckIcon, FolderIcon, TerminalIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { drawerClass, drawerFooterClass, toolButtonClass } from '../worktrees/layout'
 
 // The drawer under a Deps row: a line for each of the clone's go.mod and package.json
-// files, its workspace files, and its actions in words. It shows what the page's read
-// holds, and reads nothing more.
+// files, those that don't count toward its age marked so, its workspace files, and its
+// actions in words. It shows what the page's read holds, and reads nothing more.
 
 // moduleListClass is the drawer's list of modules, the grid of their seven columns that
 // each line is a subgrid of: the kind, the manifest's path, its Go version or package
@@ -47,9 +47,10 @@ interface ModuleLineProps {
 }
 
 // ModuleLine is one module on one line: its kind, its manifest's path (what it is in its
-// tooltip: moduleTitle), its Go version or package manager, how many dependencies it
-// names, its last change's subject and age, and Reveal in Finder; under them, in amber,
-// why it couldn't be read in full, when it couldn't.
+// tooltip: moduleTitle), "not counted" after it when it doesn't count toward the clone's
+// age (why in its tooltip: uncountedTitle), its Go version or package manager, how many
+// dependencies it names, its last change's subject and age, and Reveal in Finder; under
+// them, in amber, why it couldn't be read in full, when it couldn't.
 function ModuleLine({ module: m, opening, onReveal }: ModuleLineProps) {
   const badge = kindBadges[m.kind]
 
@@ -61,8 +62,15 @@ function ModuleLine({ module: m, opening, onReveal }: ModuleLineProps) {
       >
         {m.kind}
       </span>
-      <span title={moduleTitle(m)} className="col-start-2 row-start-1 min-w-0 truncate font-mono text-xs">
-        {m.path}
+      <span className="col-start-2 row-start-1 flex min-w-0 items-center gap-1.5">
+        <span title={moduleTitle(m)} className="min-w-0 truncate font-mono text-xs">
+          {m.path}
+        </span>
+        {m.uncounted !== '' && (
+          <span title={uncountedTitle(m)} className="shrink-0 cursor-help text-xs whitespace-nowrap text-muted">
+            not counted
+          </span>
+        )}
       </span>
       <span className="col-start-3 row-start-1 text-xs whitespace-nowrap text-muted">{versionText(m)}</span>
       <span className="col-start-4 row-start-1 text-xs whitespace-nowrap text-muted tabular-nums">{depsText(m)}</span>
@@ -108,15 +116,20 @@ export interface DepsDrawerProps {
   clone: ManifestsClone
   // onUpgrade opens the clone's upgrade sheet.
   onUpgrade: () => void
+  // onMark marks the clone's repository up to date (checked) or unmarks it, and marking
+  // reports a mark under way; without onMark the drawer offers none.
+  onMark?: ((checked: boolean) => void) | undefined
+  marking?: boolean
 }
 
 // DepsDrawer is a row's drawer: a line for each module (ModuleLine), stalest first, as the
 // page lists them, or why none was read; the clone's workspace files; why Terminal or
 // Finder couldn't open, until the next try; and its actions in words: Open in Terminal,
-// in the clone, and Upgrade dependencies…, which opens the clone's upgrade sheet. Each
-// module reveals its own manifest in Finder, so the file Finder shows is the one its line
-// names. Neither runs anything in the clone.
-export function DepsDrawer({ id, clone, onUpgrade }: DepsDrawerProps) {
+// in the clone, Mark up to date (or Unmark up to date, while it is marked), and Upgrade
+// dependencies…, which opens the clone's upgrade sheet. Each module reveals its own
+// manifest in Finder, so the file Finder shows is the one its line names. None runs
+// anything in the clone.
+export function DepsDrawer({ id, clone, onUpgrade, onMark, marking = false }: DepsDrawerProps) {
   // opener opens the clone in the terminal (a path of null) or reveals a manifest in
   // Finder, one at a time.
   const opener = useMutation((path: string | null) =>
@@ -166,6 +179,20 @@ export function DepsDrawer({ id, clone, onUpgrade }: DepsDrawerProps) {
           <TerminalIcon className="size-3.5" />
           Open in Terminal
         </button>
+        {onMark !== undefined && canMark(clone) && (
+          <button
+            type="button"
+            title={markTitle(clone)}
+            disabled={marking}
+            onClick={() => {
+              onMark(clone.checkedAt === '')
+            }}
+            className={quietButtonClass}
+          >
+            <CircleCheckIcon className="size-3.5" />
+            {clone.checkedAt === '' ? 'Mark up to date' : 'Unmark up to date'}
+          </button>
+        )}
         <span className="flex-1" />
         <button type="button" onClick={onUpgrade} className={upgradeButtonClass}>
           Upgrade dependencies…

@@ -789,7 +789,14 @@ describe('ScriptsView', () => {
 
     it('counts nothing beside Deps while no clone is stale', async () => {
       platform.listManifests.mockResolvedValue(
-        manifestsPage({ clones: [manifestsClone({ oldest: fromNow(-2 * 24 * 3_600_000).toISOString() })] }),
+        manifestsPage({
+          clones: [
+            manifestsClone({
+              oldest: fromNow(-2 * 24 * 3_600_000).toISOString(),
+              ageFrom: fromNow(-2 * 24 * 3_600_000).toISOString(),
+            }),
+          ],
+        }),
       )
       renderView({ lastPage: 'deps' })
 

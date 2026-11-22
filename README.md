@@ -1069,6 +1069,9 @@ More in [Hooks](docs/desktop.md#hooks).
   manager, how many dependencies each names, and the last commit that changed it or its lockfile.
 - **Read from your clones alone:** the ages come from each clone's own git, at origin's default
   branch as last fetched, never from a package registry, so the page asks nothing of anyone.
+- **Only what can go stale counts:** a module that requires nothing, and test fixtures and
+  examples, are listed but never make a clone stale, and **Mark up to date** moves a clone you
+  checked to Fresh until it ages again or a manifest changes.
 - **Upgrade… in one click:** Claude Code or Codex starts in a fresh worktree off the default
   branch with a built-in prompt (minor and patch, or majors too). It upgrades the Go and
   JavaScript dependencies, runs the repository's own checks, and opens a pull request that follows

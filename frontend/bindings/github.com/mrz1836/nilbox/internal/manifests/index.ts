@@ -8,7 +8,8 @@ export {
 
 export {
     Kind,
-    Tool
+    Tool,
+    Uncounted
 } from "./models.js";
 
 export type {

@@ -135,3 +135,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/people/internal/queries
+  - !!merge <<: *owner
+    queries: internal/manifests/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/manifests/internal/queries

@@ -252,7 +252,8 @@ func boundaries() []boundary {
 			why: "manifests reads the clones through gitread and its own Clones, the pinned and muted repositories " +
 				"and the stored default branches through its own RuleSource and DefaultBranches, and opens the " +
 				"terminal and Finder through its own FolderOpener and Revealer, which core adapts; it keeps what it " +
-				"reads in memory, never in the store, starts no run, and asks nothing of GitHub or a registry",
+				"reads in memory, and only the repositories the user marked up to date in its own table, through " +
+				"its own queries, never the store; it starts no run, and asks nothing of GitHub or a registry",
 		},
 		{
 			pkg:       "internal/shellenv",

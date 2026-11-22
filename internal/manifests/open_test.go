@@ -127,7 +127,7 @@ func TestRevealRefusesAFileNotInTheCheckoutOrOutsideTheClone(t *testing.T) {
 	opener := &fakeOpener{}
 	r, svc := openRig(t, opener)
 
-	err := svc.Reveal(t.Context(), "~/projects/api", "tools/go.mod")
+	err := svc.Reveal(t.Context(), "~/projects/api", toolsGoMod)
 	require.ErrorIs(t, err, ErrInvalidRequest)
 	assert.Equal(t, "tools/go.mod isn't in this clone's checkout: the branch it's on may not have it.", uierr.Message(err))
 

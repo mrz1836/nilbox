@@ -633,6 +633,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     listManifests: () => Promise.resolve(manifestsPage()),
     openManifestsTerminal: done,
     revealManifest: done,
+    markDepsChecked: () => Promise.resolve(manifestsPage()),
+    clearDepsChecked: () => Promise.resolve(manifestsPage()),
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     worktreeDetails: () => Promise.resolve(worktreeDetails()),

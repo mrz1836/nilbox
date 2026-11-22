@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { listManifests, type ManifestsPage, type ManifestsProgress } from '../platform'
+import {
+  clearDepsChecked,
+  listManifests,
+  markDepsChecked,
+  type ManifestsPage,
+  type ManifestsProgress,
+} from '../platform'
 import { useMutation } from './useMutation'
 import { useOn } from './useOn'
 import { useQuery } from './useQuery'
@@ -21,6 +27,12 @@ export interface ManifestsState {
   progress: ManifestsProgress | null
   // refresh reads every clone again now, whatever the page's age.
   refresh: () => Promise<void>
+  // mark marks the repository "owner/name" up to date (checked) or unmarks it, and shows
+  // the page the service returns, every clone of it moved to its group at once; marking
+  // reports one under way, and markError why the last one failed, or ''.
+  mark: (repo: string, checked: boolean) => Promise<void>
+  marking: boolean
+  markError: string
 }
 
 // useManifests reads the Deps page's clones each time the tab shows (the service serves
@@ -31,6 +43,9 @@ export interface ManifestsState {
 export function useManifests(enabled: boolean): ManifestsState {
   const query = useQuery(() => listManifests(false), [], { enabled })
   const refresher = useMutation(() => listManifests(true))
+  const marker = useMutation((repo: string, checked: boolean) =>
+    checked ? markDepsChecked(repo) : clearDepsChecked(repo),
+  )
   const [heard, setHeard] = useState<ManifestsProgress | null>(null)
 
   useOn(
@@ -65,6 +80,16 @@ export function useManifests(enabled: boolean): ManifestsState {
     }
   }
 
+  // mark reads no clone: the page it returns is the last read with the marks as they are
+  // now, so it takes the place of the one shown.
+  const mark = async (repo: string, checked: boolean) => {
+    const result = await marker.run(repo, checked)
+
+    if (result.ok) {
+      query.set(() => result.data)
+    }
+  }
+
   // A read is under way while the tab waits for one, or one the page asked for; what was
   // heard of an earlier one says nothing once none is.
   const reading = query.pending || refresher.pending
@@ -76,5 +101,8 @@ export function useManifests(enabled: boolean): ManifestsState {
     refreshError: refresher.error,
     progress: reading ? heard : null,
     refresh,
+    mark,
+    marking: marker.pending,
+    markError: marker.error,
   }
 }

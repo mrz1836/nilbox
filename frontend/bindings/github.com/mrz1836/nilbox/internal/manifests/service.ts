@@ -15,6 +15,15 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * ClearChecked forgets that the user marked the repository named "owner/name" up to date,
+ * for a row's Unmark, so its clones age from their manifests alone again; one never marked
+ * is left as it is. It reads no clone, and returns the page as last read without the check.
+ */
+export function ClearChecked(name: string): $CancellablePromise<$models.Page> {
+    return $Call.ByID(42685738, name);
+}
+
+/**
  * List returns the Deps page. It serves the last read of the clones while it is under
  * FreshFor old and was read from the repository locations, and under the pinned and muted
  * repositories, as they are now; refresh, or anything else, reads every clone again,
@@ -23,10 +32,22 @@ import * as $models from "./models.js";
  * last page, with its error, until one succeeds. A read runs apart from the caller that
  * started it, within ScanTimeout: a caller whose context ends stops waiting, and the read
  * goes on for the next. The whole call runs within the app's lifetime (Scans): the app's
- * quit ends it, and refuses one after it.
+ * quit ends it, and refuses one after it. Whichever page it serves carries the checks as
+ * they are now (MarkChecked), read each time, which a read of the clones never waits on.
  */
 export function List(refresh: boolean): $CancellablePromise<$models.Page> {
     return $Call.ByID(3444644108, refresh);
+}
+
+/**
+ * MarkChecked records that the user checked the dependencies of the repository named
+ * "owner/name" now and found them up to date, for a row's Mark up to date, a triage of
+ * their own kept on this Mac alone: every clone of it then ages from now, until one of its
+ * counted manifests changes later (Clone.AgeFrom). Marking it again moves the check to
+ * now. It reads no clone, and returns the page as last read with the check on it.
+ */
+export function MarkChecked(name: string): $CancellablePromise<$models.Page> {
+    return $Call.ByID(517925230, name);
 }
 
 /**

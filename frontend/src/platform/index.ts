@@ -356,6 +356,7 @@ export type ManifestsClone = NonNullLists<manifests.Clone>
 export type ManifestsModule = NonNullLists<manifests.Module>
 export type ManifestKind = manifests.Kind
 export type ManifestTool = manifests.Tool
+export type ManifestUncounted = manifests.Uncounted
 export type ManifestsProgress = Events.CustomEvents['manifests:progress']
 export type ManifestsPhase = ManifestsProgress['phase']
 
@@ -1238,11 +1239,16 @@ export const getChecksResult: (runID: number) => CancellablePromise<HookChecksRe
 // "manifests:progress" events say how far a read has got, and an unchanged clone costs one
 // rev-parse). OpenTerminal opens the terminal chosen for launches in a clone and runs
 // nothing there; Reveal shows one of a clone's go.mod, package.json, or lockfile files in
-// Finder. Nothing here asks GitHub or a package registry.
+// Finder. MarkChecked records that the user checked a repository's dependencies now, so its
+// clones age from then, and ClearChecked forgets it; each takes "owner/name", reads no
+// clone, and returns the page as last read with the checks on it. Nothing here asks GitHub
+// or a package registry.
 export const {
   List: listManifests,
   OpenTerminal: openManifestsTerminal,
   Reveal: revealManifest,
+  MarkChecked: markDepsChecked,
+  ClearChecked: clearDepsChecked,
 } = narrow(manifests.Service)
 
 // Repo scripts: the clones the page's picker lists, the ones a script ran in most recently

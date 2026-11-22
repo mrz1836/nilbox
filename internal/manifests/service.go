@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -72,6 +73,11 @@ type Config struct {
 	Terminal FolderOpener
 	Reveal   Revealer
 
+	// DB is the database the repositories the user marked up to date are kept in
+	// (deps_checks, which the package owns). Without it, nothing is kept, and no clone is
+	// ever marked.
+	DB *sql.DB
+
 	Home   string
 	Clock  clock.Clock
 	Events event.Sink
@@ -86,6 +92,7 @@ type Service struct {
 	branches DefaultBranches
 	terminal FolderOpener
 	reveal   Revealer
+	checks   checkStore
 	home     string
 	clock    clock.Clock
 	events   event.Sink
@@ -108,26 +115,27 @@ type Service struct {
 	// mu guards the last read of the clones: whether there is one, the locations and the
 	// rules it read under, when it landed, why the read after it failed, and the page it
 	// made; what each clone's last read found (kept), by its folder resolved; and the
-	// pinned and muted repositories as last read (lastRules), which stand while they
-	// can't be read.
-	mu        sync.Mutex
-	has       bool
-	roots     localrepos.Roots
-	ruled     reporules.Rules
-	scanned   time.Time
-	failure   string
-	page      Page
-	kept      map[string]keptClone
-	lastRules reporules.Rules
+	// pinned and muted repositories as last read (lastRules), and the repositories marked
+	// up to date (lastChecks), which stand while they can't be read.
+	mu         sync.Mutex
+	has        bool
+	roots      localrepos.Roots
+	ruled      reporules.Rules
+	scanned    time.Time
+	failure    string
+	page       Page
+	kept       map[string]keptClone
+	lastRules  reporules.Rules
+	lastChecks map[string]time.Time
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
 		clones: cfg.Clones, git: cfg.Git, rules: cfg.Rules, branches: cfg.Branches, terminal: cfg.Terminal,
-		reveal: cfg.Reveal, home: cfg.Home, clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events),
-		logger: logging.Or(cfg.Logger), cancels: map[uint64]context.CancelFunc{}, kept: map[string]keptClone{},
-		page: emptyPage(),
+		reveal: cfg.Reveal, checks: newCheckStore(cfg.DB), home: cfg.Home, clock: clock.Or(cfg.Clock),
+		events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger), cancels: map[uint64]context.CancelFunc{},
+		kept: map[string]keptClone{}, page: emptyPage(), lastChecks: map[string]time.Time{},
 	}
 }
 
@@ -139,7 +147,8 @@ func NewService(cfg Config) *Service {
 // last page, with its error, until one succeeds. A read runs apart from the caller that
 // started it, within ScanTimeout: a caller whose context ends stops waiting, and the read
 // goes on for the next. The whole call runs within the app's lifetime (Scans): the app's
-// quit ends it, and refuses one after it.
+// quit ends it, and refuses one after it. Whichever page it serves carries the checks as
+// they are now (MarkChecked), read each time, which a read of the clones never waits on.
 func (s *Service) List(ctx context.Context, refresh bool) (Page, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -164,7 +173,7 @@ func (s *Service) readPage(ctx context.Context, refresh bool) (Page, error) {
 	rules := s.readRules(ctx)
 
 	if !refresh && s.fresh(roots, rules) {
-		return s.lastPage(), nil
+		return s.servePage(ctx), nil
 	}
 
 	detached := func(ctx context.Context) (struct{}, error) {
@@ -185,7 +194,7 @@ func (s *Service) readPage(ctx context.Context, refresh bool) (Page, error) {
 		return Page{}, err
 	}
 
-	return s.lastPage(), nil
+	return s.servePage(ctx), nil
 }
 
 // scanKey starts the key a read of the clones runs under, one at a time, with the

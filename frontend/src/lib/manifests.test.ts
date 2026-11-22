@@ -6,6 +6,10 @@ import { agentSession, manifestsClone, manifestsModule, manifestsPage } from '..
 import {
   ageGroup,
   ageTitle,
+  canMark,
+  checkedAgo,
+  checkedTitle,
+  cloneGroup,
   cloneNotes,
   depsGroups,
   depsText,
@@ -14,10 +18,13 @@ import {
   kindTitle,
   leftOutText,
   legendOf,
+  markLabel,
+  markTitle,
   matchClones,
   modulesText,
   modulesTitle,
   moduleTitle,
+  noneCounted,
   noStaleText,
   pageText,
   readStep,
@@ -26,6 +33,7 @@ import {
   staleTone,
   tipWords,
   toolsText,
+  uncountedTitle,
   upgradeSessions,
   versionText,
 } from './manifests'
@@ -57,10 +65,29 @@ function jsModule(change: Parameters<typeof manifestsModule>[0] = {}) {
   })
 }
 
-// aged is a clone of repo whose stalest module changed at oldest, '' for an age that isn't
-// known.
+// aged is a clone of repo whose stalest module changed at oldest, which its age counts from,
+// '' for an age that isn't known.
 function aged(repo: string, oldest: string, change: Partial<ManifestsClone> = {}): ManifestsClone {
-  return manifestsClone({ repo, dir: `~/projects/${repo.split('/')[1] ?? repo}`, oldest, ...change })
+  return manifestsClone({ repo, dir: `~/projects/${repo.split('/')[1] ?? repo}`, oldest, ageFrom: oldest, ...change })
+}
+
+// marked is a clone of repo whose stalest module changed at oldest and the user marked up to
+// date at checked, which its age counts from.
+function marked(repo: string, oldest: string, checked: string): ManifestsClone {
+  return aged(repo, oldest, { checkedAt: checked, ageFrom: checked })
+}
+
+// uncountedClone is a clone none of whose modules counts toward its age: a go.mod that
+// requires nothing, and an example's package.json.
+function uncountedClone(change: Partial<ManifestsClone> = {}): ManifestsClone {
+  return aged('acme-org/tiny', '', {
+    counted: 0,
+    modules: [
+      manifestsModule({ direct: 0, indirect: 0, uncounted: 'noDeps' }),
+      jsModule({ path: 'examples/demo/package.json', uncounted: 'example' }),
+    ],
+    ...change,
+  })
 }
 
 // repos are the repositories of clones, in order.
@@ -93,10 +120,44 @@ describe('the groups', () => {
   })
 
   it('colors each age hotter the longer ago it is, and an unknown one muted', () => {
-    expect(staleTone(FIXED_NOW, daysAgo(3))).toBe('success')
-    expect(staleTone(FIXED_NOW, daysAgo(45))).toBe('warning')
-    expect(staleTone(FIXED_NOW, daysAgo(400))).toBe('caution')
-    expect(staleTone(FIXED_NOW, '')).toBe('muted')
+    expect(staleTone(FIXED_NOW, aged('acme-org/a', daysAgo(3)))).toBe('success')
+    expect(staleTone(FIXED_NOW, aged('acme-org/a', daysAgo(45)))).toBe('warning')
+    expect(staleTone(FIXED_NOW, aged('acme-org/a', daysAgo(400)))).toBe('caution')
+    expect(staleTone(FIXED_NOW, aged('acme-org/a', ''))).toBe('muted')
+  })
+
+  it('groups a clone the user marked up to date by its mark, as its age counts from it', () => {
+    const checked = marked('acme-org/a', daysAgo(400), daysAgo(2))
+
+    expect(cloneGroup(FIXED_NOW, checked)).toBe('fresh')
+    expect(staleTone(FIXED_NOW, checked)).toBe('success')
+    expect(cloneGroup(fromNow(40 * dayMs), checked)).toBe('aging')
+    expect(cloneGroup(fromNow(100 * dayMs), checked)).toBe('stale')
+    expect(staleCount(FIXED_NOW, [checked, aged('acme-org/b', daysAgo(400))])).toBe(1)
+  })
+
+  it('puts a clone none of whose modules counts in Fresh, for good, with its edge green', () => {
+    const tiny = uncountedClone()
+
+    expect(noneCounted(tiny)).toBe(true)
+    expect(cloneGroup(FIXED_NOW, tiny)).toBe('fresh')
+    expect(cloneGroup(fromNow(1000 * dayMs), tiny)).toBe('fresh')
+    expect(staleTone(FIXED_NOW, tiny)).toBe('success')
+    expect(legendOf('fresh', [tiny])).toEqual([{ tone: 'success', words: 'under a month' }])
+    expect(staleCount(FIXED_NOW, [tiny])).toBe(0)
+  })
+
+  it('keeps a clone that couldn’t be read in Stale, muted, marked or not', () => {
+    const broken = aged('acme-org/a', '', {
+      modules: [],
+      counted: 0,
+      checkedAt: daysAgo(1),
+      error: 'Couldn’t read this clone’s files at HEAD.',
+    })
+
+    expect(noneCounted(broken)).toBe(false)
+    expect(cloneGroup(FIXED_NOW, broken)).toBe('stale')
+    expect(staleTone(FIXED_NOW, broken)).toBe('muted')
   })
 
   it('names each clone’s group in order, and counts the stale ones', () => {
@@ -179,6 +240,13 @@ describe('the rows', () => {
     expect(tipWords(FIXED_NOW, manifestsClone({ tip: 'HEAD', atHead: true }))).toBe('Read at HEAD')
   })
 
+  it('says when a clone was marked up to date in its age’s tooltip', () => {
+    expect(ageTitle(FIXED_NOW, manifestsClone({ checkedAt: '2026-06-13T12:00:00Z' }))).toBe(
+      'Last changed Tuesday, April 15, 2025 at 12:00 PM\nchore(deps): bump the go modules (#41)\n' +
+        'Marked up to date Saturday, June 13, 2026 at 12:00 PM\nAs of origin/master, fetched 3d ago',
+    )
+  })
+
   it('says when a clone’s stalest module changed, with what, and what was read, for the age’s tooltip', () => {
     expect(ageTitle(FIXED_NOW, manifestsClone())).toBe(
       'Last changed Tuesday, April 15, 2025 at 12:00 PM\nchore(deps): bump the go modules (#41)\nAs of origin/master, fetched 3d ago',
@@ -236,12 +304,84 @@ describe('the rows', () => {
     ])
   })
 
+  it('notes a clone none of whose modules counts, and why an age isn’t known from a counted module alone', () => {
+    expect(cloneNotes(uncountedClone())).toEqual([
+      {
+        kind: 'none',
+        text: 'none counted',
+        title:
+          'None of its go.mod and package.json files counts toward its age: each names no dependency, or is a ' +
+          'fixture or an example. So it has no age, and stays in Fresh.',
+      },
+    ])
+    expect(
+      cloneNotes(
+        manifestsClone({
+          oldest: '',
+          counted: 1,
+          modules: [
+            manifestsModule({ changedAt: '' }),
+            jsModule({ uncounted: 'fixture', problem: 'This package.json isn’t a JSON object, so it wasn’t read.' }),
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: 'unknown',
+        text: 'age unknown',
+        title: 'No commit that changed its go.mod or package.json files was found.',
+      },
+    ])
+  })
+
   it('notes nothing of a clone that couldn’t be read: its error says it', () => {
     expect(
       cloneNotes(
         manifestsClone({ modules: [], oldest: '', shallow: true, error: 'Couldn’t read this clone’s files at HEAD.' }),
       ),
     ).toEqual([])
+  })
+})
+
+describe('marking a clone up to date', () => {
+  it('offers a mark to a clone read with a module that counts, and an unmark to one marked', () => {
+    expect(canMark(manifestsClone())).toBe(true)
+    expect(canMark(uncountedClone())).toBe(false)
+    expect(canMark(uncountedClone({ checkedAt: daysAgo(1) }))).toBe(true)
+    expect(canMark(manifestsClone({ modules: [], counted: 0, error: 'Couldn’t read it.' }))).toBe(false)
+    expect(
+      canMark(manifestsClone({ modules: [], counted: 0, error: 'Couldn’t read it.', checkedAt: daysAgo(1) })),
+    ).toBe(true)
+  })
+
+  it('names what a click on the mark does', () => {
+    expect(markLabel(manifestsClone())).toBe('Mark acme-org/api-server up to date')
+    expect(markLabel(manifestsClone({ checkedAt: daysAgo(1) }))).toBe('Unmark acme-org/api-server')
+    expect(markTitle(manifestsClone())).toBe(
+      'Mark up to date: you checked its dependencies, so it counts as fresh from now and ages again from today',
+    )
+    expect(markTitle(manifestsClone({ checkedAt: daysAgo(1) }))).toBe(
+      'Unmark: its age counts from its go.mod and package.json files again',
+    )
+  })
+
+  it('says when it was marked, and what the mark does now', () => {
+    const at = '2026-06-13T12:00:00Z'
+    const when = 'Marked up to date Saturday, June 13, 2026 at 12:00 PM'
+
+    expect(checkedAgo(FIXED_NOW, at)).toBe('checked 2d ago')
+    expect(checkedTitle(manifestsClone({ checkedAt: at, ageFrom: at }))).toBe(
+      `${when}, so it ages from then rather than from its go.mod and package.json files.`,
+    )
+    expect(checkedTitle(manifestsClone({ checkedAt: at, ageFrom: '2026-06-14T12:00:00Z' }))).toBe(
+      `${when}. A go.mod, a package.json, or a lockfile changed since, so it ages from that change.`,
+    )
+    expect(checkedTitle(uncountedClone({ checkedAt: at, ageFrom: at }))).toBe(
+      `${when}. None of its modules counts toward its age, so it is in Fresh anyway.`,
+    )
+    expect(checkedTitle(manifestsClone({ checkedAt: at, ageFrom: '', modules: [], error: 'Couldn’t read it.' }))).toBe(
+      `${when}. It stays in Stale while it can’t be read.`,
+    )
   })
 })
 
@@ -269,6 +409,24 @@ describe('the drawer’s lines', () => {
     expect(
       depsText(jsModule({ deps: 0, devDeps: 0, problem: 'This package.json isn’t a JSON object, so it wasn’t read.' })),
     ).toBe('')
+  })
+
+  it('says why a module doesn’t count toward its clone’s age, and nothing of one that does', () => {
+    expect(uncountedTitle(manifestsModule())).toBe('')
+    expect(uncountedTitle(manifestsModule({ uncounted: 'noDeps' }))).toBe(
+      'Not counted toward the clone’s age: this go.mod requires no module. It is listed all the same.',
+    )
+    expect(uncountedTitle(jsModule({ uncounted: 'noDeps' }))).toBe(
+      'Not counted toward the clone’s age: this package.json names no dependency. It is listed all the same.',
+    )
+    expect(uncountedTitle(manifestsModule({ uncounted: 'fixture' }))).toBe(
+      'Not counted toward the clone’s age: it is in a fixtures folder, a test’s sample rather than a project of ' +
+        'its own. It is listed all the same.',
+    )
+    expect(uncountedTitle(jsModule({ uncounted: 'example' }))).toBe(
+      'Not counted toward the clone’s age: it is in an examples folder, a sample rather than a project of its own. ' +
+        'It is listed all the same.',
+    )
   })
 
   it('says what a module is, a line each, for its path’s tooltip', () => {
@@ -316,6 +474,12 @@ describe('sortClones', () => {
       'acme-org/Sdk-kit',
       'acme-org/Web-kit',
     ])
+  })
+
+  it('orders a marked clone by its mark, not its manifests', () => {
+    const rows = [marked('acme-org/checked', daysAgo(900), daysAgo(1)), aged('acme-org/web', daysAgo(10))]
+
+    expect(repos(sortClones(rows, 'oldest'))).toEqual(['acme-org/web', 'acme-org/checked'])
   })
 
   it('breaks a tie of ages by name', () => {

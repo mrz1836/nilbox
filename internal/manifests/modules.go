@@ -55,7 +55,8 @@ func (r *moduleReader) readInTime(ctx context.Context, e gitread.TreeEntry) Modu
 
 		return Module{
 			Kind: kindOf(e.Path), Path: e.Path, Workspaces: []string{},
-			Problem: "This " + path.Base(e.Path) + " wasn't read: reading this clone took too long.",
+			Problem:   "This " + path.Base(e.Path) + " wasn't read: reading this clone took too long.",
+			Uncounted: uncountedAt(e.Path),
 		}
 	}
 
@@ -63,11 +64,12 @@ func (r *moduleReader) readInTime(ctx context.Context, e gitread.TreeEntry) Modu
 }
 
 // read reads the module whose manifest is e: its manifest, then its lockfile, which its
-// package manager picks among those in a folder, then its newest change.
+// package manager picks among those in a folder, then its newest change, and whether it
+// counts toward its clone's age.
 func (r *moduleReader) read(ctx context.Context, e gitread.TreeEntry) Module {
 	m := Module{Kind: kindOf(e.Path), Path: e.Path, Workspaces: []string{}}
 
-	r.parse(ctx, e, &m)
+	m.Uncounted = uncountedOf(m, r.parse(ctx, e, &m))
 
 	lock, writer := r.files.lockfileFor(m.Kind, m.Path, m.PackageManager)
 	m.Lockfile = lock
@@ -91,9 +93,10 @@ func kindOf(file string) Kind {
 }
 
 // parse reads the module's manifest into m, when the clone holds it and its size in the
-// tree is at most maxManifest, or says in m.Problem why it couldn't. A partial clone may
-// not hold it, and no read here fetches it: its history is still read.
-func (r *moduleReader) parse(ctx context.Context, e gitread.TreeEntry, m *Module) {
+// tree is at most maxManifest, or says in m.Problem why it couldn't, and reports whether
+// it read it. A partial clone may not hold it, and no read here fetches it: its history is
+// still read.
+func (r *moduleReader) parse(ctx context.Context, e gitread.TreeEntry, m *Module) bool {
 	name := path.Base(e.Path)
 
 	switch {
@@ -101,11 +104,11 @@ func (r *moduleReader) parse(ctx context.Context, e gitread.TreeEntry, m *Module
 		m.Problem = "This clone doesn't hold this " + name + "'s contents, as a partial clone may not, so only " +
 			"when it last changed was read."
 
-		return
+		return false
 	case e.Size > maxManifest:
 		m.Problem = "This " + name + " is larger than 1 MiB, so it wasn't read."
 
-		return
+		return false
 	}
 
 	data, err := r.git.Blob(ctx, r.dir, e.Object)
@@ -113,14 +116,30 @@ func (r *moduleReader) parse(ctx context.Context, e gitread.TreeEntry, m *Module
 		r.failed(err)
 		m.Problem = problem("Couldn't read this "+name, err)
 
-		return
+		return false
 	}
 
 	if m.Kind == KindGo {
-		readGoMod(m, data)
-	} else {
-		readPackageJSON(m, data)
+		return readGoMod(m, data)
 	}
+
+	return readPackageJSON(m, data)
+}
+
+// uncountedOf says why the module m doesn't count toward its clone's age, its manifest
+// read when read is set: its folder's reason (uncountedAt), else that it names no
+// dependency of any kind, which only a manifest read can say; UncountedNone when it
+// counts.
+func uncountedOf(m Module, read bool) Uncounted {
+	if why := uncountedAt(m.Path); why != UncountedNone {
+		return why
+	}
+
+	if read && m.Direct+m.Indirect+m.Deps+m.DevDeps+m.PeerDeps+m.OptionalDeps == 0 {
+		return UncountedNoDeps
+	}
+
+	return UncountedNone
 }
 
 // history reads when the module's manifest or its lockfile last changed into m, or says
@@ -156,8 +175,9 @@ func problem(lead string, err error) string {
 	return uierr.Message(uierr.New(textutil.WithReason(lead, gitread.Message(err)), err))
 }
 
-// readGoMod reads a go.mod's bytes into m.
-func readGoMod(m *Module, data []byte) {
+// readGoMod reads a go.mod's bytes into m, and reports whether it read as one: a go.mod
+// that names no module doesn't.
+func readGoMod(m *Module, data []byte) bool {
 	mod, ok := parseGoMod(data)
 
 	m.GoModule = clean(mod.module, maxName)
@@ -167,15 +187,18 @@ func readGoMod(m *Module, data []byte) {
 	if !ok {
 		m.Problem = "This go.mod names no module."
 	}
+
+	return ok
 }
 
-// readPackageJSON reads a package.json's bytes into m.
-func readPackageJSON(m *Module, data []byte) {
+// readPackageJSON reads a package.json's bytes into m, and reports whether it read as one:
+// a package.json that isn't a JSON object doesn't.
+func readPackageJSON(m *Module, data []byte) bool {
 	pkg, err := parsePackageJSON(data)
 	if err != nil {
 		m.Problem = "This package.json isn't a JSON object, so it wasn't read."
 
-		return
+		return false
 	}
 
 	m.Name, m.PackageManager = clean(pkg.name, maxName), pkg.manager
@@ -184,6 +207,8 @@ func readPackageJSON(m *Module, data []byte) {
 	for _, pattern := range pkg.workspaces {
 		m.Workspaces = append(m.Workspaces, clean(pattern, maxPattern))
 	}
+
+	return true
 }
 
 // clean returns a manifest's own words as one line of plain text, at most n runes.
@@ -191,13 +216,37 @@ func clean(s string, n int) string {
 	return textutil.Truncate(textutil.OneLine(s), n)
 }
 
-// sortModules sorts modules stalest first, those whose age isn't known last, then by
-// path.
+// sortModules sorts modules as a clone lists them: those that count toward its age first,
+// then those that don't, each part stalest first, those whose age isn't known last, then
+// by path.
 func sortModules(modules []Module) {
 	slices.SortStableFunc(modules, func(a, b Module) int {
-		return cmp.Or(compareAges(a.changed.IsZero(), b.changed.IsZero(), a.changed.Compare(b.changed)),
+		return cmp.Or(cmp.Compare(countRank(a), countRank(b)),
+			compareAges(a.changed.IsZero(), b.changed.IsZero(), a.changed.Compare(b.changed)),
 			cmp.Compare(a.Path, b.Path))
 	})
+}
+
+// countRank is 0 for a module that counts toward its clone's age, else 1.
+func countRank(m Module) int {
+	if m.Uncounted == UncountedNone {
+		return 0
+	}
+
+	return 1
+}
+
+// countedOf counts the modules that count toward their clone's age.
+func countedOf(modules []Module) int {
+	n := 0
+
+	for _, m := range modules {
+		if m.Uncounted == UncountedNone {
+			n++
+		}
+	}
+
+	return n
 }
 
 // compareAges orders two ages, the older first and an unknown one last: aUnknown and

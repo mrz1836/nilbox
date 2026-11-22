@@ -3253,14 +3253,16 @@ clones in them, and each one's origin through `localrepos.Inspect`) and whose re
 user didn't mute, itself or its org (its `RuleSource`, core's `releaseRules`, the rules Release
 reads; rules that can't be read are logged, and the last ones read stand), and lists each with
 its Go modules' `go.mod` and its JavaScript packages' `package.json` files and how long ago
-their dependencies last changed, stalest first, those whose age isn't known last, a pinned one
-marked (`Clone.Pinned`) for the window to put first. The muted clones, those whose origin isn't
+their dependencies last changed, stalest first by when each one's age counts from
+(`Clone.AgeFrom`, below), those with none last, a pinned one marked (`Clone.Pinned`) for the
+window to put first. The muted clones, those whose origin isn't
 on GitHub or can't be read, and those read that hold no manifest are counted (`Page.Muted`,
 `WithoutGitHub`, `WithoutModules`), never listed; a clone that couldn't be read is listed with
 why (`Clone.Error`). Everything is read from the clone's own git objects at one commit, never
 its worktree or a package registry, through gitread's allowlist
 ([internal/gitread](#internalgitread)), so reading a clone runs no program it names and reaches
-no network, and nothing is stored: what it reads is kept in memory alone.
+no network, and nothing it reads is stored: what it reads is kept in memory alone, and all it
+keeps in the database is the user's own marks up to date (below).
 
 **The commit read.** A clone is read at origin's default branch as it last fetched it (gitread's
 `TrackingCommit` of `refs/remotes/origin/<default>`; `Clone.Tip` says `origin/<default>`, and
@@ -3310,6 +3312,39 @@ commits, and when the clone last fetched (`FetchedAt`) is the modification time 
 `FETCH_HEAD` (gitread's `FetchHead` says where git keeps it, which `os.Lstat` looks at, never
 into).
 
+**What counts.** A clone is as old as its stalest module that counts (`Module.Uncounted`, set
+as the module is read, and kept with it): a manifest under a `fixtures` or `__fixtures__` folder
+(`UncountedFixture`), or else an `examples` or `example` folder (`UncountedExample`), at any
+depth, by its path alone (`uncountedAt`, beside the picker's skipped folders), and a manifest read
+that names no dependency of any kind (`UncountedNoDeps`: a `go.mod` with no `require`, direct or
+`// indirect`, a `package.json` with no dependencies, dev, peer, or optional dependencies) are
+still listed, and still read in full, but don't count. A manifest that couldn't be read (too
+large, one a partial clone lacks, one that doesn't parse, a `go.mod` that names no module, a blob
+git refused, or one the clone's time ran out before) still counts, unless its folder says
+otherwise, since nothing says it names nothing. A clone's modules are sorted with those that count
+first, then the rest, each part stalest first and those whose age isn't known last; `Counted`
+says how many count, and `Oldest` is the stalest counted one's `ChangedAt`, "" when none counts.
+A clone none of whose modules counts has no age: the window puts it in Fresh, for good, since
+nothing in it can go stale, rather than in Stale with the ages unknown.
+
+**Marks up to date.** The user may mark a repository up to date after checking it
+(`MarkChecked(ctx, "owner/name")`, a row's or a drawer's Mark up to date; `ClearChecked` undoes
+it), a triage of their own, as snoozing an item is. The marks are the one table the package owns,
+`deps_checks` (`0113_deps_checks`: the repository, case-insensitive, and `checked_at`, one row
+each, an unmark deleting it), written and read through its own sqlc queries
+(`internal/manifests/internal/queries`) over the database core hands it (`Config.DB`; without
+one nothing is kept), never through the store package. A mark is the repository's, so every
+clone of it shares it. It is never part of a read of the clones: every page served, by `List`,
+`MarkChecked`, or `ClearChecked`, reads the marks again (one query) and puts them on the last
+read's page (`withChecks`): `Clone.CheckedAt`, and `AgeFrom`, the later of `Oldest` and the mark,
+so a mark makes the clone fresh and it ages back into Aging and Stale a month and three after,
+while a counted manifest that changes after the mark wins; then sorts the clones by `AgeFrom`.
+A clone that couldn't be read has no `AgeFrom`, marked or not, so a read that failed stays in
+Stale. Marks that can't be read are logged, and the last ones read stand (`lastChecks`), as the
+pinned and muted repositories do; a mark or an unmark that can't be written fails with the
+repository in its words, and a name that isn't `owner/name` with `ErrInvalidRequest`. Marking
+reads no clone, so the page the window gets back moves the clone at once.
+
 **What is kept.** What a clone's read found is kept in memory (`keptClone`) by its folder
 resolved (`paths.Resolved`) and the commit read, with where its `FETCH_HEAD` is and its time, so
 reading the clone again at the same commit runs no git beyond what found the commit: one
@@ -3350,8 +3385,8 @@ there is shown, never opened. A row's Upgrade is a repository's launch
 ([internal/launcher](#internallauncher)). The repoguard boundary test keeps the package off the
 store, the GitHub client, settings, the inbox, core, scriptrun, the launcher, the worktrees,
 release, hooks, scripts, setup, integrations, the desktop shell, and notify: it reads the clones
-through gitread and its own interfaces, which core adapts, starts no run, and asks nothing of
-GitHub or a registry.
+through gitread and its own interfaces, which core adapts, keeps its marks through its own
+queries rather than the store, starts no run, and asks nothing of GitHub or a registry.
 
 ## internal/update
 
@@ -6538,26 +6573,37 @@ group (`matchClones`), a chip for each kind of module that keeps only the clones
 A–Z, or Modules, the pinned repositories first in each, `sortClones`), held in local state over
 the stored one while App stores it with `settings.SetDepsSort` (`scripts.depsSort`). The pure
 half is `lib/manifests.ts`, which groups, sorts, and words what the service read and decides
-nothing else. A clone's group is its stalest module's age as the clock stands (`ageGroup`, a
-month being 30 days, as `lib/time` counts one: Stale over three months, Aging from one, Fresh
-under one), and a clone whose age isn't known (`oldest` '', as when its read failed) goes in
-Stale, last in Oldest, with a muted edge, since nothing vouches for it and a folded Fresh would
-hide it; the page renders again for the clock only once a clone changes group (`groupsAt`
-through `useNowAs`). Each group sits under the shared `GroupHeading`, Stale alone starting open
+nothing else. A clone's group is when its age counts from as the clock stands (`cloneGroup` over
+`ageGroup` of its `ageFrom`, which the service works out from its stalest counted module and the
+user's mark, a month being 30 days, as `lib/time` counts one: Stale over three months, Aging from
+one, Fresh under one); a clone none of whose modules counts (`noneCounted`) goes in Fresh with a
+green edge and no age; and a clone whose age isn't known (`ageFrom` '', as when its read failed)
+goes in Stale, last in Oldest, with a muted edge, since nothing vouches for it and a folded Fresh
+would hide it; the page renders again for the clock only once a clone changes group (`groupsAt`
+through `useNowAs`). Oldest sorts by `ageFrom` too. Each group sits under the shared `GroupHeading`, Stale alone starting open
 (`depsGroups`; the folds are kept in `scripts.sections` as `deps.stale`, `deps.aging`, and
 `deps.fresh`), Stale shown even when empty, and its note is the legend of its rows' edges
 (`DepsLegend` over `legendOf`: caution, warning, and success, and a muted "age unknown").
 `DepsRow.tsx` draws a clone on one line of its group's grid (`depsListClass`, nine columns, each
 row a subgrid of them, following the list's width, `@container`, as a Release row does): the
 edge (`staleTone`), the repository, its modules and tools, its stalest manifest or its error,
-its notes, the age, Upgrade…, quiet until the row is hovered or holds the focus, and the
-chevron, which, like a
-click on the row's empty space, unfolds `DepsDrawer.tsx`. The notes are the upgrade an agent
-works on there (`upgradeSessions`, the sessions of number 0 and kind '' in `useSessions`'
-`byItem`, the one shown picked as a card's is, `cardSession`), then `cloneNotes` (age unknown,
-read at HEAD, shallow, not all read). The drawer lists the modules a line each, each with its
-own Reveal in Finder, so Finder shows the file its line names, then the workspace files, with
-Open in Terminal and Upgrade dependencies… at its foot; it reads nothing more. `ScriptsView`
+its notes, the age (its stalest counted manifest's, a mark notwithstanding), then in one cell
+the mark up to date (a quiet `CircleCheckIcon`, `data-checked` and green while the repository is
+marked, offered by `canMark` to a clone read with a module that counts, and to any clone marked,
+to unmark it) and Upgrade…, quiet until the row is hovered or holds the focus, and the chevron,
+which, like a click on the row's empty space, unfolds `DepsDrawer.tsx`. The notes are the upgrade
+an agent works on there (`upgradeSessions`, the sessions of number 0 and kind '' in
+`useSessions`' `byItem`, the one shown picked as a card's is, `cardSession`), then when the user
+marked it (`checkedAgo`, *checked 3d ago*, as of the clock, `checkedTitle` in its tooltip), then
+`cloneNotes` (none counted, or age unknown, read at HEAD, shallow, not all read). The drawer lists
+the modules a line each, those that count first, a module that doesn't marked *not counted* after
+its path (`uncountedTitle` says why), each with its own Reveal in Finder, so Finder shows the file
+its line names, then the workspace files, with Open in Terminal, Mark up to date (or Unmark up to
+date), and Upgrade dependencies… at its foot; it reads nothing more. A mark calls
+`MarkChecked` or `ClearChecked` through `useManifests`' `mark`, which shows the page the service
+returns in place of the one shown, so the clone moves group at once without a read of the clones;
+one under way holds every mark back (`marking`), and one that fails says why in the head
+(`markError`). `ScriptsView`
 reads the page through `lib/useManifests.ts` (`listManifests`, with refresh for Read again,
 following `manifests:progress`) each time the tab shows while Scripts is on, whichever page is
 open, for the rail's count of the clones in Stale (`staleCount`), and keeps one sheet or dialog

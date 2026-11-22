@@ -157,3 +157,26 @@ func TestSchemaRejectsInvalidPromptsAndLaunchDefaults(t *testing.T) {
 		require.Error(t, err, name)
 	}
 }
+
+func TestSchemaRejectsInvalidDepsChecks(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	execAll(t, db, `INSERT INTO deps_checks (repo_owner, repo_name, checked_at)
+		VALUES ('acme-org', 'example-repo', '2026-01-01 00:00:00')`)
+
+	for name, stmt := range map[string]string{
+		"a second mark for a repository, by case": `INSERT INTO deps_checks (repo_owner, repo_name, checked_at)
+			VALUES ('ACME-ORG', 'Example-Repo', '2026-01-02 00:00:00')`,
+		"a mark with no owner": `INSERT INTO deps_checks (repo_owner, repo_name, checked_at)
+			VALUES ('', 'example-repo', '2026-01-01 00:00:00')`,
+		"a mark with no repository": `INSERT INTO deps_checks (repo_owner, repo_name, checked_at)
+			VALUES ('acme-org', '', '2026-01-01 00:00:00')`,
+		"a mark with no time": `INSERT INTO deps_checks (repo_owner, repo_name) VALUES ('acme-org', 'other-repo')`,
+	} {
+		_, err := db.ExecContext(t.Context(), stmt)
+		require.Error(t, err, name)
+	}
+
+	assert.Equal(t, 1, rowCount(t, db, "deps_checks"))
+}

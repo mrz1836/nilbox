@@ -3885,6 +3885,7 @@ export function manifestsModule(overrides: Partial<ManifestsModule> = {}): Manif
     peerDeps: 0,
     optionalDeps: 0,
     problem: '',
+    uncounted: '',
     ...overrides,
   }
 }
@@ -3915,7 +3916,10 @@ export function manifestsClone(overrides: Partial<ManifestsClone> = {}): Manifes
         devDeps: 12,
       }),
     ],
+    counted: 2,
     oldest: '2025-04-15T12:00:00Z',
+    checkedAt: '',
+    ageFrom: '2025-04-15T12:00:00Z',
     tools: ['magex', 'pnpm'],
     workspaces: [],
     tip: 'origin/master',

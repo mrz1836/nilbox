@@ -1,8 +1,9 @@
 // The Deps page as the window words it: the groups a clone falls in by how long ago its
-// dependencies last changed, the color each age takes, the rows' order, search, and kind
-// filter, the words of a row and of its drawer's modules, how far a read of the clones has
-// got, what the rail counts, and a repository's upgrade sessions. The backend reads every
-// clone (internal/manifests); this file groups, sorts, and words what it read, and decides
+// dependencies last changed (or the user marked them up to date), the color each age
+// takes, the rows' order, search, and kind filter, the words of a row and of its drawer's
+// modules, how far a read of the clones has got, what the rail counts, and a repository's
+// upgrade sessions. The backend reads every clone and works out when each one's age counts
+// from (internal/manifests); this file groups, sorts, and words what it read, and decides
 // nothing else.
 
 import type {
@@ -14,6 +15,7 @@ import type {
   ManifestsPage,
   ManifestsProgress,
   ManifestTool,
+  ManifestUncounted,
 } from '../platform'
 import { counted, formatCount, joinList } from './format'
 import { itemKey } from './itemWorktrees'
@@ -46,8 +48,9 @@ const groupAges: Readonly<Record<DepsGroup, string>> = {
 // 3mo or more.
 const monthMs = 30 * 24 * 60 * 60 * 1000
 
-// ageGroup puts a clone in its group by its stalest module's age, iso (RFC 3339), as of
-// now: Stale once that is over three months ago, Aging from a month ago, and Fresh under
+// ageGroup puts a clone in its group by when its age counts from, iso (RFC 3339, its
+// ageFrom: its stalest counted module's change, or the user's mark when that is later), as
+// of now: Stale once that is over three months ago, Aging from a month ago, and Fresh under
 // a month, a time ahead of now (a clock set wrong) included. A clone whose age isn't known
 // (iso '', as when its read failed or no module's history could be read) goes in Stale
 // too: nothing vouches that its dependencies are fresh, and Stale, which starts open,
@@ -73,22 +76,46 @@ export function ageGroup(now: Date, iso: string): DepsGroup {
 // dependencies changed.
 const groupTones: Readonly<Record<DepsGroup, Tone>> = { stale: 'caution', aging: 'warning', fresh: 'success' }
 
-// staleTone is the color of a clone's edge by its stalest module's age, iso, as of now: its
-// group's, or muted for an age that isn't known, which says nothing of how stale it is.
-export function staleTone(now: Date, iso: string): Tone {
-  return Number.isNaN(Date.parse(iso)) ? 'muted' : groupTones[ageGroup(now, iso)]
+// CloneAge is what of a clone its group and its edge go by: when its age counts from, how
+// many of its modules count toward it, its modules, and why it couldn't be read.
+type CloneAge = Pick<ManifestsClone, 'ageFrom' | 'counted' | 'error' | 'modules'>
+
+// noneCounted reports a clone read none of whose modules counts toward its age (each names
+// no dependency, or is a fixture or an example): it has no age, and goes in Fresh, since
+// nothing in it can go stale. A clone with no module, as one that couldn't be read, isn't
+// one.
+export function noneCounted(clone: Pick<ManifestsClone, 'counted' | 'error' | 'modules'>): boolean {
+  return clone.error === '' && clone.counted === 0 && clone.modules.length > 0
+}
+
+// cloneGroup puts a clone in its group as of now: Fresh when none of its modules counts
+// (noneCounted), else by when its age counts from (ageGroup).
+export function cloneGroup(now: Date, clone: CloneAge): DepsGroup {
+  return noneCounted(clone) ? 'fresh' : ageGroup(now, clone.ageFrom)
+}
+
+// ageKnown reports a clone whose group says how stale it is: one whose age counts from a
+// time, or one none of whose modules counts.
+function ageKnown(clone: CloneAge): boolean {
+  return noneCounted(clone) || !Number.isNaN(Date.parse(clone.ageFrom))
+}
+
+// staleTone is the color of a clone's edge as of now: its group's (cloneGroup), or muted
+// for an age that isn't known, which says nothing of how stale it is.
+export function staleTone(now: Date, clone: CloneAge): Tone {
+  return ageKnown(clone) ? groupTones[cloneGroup(now, clone)] : 'muted'
 }
 
 // groupsAt is each clone's group as of now, in the clones' order, as one string of their
 // names, for a page to read the clock by (useNowAs): it then renders again only once a
 // clone moves to another group as the days pass, never for a tick that moves none.
-export function groupsAt(now: Date, clones: readonly Pick<ManifestsClone, 'oldest'>[]): string {
-  return clones.map((c) => ageGroup(now, c.oldest)).join(' ')
+export function groupsAt(now: Date, clones: readonly CloneAge[]): string {
+  return clones.map((c) => cloneGroup(now, c)).join(' ')
 }
 
 // staleCount counts the clones in Stale as of now, which the rail shows beside Deps.
-export function staleCount(now: Date, clones: readonly Pick<ManifestsClone, 'oldest'>[] | undefined): number {
-  return clones?.filter((c) => ageGroup(now, c.oldest) === 'stale').length ?? 0
+export function staleCount(now: Date, clones: readonly CloneAge[] | undefined): number {
+  return clones?.filter((c) => cloneGroup(now, c) === 'stale').length ?? 0
 }
 
 // LegendEntry is one color a group's legend explains: its tone and its words.
@@ -98,10 +125,10 @@ export interface LegendEntry {
 }
 
 // legendOf is the legend of a group's rows, for its heading: the group's ages, in the color
-// its rows' edges take, while any row's age is known, then "age unknown", muted, while any
-// row's isn't. A group with no rows has none.
-export function legendOf(group: DepsGroup, rows: readonly Pick<ManifestsClone, 'oldest'>[]): LegendEntry[] {
-  const known = rows.filter((r) => !Number.isNaN(Date.parse(r.oldest))).length
+// its rows' edges take, while any row's age is known (or none of its modules counts), then
+// "age unknown", muted, while any row's isn't. A group with no rows has none.
+export function legendOf(group: DepsGroup, rows: readonly CloneAge[]): LegendEntry[] {
+  const known = rows.filter(ageKnown).length
 
   return [
     ...(known > 0 ? [{ tone: groupTones[group], words: groupAges[group] }] : []),
@@ -185,18 +212,72 @@ export function tipWords(now: Date, clone: Pick<ManifestsClone, 'tip' | 'atHead'
   return fetched === '' ? `As of ${clone.tip}` : `As of ${clone.tip}, fetched ${fetched}`
 }
 
-// ageTitle is the tooltip of a clone's age, as of now: when its stalest module last
-// changed, in full, that change's subject, and what of the clone was read (tipWords).
+// ageTitle is the tooltip of a clone's age, as of now: when its stalest counted module last
+// changed, in full, that change's subject, when the user marked it up to date, and what of
+// the clone was read (tipWords).
 export function ageTitle(now: Date, clone: ManifestsClone): string {
-  return [`Last changed ${formatFull(clone.oldest)}`, clone.modules[0]?.subject ?? '', tipWords(now, clone)]
+  return [
+    `Last changed ${formatFull(clone.oldest)}`,
+    clone.modules[0]?.subject ?? '',
+    clone.checkedAt === '' ? '' : `Marked up to date ${formatFull(clone.checkedAt)}`,
+    tipWords(now, clone),
+  ]
     .filter((line) => line !== '')
     .join('\n')
 }
 
-// DepsNoteKind is what a note about a clone is about: an age no module's history gave, a
-// clone read at HEAD rather than at origin's default branch, a shallow clone, or one with
-// more modules than were read.
-export type DepsNoteKind = 'unknown' | 'head' | 'shallow' | 'truncated'
+// canMark reports a clone the user may mark up to date: one read, with a module that counts
+// toward its age. One that couldn't be read stays in Stale whatever its mark, and one with
+// nothing counted is in Fresh already, so a mark would change neither; a clone already
+// marked can always be unmarked.
+export function canMark(clone: Pick<ManifestsClone, 'counted' | 'error' | 'checkedAt'>): boolean {
+  return clone.checkedAt !== '' || (clone.error === '' && clone.counted > 0)
+}
+
+// markLabel names a clone's mark for a screen reader, by what a click does: "Mark
+// acme-org/api up to date", or, while it is marked, "Unmark acme-org/api".
+export function markLabel(clone: Pick<ManifestsClone, 'repo' | 'checkedAt'>): string {
+  return clone.checkedAt === '' ? `Mark ${clone.repo} up to date` : `Unmark ${clone.repo}`
+}
+
+// markTitle is the tooltip of a clone's mark, by what a click does.
+export function markTitle(clone: Pick<ManifestsClone, 'checkedAt'>): string {
+  return clone.checkedAt === ''
+    ? 'Mark up to date: you checked its dependencies, so it counts as fresh from now and ages again from today'
+    : 'Unmark: its age counts from its go.mod and package.json files again'
+}
+
+// checkedAgo words when the user marked a clone up to date, as of now, as its row's note
+// says: "checked 3d ago".
+export function checkedAgo(now: Date, iso: string): string {
+  return `checked ${formatAgo(now, iso)}`
+}
+
+// checkedTitle is the tooltip of that note: when, in full, and what the mark does to the
+// clone now: it ages from the mark, or from a manifest that changed since, or, for a clone
+// that couldn't be read, nothing until it can.
+export function checkedTitle(clone: CloneAge & Pick<ManifestsClone, 'checkedAt'>): string {
+  const when = `Marked up to date ${formatFull(clone.checkedAt)}`
+
+  if (clone.error !== '') {
+    return `${when}. It stays in Stale while it can’t be read.`
+  }
+
+  if (noneCounted(clone)) {
+    return `${when}. None of its modules counts toward its age, so it is in Fresh anyway.`
+  }
+
+  if (clone.ageFrom !== clone.checkedAt) {
+    return `${when}. A go.mod, a package.json, or a lockfile changed since, so it ages from that change.`
+  }
+
+  return `${when}, so it ages from then rather than from its go.mod and package.json files.`
+}
+
+// DepsNoteKind is what a note about a clone is about: an age no counted module's history
+// gave, no module that counts, a clone read at HEAD rather than at origin's default branch,
+// a shallow clone, or one with more modules than were read.
+export type DepsNoteKind = 'unknown' | 'none' | 'head' | 'shallow' | 'truncated'
 
 // DepsNote is one thing to know about how a clone was read: what it is about, the few
 // words its row shows, and the sentence its tooltip says.
@@ -206,9 +287,10 @@ export interface DepsNote {
   title: string
 }
 
-// cloneNotes says what to know about how a clone was read, in order: an age that isn't
-// known, with why when a module says, then a read at HEAD, a shallow clone, and more
-// modules than were read. A clone that couldn't be read has none: its error says it all.
+// cloneNotes says what to know about how a clone was read, in order: that none of its
+// modules counts, or else an age that isn't known, with why when a counted module says,
+// then a read at HEAD, a shallow clone, and more modules than were read. A clone that
+// couldn't be read has none: its error says it all.
 export function cloneNotes(clone: ManifestsClone): DepsNote[] {
   if (clone.error !== '') {
     return []
@@ -216,12 +298,20 @@ export function cloneNotes(clone: ManifestsClone): DepsNote[] {
 
   const notes: DepsNote[] = []
 
-  if (Number.isNaN(Date.parse(clone.oldest))) {
+  if (noneCounted(clone)) {
+    notes.push({
+      kind: 'none',
+      text: 'none counted',
+      title:
+        'None of its go.mod and package.json files counts toward its age: each names no dependency, or is a ' +
+        'fixture or an example. So it has no age, and stays in Fresh.',
+    })
+  } else if (Number.isNaN(Date.parse(clone.oldest))) {
     notes.push({
       kind: 'unknown',
       text: 'age unknown',
       title:
-        clone.modules.find((m) => m.problem !== '')?.problem ??
+        clone.modules.find((m) => m.uncounted === '' && m.problem !== '')?.problem ??
         'No commit that changed its go.mod or package.json files was found.',
     })
   }
@@ -293,6 +383,22 @@ export function depsText(
   return m.problem === '' ? 'no dependencies' : ''
 }
 
+// uncountedWhy says why a module of each kind doesn't count toward its clone's age, as its
+// drawer line's "not counted" says in its tooltip, by the reason the backend gave.
+const uncountedWhy: Readonly<Record<Exclude<ManifestUncounted, ''>, (kind: ManifestKind) => string>> = {
+  noDeps: (kind) => (kind === 'go' ? 'this go.mod requires no module' : 'this package.json names no dependency'),
+  fixture: () => 'it is in a fixtures folder, a test’s sample rather than a project of its own',
+  example: () => 'it is in an examples folder, a sample rather than a project of its own',
+}
+
+// uncountedTitle says why a module doesn't count toward its clone's age, for its drawer
+// line's "not counted"; '' for one that counts.
+export function uncountedTitle(m: Pick<ManifestsModule, 'kind' | 'uncounted'>): string {
+  return m.uncounted === ''
+    ? ''
+    : `Not counted toward the clone’s age: ${uncountedWhy[m.uncounted](m.kind)}. It is listed all the same.`
+}
+
 // moduleTitle says what a module is, for its path's tooltip, a line each: its manifest's
 // path, its module path or package name, its toolchain, its lockfile (or that it has
 // none), and its workspaces' patterns.
@@ -319,9 +425,9 @@ function compare<T extends string | number>(x: T, y: T): number {
 }
 
 // SortKey is what the sort reads of a clone, worked out once per row rather than on every
-// comparison: whether it is pinned (0) or not (1), when its stalest module changed, in
-// milliseconds (Infinity when that isn't known, so it sorts after every age that is), its
-// name lowered, and how many modules it holds.
+// comparison: whether it is pinned (0) or not (1), when its age counts from (its ageFrom),
+// in milliseconds (Infinity when that isn't known, so it sorts after every age that is),
+// its name lowered, and how many modules it holds.
 interface SortKey {
   row: ManifestsClone
   rank: number
@@ -336,8 +442,8 @@ function byName(a: SortKey, b: SortKey): number {
   return compare(a.name, b.name)
 }
 
-// byOldest orders clones by when their stalest module changed, the longest ago first and
-// one whose age isn't known last, then by name.
+// byOldest orders clones by when their age counts from, the longest ago first and one whose
+// age isn't known last, then by name.
 function byOldest(a: SortKey, b: SortKey): number {
   return compare(a.time, b.time) || byName(a, b)
 }
@@ -366,7 +472,7 @@ function cloneOrder(sort: DepsSort): (a: SortKey, b: SortKey) => number {
 export function sortClones(rows: readonly ManifestsClone[], sort: DepsSort): ManifestsClone[] {
   const order = cloneOrder(sort)
   const keys = rows.map((row): SortKey => {
-    const at = Date.parse(row.oldest)
+    const at = Date.parse(row.ageFrom)
 
     return {
       row,

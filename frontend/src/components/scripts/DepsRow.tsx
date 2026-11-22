@@ -3,8 +3,13 @@ import { Fragment, useId, type KeyboardEvent, type MouseEvent, type ReactNode } 
 import { agentName } from '../../lib/launch'
 import {
   ageTitle,
+  canMark,
+  checkedAgo,
+  checkedTitle,
   cloneNotes,
   legendOf,
+  markLabel,
+  markTitle,
   modulesText,
   modulesTitle,
   staleTone,
@@ -17,7 +22,7 @@ import { formatAge, formatAgo } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import type { Tone } from '../../lib/worktreeParts'
 import type { AgentInfo, AgentSession, ManifestsClone } from '../../platform'
-import { AlertIcon, ChevronRightIcon, PinIcon } from '../icons'
+import { AlertIcon, ChevronRightIcon, CircleCheckIcon, PinIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { SessionDot } from '../SessionDot'
 import { toolButtonClass } from '../worktrees/layout'
@@ -61,6 +66,11 @@ const pathClass =
 // them stays calm and each is still found where it always is.
 const rowButtonClass =
   'inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted transition-colors hover:bg-raised group-hover/row:border-border group-hover/row:bg-surface group-hover/row:text-text group-focus-within/row:border-border group-focus-within/row:bg-surface group-focus-within/row:text-text focus-visible:outline-2 focus-visible:outline-accent'
+
+// markButtonClass is a row's mark: a quiet icon, as a Worktrees row's tools are, which
+// turns green while the clone is marked up to date, so the marked rows show it down a
+// column.
+const markButtonClass = `${toolButtonClass} data-checked:text-success`
 
 // toneEdges color a row's edge, and the dots of its group's legend, by the tone its age
 // takes (staleTone): the tone's own fill, and a faint one for an age that isn't known, as
@@ -133,8 +143,9 @@ function RepoCell({ clone }: { clone: ManifestsClone }) {
   )
 }
 
-// PathCell is a row's stalest manifest, the one whose dependencies changed longest ago;
-// or, for a clone that couldn't be read, why, in amber, cut short with the whole on hover.
+// PathCell is a row's stalest manifest, the counted one whose dependencies changed longest
+// ago, none when none counts; or, for a clone that couldn't be read, why, in amber, cut
+// short with the whole on hover.
 function PathCell({ clone }: { clone: ManifestsClone }) {
   if (clone.error !== '') {
     return (
@@ -145,7 +156,9 @@ function PathCell({ clone }: { clone: ManifestsClone }) {
     )
   }
 
-  const [stalest] = clone.modules
+  // stalest is the counted module that changed longest ago, which the modules list first;
+  // with none counted, the row names none.
+  const stalest = clone.counted > 0 ? clone.modules[0] : undefined
 
   if (stalest === undefined) {
     return null
@@ -153,7 +166,7 @@ function PathCell({ clone }: { clone: ManifestsClone }) {
 
   return (
     <span
-      title={clone.modules.length === 1 ? stalest.path : `${stalest.path}, the one that changed longest ago`}
+      title={clone.counted === 1 ? stalest.path : `${stalest.path}, the one that changed longest ago`}
       className={`${pathClass} text-muted`}
     >
       <span className="truncate font-mono">{stalest.path}</span>
@@ -200,18 +213,30 @@ function NoteMark({ note }: { note: DepsNote }) {
   )
 }
 
+// CheckedMark says when the user marked the clone up to date, "checked 3d ago", muted, as
+// of the clock, its tooltip saying when in full and what the mark does now (checkedTitle).
+function CheckedMark({ clone }: { clone: ManifestsClone }) {
+  return (
+    <span title={checkedTitle(clone)} className="inline-flex min-w-0 cursor-help items-center text-muted">
+      <RelativeTime iso={clone.checkedAt} show={checkedAgo} className="truncate" />
+    </span>
+  )
+}
+
 interface NotesCellProps {
+  clone: ManifestsClone
   session: AgentSession | undefined
   agents: readonly AgentInfo[]
   notes: readonly DepsNote[]
 }
 
-// NotesCell is what to know about a clone: the upgrade an agent works on in it, then how
-// it was read (cloneNotes). A comma between them, for a screen reader, keeps them apart
-// when read as text; the gap does on screen.
-function NotesCell({ session, agents, notes }: NotesCellProps) {
+// NotesCell is what to know about a clone: the upgrade an agent works on in it, when the
+// user marked it up to date, then how it was read (cloneNotes). A comma between them, for a
+// screen reader, keeps them apart when read as text; the gap does on screen.
+function NotesCell({ clone, session, agents, notes }: NotesCellProps) {
   const parts: { key: string; node: ReactNode }[] = [
     ...(session === undefined ? [] : [{ key: 'session', node: <UpgradeTag session={session} agents={agents} /> }]),
+    ...(clone.checkedAt === '' ? [] : [{ key: 'checked', node: <CheckedMark clone={clone} /> }]),
     ...notes.map((note) => ({ key: note.kind, node: <NoteMark note={note} /> })),
   ]
 
@@ -231,8 +256,9 @@ function NotesCell({ session, agents, notes }: NotesCellProps) {
   )
 }
 
-// AgeCell is how long ago a clone's stalest module changed; its tooltip says when in full,
-// that change's subject, and what of the clone was read, as of the clock (ageTitle).
+// AgeCell is how long ago a clone's stalest counted module changed, a mark up to date
+// notwithstanding, which its note says; its tooltip says when in full, that change's
+// subject, when it was marked, and what of the clone was read, as of the clock (ageTitle).
 function AgeCell({ clone }: { clone: ManifestsClone }) {
   const title = useNowAs((now) => ageTitle(now, clone))
 
@@ -258,6 +284,11 @@ export interface DepsRowProps {
   agents?: readonly AgentInfo[]
   // onUpgrade opens the clone's upgrade sheet.
   onUpgrade: () => void
+  // onMark marks the clone's repository up to date (checked) or unmarks it, and marking
+  // reports a mark under way, which holds every row's back; without onMark the row offers
+  // none.
+  onMark?: ((checked: boolean) => void) | undefined
+  marking?: boolean
 }
 
 // noAgents names no agent, until the agents are listed: each goes by its ID.
@@ -266,16 +297,26 @@ const noAgents: readonly AgentInfo[] = []
 // DepsRow is one clone on one line of its group's grid: an edge colored by how long ago
 // its dependencies last changed (staleTone), its repository and pin, how many modules of
 // each kind it holds, the tools it is set up for, its stalest manifest (or why it couldn't
-// be read), what to know about it (an upgrade an agent works on there, then how it was
-// read), that manifest's age, Upgrade…, quiet until the row is hovered, and the chevron
-// that unfolds its drawer. A click on the row's empty space unfolds it too, a pointer's
-// shortcut for the chevron, which the keyboard reaches: → unfolds, ← folds, and ↑ and ↓
-// move to the rows around it, across groups; a drag that selects the row's words leaves it
-// as it was, so they can still be copied. The edge and the upgrade read the clock, and the
-// row renders again only when what they say changes.
-export function DepsRow({ clone, open, onToggle, sessions, agents = noAgents, onUpgrade }: DepsRowProps) {
+// be read), what to know about it (an upgrade an agent works on there, when the user marked
+// it up to date, then how it was read), that manifest's age, its mark up to date (a quiet
+// icon, green while it is marked), Upgrade…, quiet until the row is hovered, and the
+// chevron that unfolds its drawer. A click on the row's empty space unfolds it too, a
+// pointer's shortcut for the chevron, which the keyboard reaches: → unfolds, ← folds, and ↑
+// and ↓ move to the rows around it, across groups; a drag that selects the row's words
+// leaves it as it was, so they can still be copied. The edge, the mark's note, and the
+// upgrade read the clock, and the row renders again only when what they say changes.
+export function DepsRow({
+  clone,
+  open,
+  onToggle,
+  sessions,
+  agents = noAgents,
+  onUpgrade,
+  onMark,
+  marking = false,
+}: DepsRowProps) {
   const drawerId = useId()
-  const tone = useNowAs((now) => staleTone(now, clone.oldest))
+  const tone = useNowAs((now) => staleTone(now, clone))
   // shown is the upgrade the row follows: the newest still running, else the newest that
   // ended in the last day, as a card's session tag picks it.
   const shownId = useNowAs((now) => cardSession(sessions, now)?.id ?? null)
@@ -329,10 +370,28 @@ export function DepsRow({ clone, open, onToggle, sessions, agents = noAgents, on
           </span>
           <span className="col-start-4 row-start-1 text-xs whitespace-nowrap text-muted">{toolsText(clone.tools)}</span>
           <PathCell clone={clone} />
-          <NotesCell session={session} agents={agents} notes={cloneNotes(clone)} />
+          <NotesCell clone={clone} session={session} agents={agents} notes={cloneNotes(clone)} />
         </div>
         {clone.oldest !== '' && <AgeCell clone={clone} />}
-        <span data-row-controls className="col-start-8 row-start-1 justify-self-end @max-xl:col-start-4">
+        <span
+          data-row-controls
+          className="col-start-8 row-start-1 flex items-center gap-1 justify-self-end @max-xl:col-start-4"
+        >
+          {onMark !== undefined && canMark(clone) && (
+            <button
+              type="button"
+              data-checked={clone.checkedAt !== '' || undefined}
+              aria-label={markLabel(clone)}
+              title={markTitle(clone)}
+              disabled={marking}
+              onClick={() => {
+                onMark(clone.checkedAt === '')
+              }}
+              className={markButtonClass}
+            >
+              <CircleCheckIcon className="size-3.5" />
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Upgrade ${clone.repo}’s dependencies…`}
@@ -357,7 +416,7 @@ export function DepsRow({ clone, open, onToggle, sessions, agents = noAgents, on
           </button>
         </span>
       </li>
-      {open && <DepsDrawer id={drawerId} clone={clone} onUpgrade={onUpgrade} />}
+      {open && <DepsDrawer id={drawerId} clone={clone} onUpgrade={onUpgrade} onMark={onMark} marking={marking} />}
     </>
   )
 }

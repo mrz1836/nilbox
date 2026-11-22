@@ -27,9 +27,9 @@ const goOnly = [manifestsModule()]
 const jsOnly = [manifestsModule({ kind: 'js', path: 'package.json', lockfile: 'package-lock.json', goModule: '' })]
 
 // clone is acme-org/<name>'s clone, its stalest module changed at oldest ('' for an age
-// that isn't known), with change made.
+// that isn't known), which its age counts from, with change made.
 function clone(name: string, oldest: string, change: Partial<ManifestsClone> = {}): ManifestsClone {
-  return manifestsClone({ repo: `acme-org/${name}`, dir: `~/projects/${name}`, oldest, ...change })
+  return manifestsClone({ repo: `acme-org/${name}`, dir: `~/projects/${name}`, oldest, ageFrom: oldest, ...change })
 }
 
 // groupedPage lists a clone in each group: acme-org/api-server and a clone that couldn't
@@ -57,6 +57,9 @@ function read(page: ManifestsPage, change: Partial<ManifestsState> = {}): Manife
     refreshError: '',
     progress: null,
     refresh: () => Promise.resolve(),
+    mark: () => Promise.resolve(),
+    marking: false,
+    markError: '',
     ...change,
   }
 }
@@ -447,6 +450,77 @@ describe('DepsPage', () => {
 
       expect(onUpgrade).toHaveBeenCalledTimes(2)
       expect(onUpgrade).toHaveBeenLastCalledWith(manifestsClone())
+    })
+
+    it('marks a clone up to date from its row, moving it to Fresh at once, and unmarks it from its drawer', async () => {
+      renderPage()
+
+      await screen.findByRole('list', { name: 'Stale' })
+      platform.markDepsChecked.mockResolvedValue(
+        manifestsPage({ clones: [manifestsClone({ checkedAt: daysAgo(0), ageFrom: daysAgo(0) })] }),
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Mark acme-org/api-server up to date' }))
+
+      expect(platform.markDepsChecked).toHaveBeenCalledExactlyOnceWith('acme-org/api-server')
+      expect(platform.listManifests).toHaveBeenCalledTimes(1)
+      expect(await screen.findByText('No clone has stale dependencies.')).toBeInTheDocument()
+
+      await userEvent.click(group(/^Fresh/))
+
+      const row = screen.getByRole('button', { name: 'Unfold acme-org/api-server' }).closest('li') as HTMLElement
+
+      expect(rows('Fresh')).toEqual(['api-server'])
+      expect(within(row).getByText('checked just now')).toBeInTheDocument()
+      expect(within(row).getByRole('button', { name: 'Unmark acme-org/api-server' })).toHaveAttribute(
+        'data-checked',
+        'true',
+      )
+
+      platform.clearDepsChecked.mockResolvedValue(manifestsPage())
+      await userEvent.click(screen.getByRole('button', { name: 'Unfold acme-org/api-server' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Unmark up to date' }))
+
+      expect(platform.clearDepsChecked).toHaveBeenCalledExactlyOnceWith('acme-org/api-server')
+
+      const stale = await screen.findByRole('list', { name: 'Stale' })
+
+      expect(within(stale).getByRole('button', { name: 'Fold acme-org/api-server' })).toBeInTheDocument()
+      expect(within(stale).getByRole('button', { name: 'Mark acme-org/api-server up to date' })).toBeInTheDocument()
+    })
+
+    it('says why a mark failed, and keeps the page as it was', async () => {
+      renderPage()
+
+      await screen.findByRole('list', { name: 'Stale' })
+      platform.markDepsChecked.mockRejectedValue(new Error('Couldn’t mark acme-org/api-server up to date.'))
+      await userEvent.click(screen.getByRole('button', { name: 'Mark acme-org/api-server up to date' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t mark acme-org/api-server up to date.')
+      expect(rows('Stale')).toEqual(['api-server'])
+    })
+
+    it('offers no mark to a clone that couldn’t be read, nor to one with nothing counted, which sits in Fresh', async () => {
+      renderRead(
+        read(
+          manifestsPage({
+            clones: [
+              clone('broken', '', { modules: [], counted: 0, error: 'Couldn’t read this clone’s files at HEAD.' }),
+              clone('tiny', '', {
+                counted: 0,
+                modules: [manifestsModule({ direct: 0, indirect: 0, uncounted: 'noDeps' })],
+              }),
+            ],
+          }),
+        ),
+      )
+
+      expect(rows('Stale')).toEqual(['broken'])
+      expect(screen.queryByRole('button', { name: /^Mark / })).not.toBeInTheDocument()
+
+      await userEvent.click(group(/^Fresh/))
+      expect(rows('Fresh')).toEqual(['tiny'])
+      expect(screen.getByText('none counted')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Mark / })).not.toBeInTheDocument()
     })
 
     it('unfolds several rows at once, each staying unfolded across reads', async () => {

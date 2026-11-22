@@ -38,7 +38,7 @@ func TestPickerKeepsWhatDepsReads(t *testing.T) {
 	p := newPicker()
 
 	for _, file := range []string{
-		goModFile, "tools/go.mod", "web/package.json", goSumFile, "web/pnpm-lock.yaml", "package-lock.json", "yarn.lock",
+		goModFile, toolsGoMod, "web/package.json", goSumFile, "web/pnpm-lock.yaml", "package-lock.json", "yarn.lock",
 		"bun.lock", "a/bun.lockb", goWorkFile, "web/pnpm-workspace.yaml", ".mage.yaml", ".github/env/10-mage-x.env",
 		"magefiles/magefile.go", "magefiles/go.mod", "my app/package.json", "vendored/go.mod", "x/testdatas/go.mod",
 	} {
@@ -63,13 +63,13 @@ func TestPickerSortsATreesFiles(t *testing.T) {
 	submodule := gitread.TreeEntry{Path: "third_party/lib", Mode: "160000", Type: "commit", Object: objectFor("lib"), Size: -1}
 
 	files := newPicker().files([]gitread.TreeEntry{
-		entry("web/packages/ui/package.json", 10), entry("tools/go.mod", 10), entry(goModFile, 10), entry(goSumFile, 10),
+		entry("web/packages/ui/package.json", 10), entry(toolsGoMod, 10), entry(goModFile, 10), entry(goSumFile, 10),
 		entry("web/package.json", 10), entry("web/pnpm-lock.yaml", 10), entry("web/pnpm-workspace.yaml", 10),
 		entry(goWorkFile, 10), entry("magefiles/magefile.go", 10), entry("-odd/go.mod", 10), entry("-odd/go.sum", 10),
 		link, submodule, entry("vendor/x/go.mod", 10),
 	})
 
-	assert.Equal(t, []string{goModFile, "tools/go.mod", "web/package.json", "web/packages/ui/package.json"},
+	assert.Equal(t, []string{goModFile, toolsGoMod, "web/package.json", "web/packages/ui/package.json"},
 		entryPaths(files.manifests), "the shallowest first; no link, submodule, vendored module, or path git isn't given")
 	assert.Equal(t, map[string]bool{goSumFile: true, "web/pnpm-lock.yaml": true}, files.lockfiles)
 	assert.Equal(t, []string{goWorkFile, "web/pnpm-workspace.yaml"}, files.workspaces)
@@ -122,7 +122,7 @@ func TestLockfileFor(t *testing.T) {
 		wantTool Tool
 	}{
 		{name: "a go.sum beside", kind: KindGo, file: goModFile, wantLock: goSumFile},
-		{name: "no go.sum beside, none above counts", kind: KindGo, file: "tools/go.mod"},
+		{name: "no go.sum beside, none above counts", kind: KindGo, file: toolsGoMod},
 		{name: "the top's lockfile", kind: KindJS, file: packageJSONFile, wantLock: "pnpm-lock.yaml", wantTool: ToolPNPM},
 		{
 			name: "the nearest, above", kind: KindJS, file: "packages/ui/package.json", wantLock: "pnpm-lock.yaml",
@@ -175,5 +175,28 @@ func TestEveryFileDepsReadsIsOneGitReadPasses(t *testing.T) {
 
 	for _, l := range jsLockfiles() {
 		assert.True(t, gitread.ValidLockfilePath("a/"+l.name), l.name)
+	}
+}
+
+func TestUncountedAt(t *testing.T) {
+	t.Parallel()
+
+	for file, want := range map[string]Uncounted{
+		goModFile:         UncountedNone,
+		toolsGoMod:        UncountedNone,
+		"fixtures/go.mod": UncountedFixture,
+		".github/ci-tester/fixtures/action/go.mod": UncountedFixture,
+		"src/__fixtures__/app/package.json":        UncountedFixture,
+		"examples/with-config/go.mod":              UncountedExample,
+		"docs/example/package.json":                UncountedExample,
+		"examples/fixtures/go.mod":                 UncountedFixture,
+		"fixtures.go/go.mod":                       UncountedNone,
+		"my-examples/package.json":                 UncountedNone,
+		"example-app/package.json":                 UncountedNone,
+		"web/Examples/package.json":                UncountedNone,
+		"fixtures":                                 UncountedNone,
+		"internal/fixturesuite/go.mod":             UncountedNone,
+	} {
+		assert.Equal(t, want, uncountedAt(file), "%q", file)
 	}
 }

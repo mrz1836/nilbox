@@ -1128,14 +1128,15 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 // newManifests builds the Deps page's service over the same clones and read-only git as
 // the Hooks page's: the pinned and muted repositories Release reads, the default branches
 // the inbox stored, the terminal the runs open in for a row's Open in terminal, and Finder
-// for a manifest's Reveal in Finder. It reads every clone from its own git objects alone,
-// so it needs no runner, lock, or shell environment beyond git's.
+// for a manifest's Reveal in Finder, and the database it keeps the repositories marked up to
+// date in. It reads every clone from its own git objects alone, so it needs no runner, lock,
+// or shell environment beyond git's.
 func newManifests(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches manifests.DefaultBranches,
 ) *manifests.Service {
 	return manifests.NewService(manifests.Config{
 		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner, reader: deps.locations},
 		Git:    deps.git, Rules: releaseRules{prefs: prefsstore.New(pool, opts.Clock)}, Branches: branches,
-		Terminal: &worktreeTerminal{opener: deps.terminal}, Reveal: revealer(deps.runner), Home: opts.Home,
+		Terminal: &worktreeTerminal{opener: deps.terminal}, Reveal: revealer(deps.runner), DB: pool, Home: opts.Home,
 		Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 }

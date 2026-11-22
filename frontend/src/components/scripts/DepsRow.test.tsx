@@ -43,7 +43,8 @@ function upgrade(change: Partial<AgentSession> = {}): AgentSession {
   })
 }
 
-type RowProps = Partial<Omit<DepsRowProps, 'clone' | 'onToggle' | 'onUpgrade'>>
+// RowProps are a row's props a test sets, the clone among them when it renders again.
+type RowProps = Partial<Omit<DepsRowProps, 'onToggle' | 'onUpgrade'>>
 
 // renderRow renders one clone's row in a group's list, as the page lists it, the clock at
 // FIXED_NOW, and returns it with its handlers and a way to render it again.
@@ -106,9 +107,25 @@ describe('DepsRow', () => {
   })
 
   it('names the stalest manifest alone when it is the clone’s only one', () => {
-    const { row } = renderRow(manifestsClone({ modules: [manifestsModule()] }))
+    const { row } = renderRow(manifestsClone({ modules: [manifestsModule()], counted: 1 }))
 
     expect(within(row()).getByText('go.mod').parentElement).toHaveAttribute('title', 'go.mod')
+  })
+
+  it('names no stalest manifest, and no age, for a clone with nothing counted, and colors it fresh', () => {
+    const { row } = renderRow(
+      manifestsClone({
+        oldest: '',
+        ageFrom: '',
+        counted: 0,
+        modules: [manifestsModule({ direct: 0, indirect: 0, uncounted: 'noDeps' })],
+      }),
+    )
+
+    expect(within(row()).queryByText('go.mod')).not.toBeInTheDocument()
+    expect(row().querySelector('time')).toBeNull()
+    expect(edge(row())).toHaveAttribute('data-tone', 'success')
+    expect(within(row()).getByText('none counted')).toBeInTheDocument()
   })
 
   it.each<[string, string, string, string]>([
@@ -116,7 +133,7 @@ describe('DepsRow', () => {
     ['under a month', daysAgo(3), 'success', 'bg-success'],
     ['not known', '', 'muted', 'bg-muted/30'],
   ])('colors the edge of an age %s', (_, oldest, tone, fill) => {
-    const { row } = renderRow(manifestsClone({ oldest }))
+    const { row } = renderRow(manifestsClone({ oldest, ageFrom: oldest }))
 
     expect(edge(row())).toHaveAttribute('data-tone', tone)
     expect(edge(row())).toHaveClass(fill)
@@ -126,6 +143,7 @@ describe('DepsRow', () => {
     const { row } = renderRow(
       manifestsClone({
         oldest: '',
+        ageFrom: '',
         modules: [
           manifestsModule({ changedAt: '', subject: '', problem: 'Couldn’t read when this go.mod last changed.' }),
         ],
@@ -137,6 +155,75 @@ describe('DepsRow', () => {
       'title',
       'Couldn’t read when this go.mod last changed.',
     )
+  })
+
+  it('colors the edge of a clone marked up to date by its mark, keeping its manifests’ age', () => {
+    const { row } = renderRow(manifestsClone({ checkedAt: daysAgo(3), ageFrom: daysAgo(3) }))
+
+    expect(edge(row())).toHaveAttribute('data-tone', 'success')
+    expect(within(row()).getByText('1y ago')).toBeInTheDocument()
+    expect(within(row()).getByText('checked 3d ago').parentElement).toHaveAttribute(
+      'title',
+      'Marked up to date Friday, June 12, 2026 at 12:00 PM, so it ages from then rather than from its go.mod and ' +
+        'package.json files.',
+    )
+  })
+
+  describe('its mark up to date', () => {
+    it('marks the clone up to date, and unmarks one marked, green while it is', async () => {
+      const onMark = vi.fn<(checked: boolean) => void>()
+      const { onToggle, rerender } = renderRow(manifestsClone(), { onMark })
+
+      const mark = screen.getByRole('button', { name: 'Mark acme-org/api-server up to date' })
+
+      expect(mark).not.toHaveAttribute('data-checked')
+      expect(mark).toHaveAttribute(
+        'title',
+        'Mark up to date: you checked its dependencies, so it counts as fresh from now and ages again from today',
+      )
+
+      await userEvent.click(mark)
+      expect(onMark).toHaveBeenCalledExactlyOnceWith(true)
+      expect(onToggle).not.toHaveBeenCalled()
+
+      rerender({ onMark, clone: manifestsClone({ checkedAt: daysAgo(0), ageFrom: daysAgo(0) }) })
+
+      const unmark = screen.getByRole('button', { name: 'Unmark acme-org/api-server' })
+
+      expect(unmark).toHaveAttribute('data-checked', 'true')
+      expect(unmark).toHaveClass('data-checked:text-success')
+
+      await userEvent.click(unmark)
+      expect(onMark).toHaveBeenLastCalledWith(false)
+    })
+
+    it('holds the mark while one is under way, and offers none without a way to mark', () => {
+      const { rerender } = renderRow(manifestsClone(), { onMark: vi.fn(), marking: true })
+
+      expect(screen.getByRole('button', { name: 'Mark acme-org/api-server up to date' })).toBeDisabled()
+
+      rerender({ onMark: undefined, marking: false })
+      expect(screen.queryByRole('button', { name: /up to date/ })).not.toBeInTheDocument()
+    })
+
+    it('offers only an unmark to a clone that couldn’t be read, and says it stays in Stale', () => {
+      const broken = manifestsClone({
+        modules: [],
+        counted: 0,
+        oldest: '',
+        ageFrom: '',
+        error: 'Couldn’t read this clone’s files at HEAD.',
+      })
+      const { rerender } = renderRow(broken, { onMark: vi.fn() })
+
+      expect(screen.queryByRole('button', { name: /up to date/ })).not.toBeInTheDocument()
+
+      rerender({ onMark: vi.fn(), clone: { ...broken, checkedAt: daysAgo(1) } })
+      expect(screen.getByRole('button', { name: 'Unmark acme-org/api-server' })).toBeInTheDocument()
+      expect(screen.getByText('checked 1d ago').parentElement?.getAttribute('title')).toMatch(
+        /It stays in Stale while it can’t be read\.$/,
+      )
+    })
   })
 
   it('marks a repository the user pinned', () => {
@@ -171,7 +258,9 @@ describe('DepsRow', () => {
 
   it('says why a clone couldn’t be read in its stalest manifest’s place, with nothing else to note', () => {
     const error = 'Couldn’t read this clone’s files at origin/master: object not found.'
-    const { row } = renderRow(manifestsClone({ modules: [], oldest: '', tools: [], shallow: true, error }))
+    const { row } = renderRow(
+      manifestsClone({ modules: [], counted: 0, oldest: '', ageFrom: '', tools: [], shallow: true, error }),
+    )
     const r = within(row())
 
     expect(r.getByText(error).parentElement).toHaveAttribute('title', error)
@@ -182,7 +271,7 @@ describe('DepsRow', () => {
   })
 
   it('leaves the manifest’s place empty for a clone that holds none', () => {
-    const { row } = renderRow(manifestsClone({ modules: [], oldest: '', tools: [] }))
+    const { row } = renderRow(manifestsClone({ modules: [], counted: 0, oldest: '', ageFrom: '', tools: [] }))
 
     expect(row()).toHaveTextContent(/^acme-org\/api-serverage unknownUpgrade…$/)
   })
@@ -404,14 +493,14 @@ describe('DepsDrawer', () => {
   it('says why nothing was read of a clone that couldn’t be', () => {
     const error = 'Couldn’t work out which commit of this clone to read: not a git repository.'
 
-    renderRow(manifestsClone({ modules: [], oldest: '', error }), { open: true })
+    renderRow(manifestsClone({ modules: [], counted: 0, oldest: '', ageFrom: '', error }), { open: true })
 
     expect(drawer().getByText(error)).toHaveClass('text-warning')
     expect(drawer().queryByRole('list')).not.toBeInTheDocument()
   })
 
   it('says no manifest was read of a clone with neither modules nor an error', () => {
-    renderRow(manifestsClone({ modules: [], oldest: '' }), { open: true })
+    renderRow(manifestsClone({ modules: [], counted: 0, oldest: '', ageFrom: '' }), { open: true })
 
     expect(drawer().getByText('No go.mod or package.json was read.')).toBeInTheDocument()
   })
@@ -450,6 +539,42 @@ describe('DepsDrawer', () => {
     expect(await drawer().findByRole('alert')).toHaveTextContent('Finder can’t show a file here.')
   })
 
+  it('marks a module that doesn’t count toward the clone’s age, saying why, and lists it after the rest', () => {
+    renderRow(
+      manifestsClone({
+        counted: 1,
+        modules: [manifestsModule(), manifestsModule({ path: 'examples/demo/go.mod', uncounted: 'example' })],
+      }),
+      { open: true },
+    )
+
+    const [counted, sample] = lines()
+
+    expect(within(counted as HTMLElement).queryByText('not counted')).not.toBeInTheDocument()
+    expect(within(sample as HTMLElement).getByText('examples/demo/go.mod')).toBeInTheDocument()
+    expect(within(sample as HTMLElement).getByText('not counted')).toHaveAttribute(
+      'title',
+      'Not counted toward the clone’s age: it is in an examples folder, a sample rather than a project of its own. ' +
+        'It is listed all the same.',
+    )
+  })
+
+  it('marks the clone up to date from its foot, and unmarks it there', async () => {
+    const onMark = vi.fn<(checked: boolean) => void>()
+    const { onToggle, rerender } = renderRow(manifestsClone(), { open: true, onMark })
+
+    await userEvent.click(drawer().getByRole('button', { name: 'Mark up to date' }))
+    expect(onMark).toHaveBeenCalledExactlyOnceWith(true)
+    expect(onToggle).not.toHaveBeenCalled()
+
+    rerender({ open: true, onMark, marking: true, clone: manifestsClone({ checkedAt: daysAgo(0) }) })
+    expect(drawer().getByRole('button', { name: 'Unmark up to date' })).toBeDisabled()
+
+    rerender({ open: true, onMark, clone: manifestsClone({ checkedAt: daysAgo(0) }) })
+    await userEvent.click(drawer().getByRole('button', { name: 'Unmark up to date' }))
+    expect(onMark).toHaveBeenLastCalledWith(false)
+  })
+
   it('opens the upgrade sheet from Upgrade dependencies…', async () => {
     const { onUpgrade, onToggle } = renderRow(manifestsClone(), { open: true })
 
@@ -462,7 +587,10 @@ describe('DepsDrawer', () => {
 
 describe('DepsLegend', () => {
   it('names the ages a group’s edges stand for in its heading, a dot of each color before them', () => {
-    const rows = [manifestsClone(), manifestsClone({ repo: 'acme-org/web', dir: '~/projects/web', oldest: '' })]
+    const rows = [
+      manifestsClone(),
+      manifestsClone({ repo: 'acme-org/web', dir: '~/projects/web', oldest: '', ageFrom: '' }),
+    ]
 
     renderAt(
       <GroupHeading
@@ -491,7 +619,7 @@ describe('DepsLegend', () => {
         open={false}
         disabled={false}
         onToggle={vi.fn()}
-        note={<DepsLegend group="fresh" rows={[manifestsClone({ oldest: daysAgo(2) })]} />}
+        note={<DepsLegend group="fresh" rows={[manifestsClone({ oldest: daysAgo(2), ageFrom: daysAgo(2) })]} />}
       />,
     )
 

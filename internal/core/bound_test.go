@@ -546,6 +546,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		"manifests.Service.MarkChecked": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Manifests.MarkChecked(ctx, "acme-org/example-repo")
+		},
+		"manifests.Service.ClearChecked": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Manifests.ClearChecked(ctx, "acme-org/example-repo")
+		},
 		"hooks.Service.ActionResult": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Hooks.ActionResult(ctx, 3)
 			require.Equal(t, hooks.OutcomeInstalled, got.Outcome)

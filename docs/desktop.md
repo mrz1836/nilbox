@@ -1703,12 +1703,29 @@ offline and signed out, and finding what is outdated is the agent's job.
   or its lockfile: a `go.mod`'s `go.sum` beside it, or the nearest `pnpm-lock.yaml`,
   `package-lock.json`, `yarn.lock`, or `bun.lock` to a `package.json`, in its folder or one
   above. A manifest under `vendor/`, `node_modules/`, or `testdata/` is another project's, and
-  left out. A clone is as old as its stalest module.
+  left out. A clone is as old as its stalest module that counts, or, once you mark it up to date,
+  as old as that mark, whichever is later.
+- **What counts:** a `go.mod` that requires nothing, a `package.json` with no dependencies of any
+  kind, and any manifest under a `fixtures`, `__fixtures__`, `examples`, or `example` folder, at
+  any depth, are listed in the clone's drawer, marked *not counted*, but don't make it stale: a
+  small tool already on its newest versions, or a test's fixture, would otherwise head the list
+  forever. A manifest that couldn't be read still counts. A clone none of whose modules counts has
+  no age, says *none counted*, and goes in Fresh, where it stays, so it offers no mark.
+- **Mark up to date:** once you've checked a clone's dependencies and found nothing to upgrade,
+  the check on its row (or **Mark up to date** in its drawer) records that you checked it now,
+  and the clone moves to Fresh at once, without reading anything again. It ages from then, into
+  Aging after a month and Stale after three, unless one of its counted manifests or lockfiles
+  changes later, which then counts instead. The row notes *checked 3d ago*, and the check turns
+  green; a second click, or **Unmark up to date**, undoes it. A mark belongs to the repository, so
+  every clone of it shares it, and it is kept on this Mac alone, in the app's database, like the
+  rest of your triage. A clone that couldn't be read stays in Stale, marked or not, and offers no
+  mark until it can be read, only an unmark when you marked it before.
 - **Groups:** **Stale** (over three months), open, then **Aging** (one to three months) and
   **Fresh** (under a month), folded, each with its count, a month being 30 days. A clone whose
   age isn't known, as one that couldn't be read, goes in Stale too, last in the Oldest order, so
   nothing hides it. Each heading's legend says what its rows' edges mean: orange for *over 3
-  months*, amber for *1–3 months*, green for *under a month*, and faint grey for *age unknown*.
+  months*, amber for *1–3 months*, green for *under a month* (a clone with nothing counted
+  included), and faint grey for *age unknown*.
   Stale shows even with nothing in it (*No clone has stale dependencies.*); an empty Aging or
   Fresh doesn't. A group you open or fold stays that way, when you come back and after a
   restart. The rail's badge counts the clones in Stale, those whose age isn't known included.
@@ -1744,16 +1761,21 @@ line under the name, and narrower still the counts and the tools join them there
   a pin after it when you pinned it.
 - **Its modules,** counted by kind (*Go 3 · JS 1*), and **the tools** it is set up for (*magex ·
   pnpm*: magex by its files, a JavaScript package manager by the packages that use it).
-- **Its stalest manifest,** the one whose dependencies changed longest ago, or, in amber, why the
-  clone couldn't be read.
+- **Its stalest manifest,** the counted one whose dependencies changed longest ago (none when
+  none counts), or, in amber, why the clone couldn't be read.
 - **Its notes:** an upgrade an agent works on there, as in *Claude · working · 4m* (its prompt
-  and worktree in its tooltip), then how the clone was read: *age unknown* (no commit that
-  changed its manifests was found, or why not), *read at HEAD* (and why), *shallow* (its history
+  and worktree in its tooltip), then *checked 3d ago* while you have marked it up to date (when,
+  and what the mark does now, in its tooltip), then how the clone was read: *none counted* (none
+  of its modules counts toward its age), *age unknown* (no commit that changed its counted
+  manifests was found, or why not), *read at HEAD* (and why), *shallow* (its history
   stops at its shallow commits, so its dependencies may be older than shown), and *not all read*
   (it holds more manifests than Deps reads, 200, and those nearest its top were read). Each says
   more in its tooltip.
-- **The age** of that manifest's last change; its tooltip gives the date, the commit's subject,
-  and what was read (*As of origin/master, fetched 3d ago*, or *Read at HEAD* and why).
+- **The age** of that manifest's last change, a mark notwithstanding; its tooltip gives the date,
+  the commit's subject, when you marked it up to date, and what was read (*As of origin/master,
+  fetched 3d ago*, or *Read at HEAD* and why).
+- **The check** marks the clone up to date, or, green while it is, unmarks it (see *Mark up to
+  date*, above).
 - **Upgrade…** opens the sheet. It stays quiet until you point at the row or move the focus into
   it.
 - **The chevron** unfolds the row's drawer, and so does a click anywhere else on the row (a click
@@ -1761,15 +1783,17 @@ line under the name, and narrower still the counts and the tools join them there
   ↑ and ↓ move between the rows, across the groups. Several drawers can be open at once, and
   they stay open when the page reads again.
 
-**The drawer** has a line for each module, stalest first: its kind (*GO* or *JS*), its manifest's
-path (its module path or package name, toolchain, lockfile, and workspaces in its tooltip), its
-Go version (*go 1.22*) or package manager, its dependencies (*4 direct · 9 indirect*, or *48
-deps · 12 dev*, with any peer and optional ones), the subject of the commit that last changed it
-and its age, and a **Reveal in Finder** button that shows that manifest. A manifest over 1 MiB,
+**The drawer** has a line for each module, those that count first, each part stalest first: its
+kind (*GO* or *JS*), its manifest's path (its module path or package name, toolchain, lockfile,
+and workspaces in its tooltip), *not counted* after it when it doesn't count (why in its
+tooltip), its Go version (*go 1.22*) or package manager, its dependencies (*4 direct · 9
+indirect*, or *48 deps · 12 dev*, with any peer and optional ones), the subject of the commit that
+last changed it and its age, and a **Reveal in Finder** button that shows that manifest. A manifest over 1 MiB,
 one that doesn't parse, or one whose history couldn't be read says so in amber under its line.
 The clone's workspace files follow (*Workspaces: go.work · pnpm-workspace.yaml*), and at its foot
-**Open in Terminal** opens your terminal in the clone, running nothing, and **Upgrade
-dependencies…** opens the Upgrade dialog.
+**Open in Terminal** opens your terminal in the clone, running nothing, **Mark up to date** (or
+**Unmark up to date**) marks it as its row's check does, and **Upgrade dependencies…** opens the
+Upgrade dialog.
 
 **The Upgrade dialog** starts a coding agent on the repository itself rather than on a pull
 request or an issue. It is the launch options' own dialog, as an item's **Launch options…** opens

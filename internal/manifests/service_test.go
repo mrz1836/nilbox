@@ -100,7 +100,7 @@ func TestListReadsEveryCloneStalestFirst(t *testing.T) {
 				changed: daysAgo(30),
 			},
 		},
-		oldest: daysAgo(400),
+		Counted: 2, AgeFrom: clock.Format(daysAgo(400)), key: owner + "/stale", oldest: daysAgo(400), aged: daysAgo(400),
 	}, page.Clones[0])
 }
 
@@ -331,6 +331,12 @@ func TestModulesThatCantBeReadSaySo(t *testing.T) {
 		"nomod/go.mod":        "This go.mod names no module.",
 		"gone/go.mod":         "Couldn't read this go.mod: fake: no such object.",
 	}, problems)
+
+	for _, m := range c.Modules {
+		assert.Equal(t, UncountedNone, m.Uncounted, "%s: a manifest that couldn't be read still counts", m.Path)
+	}
+
+	assert.Equal(t, 4, c.Counted)
 	assert.Equal(t, 3, r.git.counted()[callBlob], "a manifest over a mebibyte isn't read")
 
 	r.list(true)

@@ -19,16 +19,31 @@ export interface Clone {
     "pinned": boolean;
 
     /**
-     * Modules are its go.mod and package.json files, stalest first, those whose age isn't
-     * known last.
+     * Modules are its go.mod and package.json files: those that count toward its age
+     * first, then those that don't (Module.Uncounted), each part stalest first, those whose
+     * age isn't known last. Counted is how many count.
      */
     "modules": Module[] | null;
+    "counted": number;
 
     /**
-     * Oldest is the stalest module's ChangedAt, RFC 3339, or "" when no module's is known;
-     * the page is sorted by it.
+     * Oldest is the stalest counted module's ChangedAt, RFC 3339, or "" when no counted
+     * module's is known, or none counts.
      */
     "oldest": string;
+
+    /**
+     * CheckedAt is when the user last marked the repository's dependencies up to date
+     * (MarkChecked), RFC 3339, "" while it isn't marked; every clone of a repository shares
+     * it. AgeFrom is when the clone's age counts from, which the page is sorted by and the
+     * window groups it by: the later of Oldest and CheckedAt, so a check makes the clone
+     * fresh and it ages again from then, and a manifest that changes after it wins; "" when
+     * neither is known, and for a clone that couldn't be read, checked or not, so a read
+     * that failed is never taken for a fresh one. A clone none of whose modules counts has
+     * no age of its own (Counted 0, Oldest ""), which the window puts in Fresh.
+     */
+    "checkedAt": string;
+    "ageFrom": string;
 
     /**
      * Tools are the tools it is set up for: magex, by its signs, and the JavaScript
@@ -140,6 +155,12 @@ export interface Module {
      * too large to read or one that doesn't parse, "" when nothing went wrong.
      */
     "problem": string;
+
+    /**
+     * Uncounted says why the module doesn't count toward its clone's age, UncountedNone
+     * when it does.
+     */
+    "uncounted": Uncounted;
 }
 
 /**
@@ -149,7 +170,7 @@ export interface Module {
 export interface Page {
     /**
      * Clones are the clones read that hold a go.mod or a package.json at the commit read,
-     * and those that couldn't be read, stalest first, those whose age isn't known last.
+     * and those that couldn't be read, stalest first by AgeFrom, those with none last.
      */
     "clones": Clone[] | null;
 
@@ -194,4 +215,28 @@ export const Tool = {
     ToolNPM: "npm",
     ToolYarn: "yarn",
     ToolBun: "bun",
+} as const;
+
+/**
+ * Uncounted is why a module doesn't count toward its clone's age, UncountedNone when it
+ * does: a manifest read that names no dependency of any kind (a go.mod that requires no
+ * module, a package.json with no dependencies, dev, peer, or optional), or one under a
+ * fixtures or __fixtures__ folder, or else an examples or example folder, at any depth, a
+ * sample rather than a project of its own. A manifest that couldn't be read still counts,
+ * unless its folder says otherwise. A module that doesn't count is still listed, in its
+ * clone's drawer, after those that do.
+ */
+export type Uncounted = "" | "noDeps" | "fixture" | "example";
+
+/**
+ * The values of Uncounted, by the names of their Go constants.
+ */
+export const Uncounted = {
+    /**
+     * The reasons a module doesn't count, and UncountedNone for one that does.
+     */
+    UncountedNone: "",
+    UncountedNoDeps: "noDeps",
+    UncountedFixture: "fixture",
+    UncountedExample: "example",
 } as const;

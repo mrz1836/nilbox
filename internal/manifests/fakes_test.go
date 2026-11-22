@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"maps"
@@ -303,8 +304,8 @@ func (f *fakeBranches) set(name, branch string) {
 }
 
 // rig is a Service over a clone root of folders that read as clones, under a home of its
-// own, answered by the fake git, with a fake clock, the rules, and the stored default
-// branches.
+// own, answered by the fake git, with a fake clock, the rules, the stored default
+// branches, and a database of its own for the repositories marked up to date.
 type rig struct {
 	t        *testing.T
 	home     string
@@ -314,6 +315,7 @@ type rig struct {
 	clock    *testutil.Clock
 	rules    *fakeRules
 	branches *fakeBranches
+	db       *sql.DB
 	events   *testutil.Events
 	logs     *testutil.Logs
 	svc      *Service
@@ -329,15 +331,15 @@ func newRig(t *testing.T) *rig {
 	home := testutil.RealTempDir(t)
 	r := &rig{
 		t: t, home: home, root: filepath.Join(home, "projects"), git: newFakeGit(), clock: testutil.NewClock(rigStart),
-		rules: &fakeRules{}, branches: &fakeBranches{branches: map[string]string{}}, events: &testutil.Events{},
-		logs: &testutil.Logs{},
+		rules: &fakeRules{}, branches: &fakeBranches{branches: map[string]string{}}, db: testutil.DB(t),
+		events: &testutil.Events{}, logs: &testutil.Logs{},
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
 	r.clones = localrepostest.New(r.root)
 	r.svc = NewService(Config{
-		Clones: r.clones, Git: r.git, Rules: r.rules, Branches: r.branches, Home: home, Clock: r.clock, Events: r.events,
-		Logger: r.logs.Logger(),
+		Clones: r.clones, Git: r.git, Rules: r.rules, Branches: r.branches, DB: r.db, Home: home, Clock: r.clock,
+		Events: r.events, Logger: r.logs.Logger(),
 	})
 
 	return r
@@ -386,6 +388,7 @@ const (
 		"dependencies": {"a": "1"}, "devDependencies": {"b": "2", "c": "3"}}`
 	webPackage = "web/package.json"
 	webLock    = "web/pnpm-lock.yaml"
+	toolsGoMod = "tools/go.mod"
 )
 
 // moduleRepo is a fake clone whose origin/main is commit, holding a go.mod, with its

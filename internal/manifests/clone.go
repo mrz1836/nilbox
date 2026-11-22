@@ -65,7 +65,7 @@ type keptClone struct {
 func (s *Service) readClone(ctx context.Context, c candidate) Clone {
 	row := Clone{
 		Repo: c.name.String(), Dir: paths.Tilde(c.dir, s.home), Pinned: c.pinned, Modules: []Module{}, Tools: []Tool{},
-		Workspaces: []string{},
+		Workspaces: []string{}, key: c.name.Key(),
 	}
 
 	t, err := s.resolveTip(ctx, c)
@@ -90,7 +90,7 @@ func (s *Service) readClone(ctx context.Context, c candidate) Clone {
 
 	row.Modules, row.Tools, row.Workspaces = k.contents.modules, k.contents.tools, k.contents.workspaces
 	row.Truncated, row.Shallow, row.FetchedAt = k.contents.truncated, k.shallow, stamp(k.fetched)
-	row.oldest = oldestOf(row.Modules)
+	row.Counted, row.oldest = countedOf(row.Modules), oldestOf(row.Modules)
 	row.Oldest = stamp(row.oldest)
 
 	return row

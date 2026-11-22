@@ -1,10 +1,7 @@
 package manifests
 
 import (
-	"cmp"
 	"context"
-	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -150,8 +147,9 @@ func (s *Service) readDir(ctx context.Context, dir string, rules reporules.Rules
 	return dirRead{outcome: outcomeRead, key: c.key, row: s.readClone(ctx, c)}
 }
 
-// assemble makes the page of reads: the clones that hold a module or couldn't be read,
-// stalest first, and how many were left out.
+// assemble makes the page of reads: the clones that hold a module or couldn't be read, in
+// the order read, and how many were left out. The page is sorted as it is served, once the
+// checks are on it (withChecks).
 func assemble(reads []dirRead) Page {
 	page := emptyPage()
 
@@ -169,18 +167,13 @@ func assemble(reads []dirRead) Page {
 		}
 	}
 
-	slices.SortStableFunc(page.Clones, func(a, b Clone) int {
-		return cmp.Or(compareAges(a.oldest.IsZero(), b.oldest.IsZero(), a.oldest.Compare(b.oldest)),
-			cmp.Compare(strings.ToLower(a.Repo), strings.ToLower(b.Repo)), cmp.Compare(a.Dir, b.Dir))
-	})
-
 	return page
 }
 
-// oldestOf returns the stalest of modules' ages, sorted as sortModules sorts them, or the
-// zero time when none is known.
+// oldestOf returns the stalest of the counted modules' ages, modules sorted as sortModules
+// sorts them, or the zero time when none is known, or none counts.
 func oldestOf(modules []Module) time.Time {
-	if len(modules) == 0 {
+	if len(modules) == 0 || modules[0].Uncounted != UncountedNone {
 		return time.Time{}
 	}
 

@@ -86,9 +86,40 @@ func inFolder(file, dir string) bool {
 // inSkippedFolder reports a file inside a vendor, node_modules, or testdata folder, at any
 // depth.
 func inSkippedFolder(file string) bool {
+	return inFolderNamed(file, skippedFolders())
+}
+
+// fixtureFolders and exampleFolders are the folders whose manifests are listed but don't
+// count toward their clone's age: a test's fixtures, and examples, samples of a project
+// rather than one of its own, kept as they are.
+func fixtureFolders() []string {
+	return []string{"fixtures", "__fixtures__"}
+}
+
+func exampleFolders() []string {
+	return []string{"examples", "example"}
+}
+
+// uncountedAt says why a manifest at file doesn't count toward its clone's age by its
+// folder alone: one inside a fixtures or __fixtures__ folder, or else an examples or
+// example folder, at any depth; UncountedNone for any other.
+func uncountedAt(file string) Uncounted {
+	switch {
+	case inFolderNamed(file, fixtureFolders()):
+		return UncountedFixture
+	case inFolderNamed(file, exampleFolders()):
+		return UncountedExample
+	default:
+		return UncountedNone
+	}
+}
+
+// inFolderNamed reports a file inside a folder called one of names, at any depth, the
+// path from the tree's top.
+func inFolderNamed(file string, names []string) bool {
 	folders := strings.Split(file, "/")
 
-	return slices.ContainsFunc(folders[:len(folders)-1], func(f string) bool { return slices.Contains(skippedFolders(), f) })
+	return slices.ContainsFunc(folders[:len(folders)-1], func(f string) bool { return slices.Contains(names, f) })
 }
 
 // treeFiles is what Deps found in a commit's tree.
