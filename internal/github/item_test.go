@@ -83,6 +83,7 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 		Checks:         Checks{State: "SUCCESS", Passed: 9},
 		Reviews:        Reviews{Decision: "APPROVED", Reviewers: 1, Reviewed: 1, Approvals: 1},
 		ReviewRequests: noRequests(),
+		Assignees:      []string{"fork-contributor"},
 		ApprovingBots:  []string{},
 	}, update.Details)
 

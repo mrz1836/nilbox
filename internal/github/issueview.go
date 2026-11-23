@@ -957,6 +957,22 @@ func (p graphQLPeople) people() People {
 	return out
 }
 
+// allLogins returns every login of p, never nil, or nil when the read can't tell who all
+// they are: p is nil, as when the answer didn't bring the connection, or GitHub counts more
+// than it returned, nulls skipped.
+func allLogins(p *graphQLPeople) []string {
+	if p == nil {
+		return nil
+	}
+
+	got := p.people()
+	if p.TotalCount > len(got.Logins) {
+		return nil
+	}
+
+	return got.Logins
+}
+
 // graphQLRef is a pull request or issue another names (the RefFields fragment), or, as a
 // close's closer, a commit or a project, which carry no number.
 type graphQLRef struct {

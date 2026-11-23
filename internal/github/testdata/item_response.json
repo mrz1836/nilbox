@@ -67,6 +67,14 @@
                     }
                 ]
             },
+            "assignees": {
+                "totalCount": 1,
+                "nodes": [
+                    {
+                        "login": "fork-contributor"
+                    }
+                ]
+            },
             "reviewRequests": {
                 "nodes": []
             },

@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // RefreshItem brings one item up to date from GitHub and returns the new snapshot. It
@@ -16,10 +17,12 @@ import (
 // as a pull request they just merged, shows without refreshing the whole inbox.
 //
 // An item still open gets its card and details rewritten and stays in the lists it is
-// in; only the searches of a whole refresh can tell which lists those are, with one
-// exception: a pull request in Review requested that GitHub no longer asks the user to
+// in; only the searches of a whole refresh can tell which lists those are, with two
+// exceptions: a pull request in Review requested that GitHub no longer asks the user to
 // review, by name or through a team, leaves that list (see leaveAnsweredReview), as once
-// the user, or an agent they launched, reviewed it, and it tells no outcome for that. An
+// the user, or an agent they launched, reviewed it, and an item no longer assigned to the
+// user leaves the assigned list (see leaveUnassigned), as once they took themselves off it
+// on GitHub; it tells no outcome for either. An
 // issue's projects are read when the last whole refresh could read them; only a whole
 // refresh changes what the snapshot says about that. A pull request
 // whose files are checked has them checked again when its head moved. An item
@@ -149,7 +152,8 @@ func (s *Service) fetchItem(
 
 // rewrite stores what GitHub says about an open item in place, with its details and file
 // check, takes a pull request GitHub no longer asks the account to review out of Review
-// requested (see leaveAnsweredReview), stores the user's verdict when the read brought it
+// requested (see leaveAnsweredReview) and an item no longer assigned to it out of the
+// assigned list (see leaveUnassigned), stores the user's verdict when the read brought it
 // (see noteReadVerdict), then ends the snoozes the new details give cause to.
 func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
@@ -168,6 +172,10 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	}
 
 	if err = w.leaveAnsweredReview(ctx, id, it); err != nil {
+		return err
+	}
+
+	if err = w.leaveUnassigned(ctx, id, it); err != nil {
 		return err
 	}
 
@@ -229,6 +237,42 @@ func answeredReview(it github.Item, d github.ItemDetails, login string) bool {
 	default:
 		return !r.Asks(login)
 	}
+}
+
+// leaveUnassigned takes the item with id out of the assigned list when the details read
+// with it say it is no longer assigned to the writer's account (see unassigned), as once
+// the user took themselves off it on GitHub. It is stamped as leaveAnsweredReview stamps a
+// review, so a whole refresh whose search still lists it keeps it out and tells no arrival
+// until it moves: an assignment made again then arrives. An item not in the list is left
+// alone, and it tells no outcome, as Unassign tells none of a list left.
+func (w *writer) leaveUnassigned(ctx context.Context, id int64, it github.Item) error {
+	d, ok := w.details[it.NodeID]
+	if !ok || !unassigned(d, w.login) {
+		return nil
+	}
+
+	stamp := it.UpdatedAt.UTC()
+	if stamp.IsZero() {
+		stamp = w.now
+	}
+
+	err := w.q.LeaveUnassigned(ctx, queries.LeaveUnassignedParams{AssignLeftAt: &stamp, ID: id})
+	if err != nil {
+		return fmt.Errorf("take %s out of the assigned list: %w", it.Ref(), err)
+	}
+
+	return nil
+}
+
+// unassigned reports whether d says the item it was read with is assigned to someone, or no
+// one, but not login, ignoring case, the twin of answeredReview. A read that can't tell
+// keeps the item where it is: no login, or assignees the read didn't bring in full (nil).
+func unassigned(d github.ItemDetails, login string) bool {
+	if login == "" || d.Assignees == nil {
+		return false
+	}
+
+	return !textutil.ContainsFold(d.Assignees, login)
 }
 
 // unlistRead takes an item a read found gone, closed, or archived out of the lists (see

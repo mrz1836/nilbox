@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/assignees"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -198,7 +199,9 @@ func cannotEditAssignees(pull StoredPull, c *cached) error {
 // step, which the sheet keeps in its cache, so it rebuilds with no read; a cache it can't
 // rewrite is marked out of date instead. Once GitHub made a step, the result counts it and
 // says why the next failed, while a failure before any is the error. Each person assigned
-// is kept in the People directory as assigned in the repository.
+// is kept in the People directory as assigned in the repository. An edit that assigns the
+// user tells the inbox so (Acted.SelfAssigned), so the card reads as assigned to them at
+// once, and the next refresh tells no arrival of their own assignment.
 func (s *Service) EditAssignees(ctx context.Context, req AssigneesRequest) (AssigneesResult, error) {
 	pull, err := s.pull(ctx, req.ItemID)
 	if err != nil {
@@ -226,8 +229,15 @@ func (s *Service) EditAssignees(ctx context.Context, req AssigneesRequest) (Assi
 
 	done := map[string]bool{}
 
+	var assigned *github.Edited
+
 	err = s.inbox.Act(ctx, req.ItemID, func(ctx context.Context, tok github.Token, t Target) (Acted, error) {
-		return Acted{}, s.sendAssignees(ctx, tok, t, add, remove, done)
+		got, sendErr := s.sendAssignees(ctx, tok, t, add, remove, done)
+		if got != nil {
+			assigned = got
+		}
+
+		return selfAssigned(t.Login, add, assigned), sendErr
 	})
 
 	if done["+"] {
@@ -273,13 +283,30 @@ func checkAssignees(pull StoredPull, now, add, remove []string) error {
 	return nil
 }
 
+// selfAssigned is what an assignee edit that assigned add made happen that the inbox
+// records: the user (login) assigned, when they were among add and GitHub's answer to the
+// step that assigned them (assigned, nil before it made it) has them, so the pull request
+// is in the inbox's assigned list at once. Assigning only others records nothing: an
+// assignment of the user someone else made still arrives.
+func selfAssigned(login string, add []string, assigned *github.Edited) Acted {
+	if assigned == nil || login == "" || !textutil.ContainsFold(add, login) ||
+		!textutil.ContainsFold(assigned.Assignees, login) {
+		return Acted{}
+	}
+
+	return Acted{SelfAssigned: true, SelfAssignedAt: assigned.UpdatedAt}
+}
+
 // sendAssignees sends each request of an assignee edit GitHub hasn't made yet, by its key in
 // done, in order: "-" takes everyone in remove off, then "+" assigns everyone in add. It
 // stops at the first that fails. After each, it keeps who the pull request is assigned to
 // as GitHub answered, in the sheet's cache, or marks the cache out of date when it can't.
+// It returns GitHub's answer to "+" when this call made it, and nil otherwise.
 func (s *Service) sendAssignees(
 	ctx context.Context, tok github.Token, t Target, add, remove []string, done map[string]bool,
-) error {
+) (*github.Edited, error) {
+	var assigned *github.Edited
+
 	steps := []struct {
 		key  string
 		who  []string
@@ -296,10 +323,14 @@ func (s *Service) sendAssignees(
 
 		edited, err := step.send(ctx, tok, t.Ref, step.who)
 		if err != nil {
-			return err
+			return assigned, err
 		}
 
 		done[step.key] = true
+
+		if step.key == "+" {
+			assigned = edited
+		}
 
 		if keepErr := s.cache.setAssignees(ctx, t.ID, edited.Assignees, s.now()); keepErr != nil {
 			s.logger.DebugContext(ctx, "could not keep the pull request's assignees", "error", keepErr)
@@ -307,7 +338,7 @@ func (s *Service) sendAssignees(
 		}
 	}
 
-	return nil
+	return assigned, nil
 }
 
 // shownAssignees are who the cache c says the pull request is assigned to, as the sheet

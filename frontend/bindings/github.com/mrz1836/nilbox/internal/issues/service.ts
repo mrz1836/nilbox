@@ -74,7 +74,9 @@ export function Earlier(id: number, before: string): $CancellablePromise<timelin
  * counts them and says why the next failed, while a failure before any is the error. A name
  * given twice is sent once, and one both added and taken off not at all. The sheet's copy of
  * the issue is marked out of date, for the read the sheet makes next, and each person
- * assigned is kept in the People directory as assigned in the repository.
+ * assigned is kept in the People directory as assigned in the repository. An edit that
+ * assigns the user tells the inbox so (Acted.SelfAssigned), so the card reads as assigned
+ * to them at once, and the next refresh tells no arrival of their own assignment.
  */
 export function Edit(req: $models.EditRequest): $CancellablePromise<$models.EditResult> {
     return $Call.ByID(4216690548, req);

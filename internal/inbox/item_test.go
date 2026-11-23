@@ -306,6 +306,61 @@ func TestDropClosed(t *testing.T) {
 	assert.Equal(t, 1, inbox.Assigned.IssueCount)
 }
 
+func TestDropLeft(t *testing.T) {
+	t.Parallel()
+
+	many := make([]string, 0, github.MaxReviewRequests)
+	for i := range github.MaxReviewRequests {
+		many = append(many, "reviewer-"+strconv.Itoa(i))
+	}
+
+	// Assigned: #1 to someone else now, #2 still to the user, #3 in another case, #4 read
+	// without details, #5 with assignees the read couldn't tell, #6 opened by the user too.
+	gone, kept, upper := issue("example-repo", 1, "OWNER"), issue("example-repo", 2, "OWNER"), issue("example-repo", 3, "OWNER")
+	noDetails, unknown, own := issue("example-repo", 4, "OWNER"), issue("example-repo", 5, "OWNER"), pr(6, "OWNER", false)
+
+	// Review requested: #7 asks someone else now, though still assigned, #8 a team the user
+	// may be on, #9 lists no requests, #10 as many as a read lists.
+	answered, team, noLists, full := pr(7, "OWNER", false), pr(8, "OWNER", false), pr(9, "OWNER", false), pr(10, "OWNER", false)
+
+	stillAssigned := asking([]string{octoAssignee}, []string{})
+	stillAssigned.Assignees = []string{octoUser}
+
+	ownLeft := prDetails()
+	ownLeft.Assignees = []string{}
+
+	inbox := fetched(
+		[]github.Item{answered, team, noLists, full},
+		[]github.Item{own},
+		[]github.Item{gone, kept, upper, noDetails, unknown, own, answered},
+	)
+	inbox.Assigned.IssueCount = 20
+
+	dropLeft(inbox, &github.Details{Items: map[string]github.ItemDetails{
+		nodeID(1):  {Assignees: []string{octoAssignee}},
+		nodeID(2):  {Assignees: []string{octoAssignee, octoUser}},
+		nodeID(3):  {Assignees: []string{"OCTO-USER"}},
+		nodeID(5):  {},
+		nodeID(6):  ownLeft,
+		nodeID(7):  stillAssigned,
+		nodeID(8):  asking([]string{}, []string{octoTeam}),
+		nodeID(9):  prDetails(),
+		nodeID(10): asking(many, []string{}),
+	}})
+
+	assert.Equal(t, []github.Item{kept, upper, noDetails, unknown, answered}, inbox.Assigned.Items)
+	assert.Equal(t, []github.Item{team, noLists, full}, inbox.ReviewRequested.Items)
+	assert.Equal(t, []github.Item{own}, inbox.Authored.Items, "the other lists keep what they returned")
+	assert.Equal(t, 18, inbox.Assigned.IssueCount, "each item left is counted out of GitHub's count")
+	assert.Equal(t, 3, inbox.ReviewRequested.IssueCount)
+	assert.Equal(t, 1, inbox.Authored.IssueCount)
+
+	before := fetched([]github.Item{answered}, nil, []github.Item{gone})
+	after := fetched([]github.Item{answered}, nil, []github.Item{gone})
+	dropLeft(after, nil)
+	assert.Equal(t, before, after, "no details read, nothing to tell")
+}
+
 func TestRefreshItemThatCannotBeSavedKeepsTheItem(t *testing.T) {
 	t.Parallel()
 
@@ -500,4 +555,29 @@ func TestAnsweredReview(t *testing.T) {
 	assert.False(t, answeredReview(iss, none, octoUser), "an issue asks no review")
 	assert.False(t, answeredReview(pull, asking(nil, []string{}), octoUser), "a read that brought no users")
 	assert.False(t, answeredReview(pull, asking([]string{}, nil), octoUser), "a read that brought no teams")
+}
+
+func TestUnassigned(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		assignees []string
+		login     string
+		want      bool
+	}{
+		{name: "assigned to someone else", assignees: []string{octoAssignee}, login: octoUser, want: true},
+		{name: "assigned to no one", assignees: []string{}, login: octoUser, want: true},
+		{name: "still assigned, in any case", assignees: []string{octoAssignee, "OCTO-USER"}, login: octoUser},
+		{name: "a read that can't tell", assignees: nil, login: octoUser},
+		{name: "no account", assignees: []string{octoAssignee}, login: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, unassigned(github.ItemDetails{Assignees: tt.assignees}, tt.login))
+		})
+	}
 }

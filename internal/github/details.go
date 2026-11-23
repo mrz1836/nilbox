@@ -56,6 +56,15 @@ const MaxReviewRequests = 50
 // 2026: a batch of 25 cost one point with them and without). A run's workflow is one object,
 // no connection, which GitHub's point formula never counts. The head commit's SHA tells a
 // snooze when a pull request was pushed, force-pushes included.
+//
+// Each item's assignees and a pull request's review requests are read live, while the
+// inbox query's searches match through GitHub's index, which trails an edit: an item the
+// user left on GitHub is still returned for a while, so these say which lists it really is
+// in (see the inbox's dropLeft). The assignees cost nothing more here (measured with
+// rateLimit(dryRun: true) in November 2026: a batch of 25 cost one point with them and
+// without, and a read of 100 items five points either way), where in the inbox query's
+// assigned search they would double its cost, one point to two.
+//
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
 // reads exactly what a whole refresh reads. A pull request's base branch and merge state
 // (mergeStateStatus: BEHIND, DIRTY, CLEAN, ...) are scalars, which cost no points, but
@@ -118,6 +127,7 @@ fragment DetailFields on Node {
     autoMergeRequest { enabledAt mergeMethod }
     commits { totalCount }
     labels(first: 50) { nodes { name color } }
+    assignees(first: 10) { totalCount nodes { login } }
     reviewRequests(first: 50) {
       nodes {
         requestedReviewer {
@@ -151,6 +161,7 @@ fragment DetailFields on Node {
     id
     comments { totalCount }
     labels(first: 50) { nodes { name color } }
+    assignees(first: 10) { totalCount nodes { login } }
     subIssuesSummary { total completed }` + issueInfoFields + closingPullsField
 
 // detailFieldsTail closes detailFieldsHead.
@@ -289,6 +300,12 @@ type ItemDetails struct {
 	// MaxReviewRequests in all. For a pull request GitHub answered for, both lists are
 	// never nil, empty when it asks no one; for an issue they are nil.
 	ReviewRequests ReviewRequests
+
+	// Assignees are who the item is assigned to, as of the read, by login, in GitHub's
+	// order: empty, never nil, when it is assigned to no one. It is nil when the read can't
+	// tell: the answer didn't bring them, or brought fewer than GitHub counts (at most
+	// MaxAssignees are read, as many as GitHub allows).
+	Assignees []string
 
 	// AutoMerge is a pull request's auto-merge, when someone turned it on; zero when it is
 	// off, and for an issue.
@@ -665,6 +682,7 @@ type detailsNode struct {
 	Commits            graphQLCount       `json:"commits"`
 	Comments           graphQLCount       `json:"comments"`
 	Labels             graphQLLabels      `json:"labels"`
+	Assignees          *graphQLPeople     `json:"assignees"`
 	ReviewRequests     graphQLRequests    `json:"reviewRequests"`
 	LatestReviews      graphQLReviews     `json:"latestReviews"`
 	StatusCheckRollup  *graphQLRollup     `json:"statusCheckRollup"`
@@ -815,7 +833,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 		return n.ID, ItemDetails{
 			Labels: n.Labels.labels(), Comments: n.Comments.TotalCount, Projects: n.ProjectItems.projects(),
 			SubIssues: n.SubIssuesSummary.subIssues(), Issue: n.issueInfo(),
-			ClosingPulls: n.LinkedPulls.closingPulls(),
+			ClosingPulls: n.LinkedPulls.closingPulls(), Assignees: allLogins(n.Assignees),
 		}, true
 	case typePullRequest:
 		author := ""
@@ -837,6 +855,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			Checks:         n.checks(),
 			Reviews:        n.reviews(author),
 			ReviewRequests: n.ReviewRequests.requests(),
+			Assignees:      allLogins(n.Assignees),
 			AutoMerge:      n.AutoMergeRequest.autoMerge(),
 			ApprovingBots:  n.LatestReviews.approvingBots(),
 			ReviewTexts:    n.LatestReviews.saying(),

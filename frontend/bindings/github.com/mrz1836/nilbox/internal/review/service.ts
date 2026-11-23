@@ -73,7 +73,9 @@ export function Earlier(id: number, before: string): $CancellablePromise<timelin
  * step, which the sheet keeps in its cache, so it rebuilds with no read; a cache it can't
  * rewrite is marked out of date instead. Once GitHub made a step, the result counts it and
  * says why the next failed, while a failure before any is the error. Each person assigned
- * is kept in the People directory as assigned in the repository.
+ * is kept in the People directory as assigned in the repository. An edit that assigns the
+ * user tells the inbox so (Acted.SelfAssigned), so the card reads as assigned to them at
+ * once, and the next refresh tells no arrival of their own assignment.
  */
 export function EditAssignees(req: $models.AssigneesRequest): $CancellablePromise<$models.AssigneesResult> {
     return $Call.ByID(626602868, req);
