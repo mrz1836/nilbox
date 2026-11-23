@@ -24,4 +24,5 @@ type Prompt struct {
 	AgentArgs   string
 	Purpose     string
 	ReplyAction string
+	UUID        string
 }

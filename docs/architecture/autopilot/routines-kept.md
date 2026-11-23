@@ -108,17 +108,21 @@ deleted in the export format:
 
 ```text
 { "format": "<slug>-autopilot/1", "exportedAt", "app",
-  "routines": [ { "name", "description", "mode", "enabled", "template", "spec": {…} } ] }
+  "routines": [ { "uuid", "name", "description", "mode", "enabled", "template", "spec": {…} } ] }
 ```
 
 `DecodeBundle` refuses another format and a newer version (`ErrNewerBundle`), and takes a
-field a later build adds. A bundle never holds an account, or a routine's history. An
+field a later build adds. Each routine carries its `uuid` (`autopilot_routines.uuid`, which names
+it for good: [Records named for good](../store.md#records-named-for-good-uuids)), left out of an
+older build's file. A routine saved new, or a `Duplicate`, is given a UUID of its own;
+`insertKept`, which stores a routine restored or imported, keeps the one it came with when it is
+canonical and no routine has it, the deleted ones included, and mints one otherwise. A bundle never holds an account, or a routine's history. An
 export the Autopilot tab writes may also hold `prompts`, the prompts its routines name by
 nickname in the prompts' own format ([Easy mode](easy-mode.md)); the copy and a backup never do.
 `Restore` runs only while `autopilot_routines` holds no row at all, the deleted ones
 included, so a routine the user deleted is never brought back: from the database set aside
 when it has the table (`store.OpenSnapshot`, tolerant of missing columns, keeping each
-routine's account), and otherwise from the copy, every routine not deleted, in its order,
+routine's account and UUID), and otherwise from the copy, every routine not deleted, in its order,
 in one transaction, each switched off, its mode as the source says (a step this build can't
 run keeps it in Dry run), its spec stored as `Save` stores one (normalized, then encoded)
 when it loads, and otherwise compacted but as it was, so a newer build's stays broken and

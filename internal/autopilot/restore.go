@@ -26,7 +26,7 @@ const routinesTable = "autopilot_routines"
 // lacks one reads it as its empty value.
 func restoreColumns() []string {
 	return []string{
-		"id", "account_login", "name", "description", "mode", "spec", "template_key", "sort_order", "deleted_at",
+		"id", "account_login", "name", "description", "mode", "spec", "template_key", "sort_order", "deleted_at", "uuid",
 	}
 }
 
@@ -40,11 +40,12 @@ type Restored struct {
 	From string
 }
 
-// keptRoutine is a routine brought back or imported, as it is stored: switched off.
+// keptRoutine is a routine brought back or imported, as it is stored: switched off, under
+// the UUID it came with when no routine here has it (uuid, "" for none).
 type keptRoutine struct {
-	name, desc, template, account string
-	mode                          autopilotprefs.Mode
-	spec                          storedSpec
+	name, desc, template, account, uuid string
+	mode                                autopilotprefs.Mode
+	spec                                storedSpec
 }
 
 // Restore brings back the routines the app lost with its database. It runs only while db
@@ -149,7 +150,7 @@ func readSetAside(ctx context.Context, path string) ([]keptRoutine, error) {
 		k, ok := keptFrom(row.Text("name"), row.Text("description"), row.Text("template_key"),
 			autopilotprefs.Mode(row.Text("mode")), json.RawMessage(row.Text("spec")))
 		if ok {
-			k.account = row.Text("account_login")
+			k.account, k.uuid = row.Text("account_login"), row.Text("uuid")
 			out = append(out, k)
 		}
 	}
@@ -163,6 +164,7 @@ func keptFromBundle(b Bundle) []keptRoutine {
 
 	for _, r := range b.Routines {
 		if k, ok := keptFrom(r.Name, r.Description, r.Template, r.Mode, r.Spec); ok {
+			k.uuid = r.UUID
 			out = append(out, k)
 		}
 	}
@@ -242,26 +244,52 @@ func storeKept(ctx context.Context, db *sql.DB, clk clock.Clock, kept []keptRout
 	return stored, nil
 }
 
-// insertKept stores k, switched off, at place in the order, and returns its row.
+// insertKept stores k, switched off, at place in the order, and returns its row: under k's
+// UUID when it is canonical and no routine has it, the deleted ones included, and otherwise
+// under a new one.
 func insertKept(ctx context.Context, q *queries.Queries, clk clock.Clock, k keptRoutine, place int64,
 ) (queries.AutopilotRoutine, error) {
+	id, err := routineUUIDFor(ctx, q, k.uuid)
+	if err != nil {
+		return queries.AutopilotRoutine{}, err
+	}
+
 	now := clk.Now()
 	row := queries.AutopilotRoutine{
 		AccountLogin: k.account, Name: k.name, NameKey: draft.NameKey(k.name), Description: k.desc, Mode: string(k.mode),
 		Spec: k.spec.data, SpecVersion: k.spec.version, TemplateKey: k.template, SortOrder: place,
-		BrokenReason: string(k.spec.broken), CreatedAt: now, UpdatedAt: now,
+		BrokenReason: string(k.spec.broken), CreatedAt: now, UpdatedAt: now, UUID: id,
 	}
 
-	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
+	row.ID, err = q.InsertRoutine(ctx, queries.InsertRoutineParams{
 		AccountLogin: row.AccountLogin, Name: row.Name, NameKey: row.NameKey, Description: row.Description,
 		Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey,
-		SortOrder: row.SortOrder, BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
+		SortOrder: row.SortOrder, BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now, UUID: row.UUID,
 	})
 	if err != nil {
 		return queries.AutopilotRoutine{}, fmt.Errorf("save the routine %q: %w", k.name, err)
 	}
 
-	row.ID = id
-
 	return row, nil
+}
+
+// routineUUIDFor returns the UUID a routine brought back or imported is stored under: want,
+// in its canonical form, when it is a UUID no routine has, the deleted ones included, and
+// otherwise a new one.
+func routineUUIDFor(ctx context.Context, q *queries.Queries, want string) (string, error) {
+	u, ok := textutil.CanonicalUUID(want)
+	if !ok {
+		return textutil.NewUUID(), nil
+	}
+
+	taken, err := q.CountRoutineUUID(ctx, u)
+
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("check the routine's UUID: %w", err)
+	case taken > 0:
+		return textutil.NewUUID(), nil
+	default:
+		return u, nil
+	}
 }

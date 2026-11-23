@@ -49,7 +49,8 @@ func TestRestoreBringsBackTheScriptsInTheirOrder(t *testing.T) {
 	t.Parallel()
 
 	repos := UserScript{
-		Name: "Deploy", Command: "make deploy", Icon: IconBuild, Scope: ScopeRepos, Repos: []string{"acme-org/example-repo"},
+		UUID: keptUUID, Name: "Deploy", Command: "make deploy", Icon: IconBuild, Scope: ScopeRepos,
+		Repos:  []string{"acme-org/example-repo"},
 		RunsIn: integrationprefs.RunsInTerminal, Confirm: true,
 	}
 	path := setAsideWith(t, named(firstName), repos, named(testName))
@@ -68,7 +69,7 @@ func TestRestoreBringsBackTheScriptsInTheirOrder(t *testing.T) {
 
 	got := all[1]
 	got.ID = 0
-	assert.Equal(t, repos, got, "every field comes back")
+	assert.Equal(t, repos, got, "every field comes back, its UUID too")
 }
 
 func TestRestoreLeavesOutAScriptSaveWouldRefuse(t *testing.T) {

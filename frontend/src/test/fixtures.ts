@@ -641,6 +641,7 @@ export function explanation(overrides: Partial<AutopilotExplanation> = {}): Auto
 export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRoutine {
   return {
     id: 3,
+    uuid: '3a7f1c52-9d84-4e6b-8f21-6c0d5e9b4a13',
     name: 'Snooze passing bot PRs',
     description: '',
     enabled: true,
@@ -1729,6 +1730,7 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
 export function prompt(overrides: Partial<Prompt> = {}): Prompt {
   return {
     id: 1,
+    uuid: '0b1c2d3e-4f50-4a61-8b72-93a4b5c6d7e8',
     name: 'Review a pull request',
     nickname: 'Review',
     appliesTo: 'pr',
@@ -4319,6 +4321,7 @@ export function scriptVariables(): string[] {
 export function userScript(overrides: Partial<UserScript> = {}): UserScript {
   return {
     id: 1,
+    uuid: '5d2e8f41-7a63-4c90-9b18-e4f6a2c3d5b7',
     name: 'Fix all',
     command: 'magex format:fix && magex lint',
     icon: 'play',

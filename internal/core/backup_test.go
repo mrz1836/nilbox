@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,16 @@ import (
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite the golden files from the current output") //nolint:gochecknoglobals // a test flag
+
+// uuidValue matches a UUID a backup holds, which a database gives each prompt, script, and
+// routine anew on every run.
+var uuidValue = regexp.MustCompile(`"uuid": "[0-9a-f-]{36}"`)
+
+// withoutUUIDs returns a backup with every UUID in it written as one placeholder, so it
+// reads the same on every run.
+func withoutUUIDs(data []byte) []byte {
+	return uuidValue.ReplaceAll(data, []byte(`"uuid": "<uuid>"`))
+}
 
 // backupOptions are testOptions with a fixed clock and version, so a backup reads the same
 // on every run.
@@ -75,6 +86,9 @@ func TestBackupExportMatchesTheGolden(t *testing.T) {
 
 	data, err := os.ReadFile(path) //nolint:gosec // a file the test wrote
 	require.NoError(t, err)
+
+	assert.Regexp(t, uuidValue, string(data), "the backup names its records by UUID")
+	data = withoutUUIDs(data)
 
 	golden := filepath.Join("testdata", "backup.golden")
 	if *updateGolden {

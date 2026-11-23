@@ -190,6 +190,7 @@
     ],
     "prompts": [
       {
+        "uuid": "<uuid>",
         "name": "Address a review's requested changes",
         "nickname": "Address review",
         "appliesTo": "pr",
@@ -206,6 +207,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Fix a pull request's failing checks",
         "nickname": "Fix checks",
         "appliesTo": "pr",
@@ -222,6 +224,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Fix a dependency update's security checks",
         "nickname": "Fix dep security",
         "appliesTo": "pr",
@@ -238,6 +241,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Heal a dependency update",
         "nickname": "Heal Dependabot PR",
         "appliesTo": "pr",
@@ -254,6 +258,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Approve with thanks",
         "nickname": "LGTM",
         "appliesTo": "pr",
@@ -270,6 +275,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Ask for changes",
         "nickname": "Needs changes",
         "appliesTo": "pr",
@@ -286,6 +292,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Ask for steps to reproduce",
         "nickname": "Needs repro",
         "appliesTo": "issue",
@@ -302,6 +309,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Nudge the author",
         "nickname": "Nudge",
         "appliesTo": "pr",
@@ -318,6 +326,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Ask a question",
         "nickname": "Question",
         "appliesTo": "pr",
@@ -334,6 +343,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Take a quick look for blockers",
         "nickname": "Quick look",
         "appliesTo": "pr",
@@ -352,6 +362,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Re-review a pull request",
         "nickname": "Re-review",
         "appliesTo": "pr",
@@ -368,6 +379,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Re-run a pull request's failed jobs",
         "nickname": "Re-run failed jobs",
         "appliesTo": "pr",
@@ -386,6 +398,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Resolve a pull request's merge conflicts",
         "nickname": "Resolve conflicts",
         "appliesTo": "pr",
@@ -402,6 +415,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Review a pull request",
         "nickname": "Review",
         "appliesTo": "pr",
@@ -418,6 +432,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Approve a dependency update",
         "nickname": "Update OK",
         "appliesTo": "pr",
@@ -434,6 +449,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Upgrade dependencies",
         "nickname": "Upgrade deps",
         "appliesTo": "repo",
@@ -450,6 +466,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Upgrade dependencies, majors too",
         "nickname": "Upgrade majors too",
         "appliesTo": "repo",
@@ -466,6 +483,7 @@
         "updatedAt": "2026-11-14T17:00:00Z"
       },
       {
+        "uuid": "<uuid>",
         "name": "Work on an issue",
         "nickname": "Work on it",
         "appliesTo": "issue",

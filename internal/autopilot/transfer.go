@@ -436,7 +436,7 @@ func (s *Service) storeImported(ctx context.Context, b Bundle, mapper refMapper)
 				continue
 			}
 
-			k.name, k.account = freeName(k.name, rows), viewer
+			k.name, k.account, k.uuid = freeName(k.name, rows), viewer, r.UUID
 
 			row, err := insertKept(ctx, q, s.clock, k, int64(len(rows)))
 			if err != nil {

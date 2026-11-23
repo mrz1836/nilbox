@@ -28,8 +28,11 @@ setters or editors do (settings' `check…` helpers, shared with the setters), l
 it refuses with a note: a setting the setter refuses, a profile not on this Mac, a copy of a
 tool that isn't a program here, a location that doesn't exist, a launch default's prompt not
 found (it inherits). Under Replace, prompts are matched by nickname and purpose, the rest
-deleted but one a launch default the import keeps still names; scripts identical to the
-file's keep their IDs. A backup never holds the GitHub sign-in, caches, mirrors, history,
+deleted but one a launch default the import keeps still names; a script with the UUID of one
+of the file's, or else identical to one, keeps its ID and UUID, saved over in place when it
+changed (under Merge, one changed is added as a copy, since Merge never changes the user's own).
+Prompts, scripts, and routines carry their UUIDs in the file, and keep them where nothing here
+has them. A backup never holds the GitHub sign-in, caches, mirrors, history,
 per-item triage, agent profiles, script trust (a file from elsewhere could pre-approve a
 repository's command), the window's memory, or tool detection. Its `Saver` (`NewSaver`, a
 type of its own, never bound) saves the whole setup before a reset the user asked for, to

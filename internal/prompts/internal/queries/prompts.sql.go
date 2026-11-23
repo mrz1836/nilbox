@@ -28,6 +28,18 @@ func (q *Queries) CountNickname(ctx context.Context, arg CountNicknameParams) (i
 	return count, err
 }
 
+const countPromptUUID = `-- name: CountPromptUUID :one
+SELECT COUNT(*) FROM prompts WHERE uuid = ?
+`
+
+// CountPromptUUID counts the prompts with uuid: one means it is taken.
+func (q *Queries) CountPromptUUID(ctx context.Context, uuid string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPromptUUID, uuid)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deletePrompt = `-- name: DeletePrompt :execrows
 DELETE FROM prompts WHERE id = ?
 `
@@ -44,7 +56,7 @@ func (q *Queries) DeletePrompt(ctx context.Context, id int64) (int64, error) {
 
 const getPrompt = `-- name: GetPrompt :one
 SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
-    models, agent_args, purpose, reply_action
+    models, agent_args, purpose, reply_action, uuid
 FROM prompts
 WHERE id = ?
 `
@@ -69,6 +81,7 @@ func (q *Queries) GetPrompt(ctx context.Context, id int64) (Prompt, error) {
 		&i.AgentArgs,
 		&i.Purpose,
 		&i.ReplyAction,
+		&i.UUID,
 	)
 	return i, err
 }
@@ -76,8 +89,8 @@ func (q *Queries) GetPrompt(ctx context.Context, id int64) (Prompt, error) {
 const insertPrompt = `-- name: InsertPrompt :one
 INSERT INTO prompts (
     name, nickname, applies_to, body, models, effort, plan_mode, worktree, agent_args, starter_key, created_at,
-    updated_at, purpose, reply_action
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    updated_at, purpose, reply_action, uuid
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -96,9 +109,11 @@ type InsertPromptParams struct {
 	UpdatedAt   time.Time
 	Purpose     string
 	ReplyAction string
+	UUID        string
 }
 
-// InsertPrompt stores a new prompt, an agent prompt or a review reply, and returns its id.
+// InsertPrompt stores a new prompt, an agent prompt or a review reply, under its UUID, and
+// returns its id.
 func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertPrompt,
 		arg.Name,
@@ -115,6 +130,7 @@ func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int
 		arg.UpdatedAt,
 		arg.Purpose,
 		arg.ReplyAction,
+		arg.UUID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -123,7 +139,7 @@ func (q *Queries) InsertPrompt(ctx context.Context, arg InsertPromptParams) (int
 
 const listPrompts = `-- name: ListPrompts :many
 SELECT id, name, nickname, applies_to, body, effort, plan_mode, worktree, starter_key, created_at, updated_at,
-    models, agent_args, purpose, reply_action
+    models, agent_args, purpose, reply_action, uuid
 FROM prompts
 ORDER BY nickname COLLATE NOCASE, id
 `
@@ -154,6 +170,7 @@ func (q *Queries) ListPrompts(ctx context.Context) ([]Prompt, error) {
 			&i.AgentArgs,
 			&i.Purpose,
 			&i.ReplyAction,
+			&i.UUID,
 		); err != nil {
 			return nil, err
 		}
@@ -166,6 +183,51 @@ func (q *Queries) ListPrompts(ctx context.Context) ([]Prompt, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const promptsWithoutUUID = `-- name: PromptsWithoutUUID :many
+SELECT id FROM prompts WHERE uuid = '' ORDER BY id
+`
+
+// PromptsWithoutUUID returns the ids of the prompts with no UUID yet, as a build from
+// before UUIDs inserts them.
+func (q *Queries) PromptsWithoutUUID(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, promptsWithoutUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setPromptUUID = `-- name: SetPromptUUID :exec
+UPDATE prompts SET uuid = ? WHERE id = ?
+`
+
+type SetPromptUUIDParams struct {
+	UUID string
+	ID   int64
+}
+
+// SetPromptUUID gives the prompt with id a UUID. Nothing else changes, its updated_at
+// included.
+func (q *Queries) SetPromptUUID(ctx context.Context, arg SetPromptUUIDParams) error {
+	_, err := q.db.ExecContext(ctx, setPromptUUID, arg.UUID, arg.ID)
+	return err
 }
 
 const updatePrompt = `-- name: UpdatePrompt :execrows

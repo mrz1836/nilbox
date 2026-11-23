@@ -174,6 +174,11 @@ func (a ReplyAction) valid() bool {
 type Prompt struct {
 	ID int64 `json:"id"`
 
+	// UUID names the prompt for good: it never changes once given, whatever the prompt is
+	// renamed, reset, or imported over, so what names a prompt, as a routine's step does,
+	// finds it first by its UUID. It is canonical, 36 lowercase characters.
+	UUID string `json:"uuid"`
+
 	// Name is the prompt's full title.
 	Name string `json:"name"`
 
@@ -669,7 +674,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 }
 
 // Duplicate saves a copy of a prompt: "<title> (copy)" with a free nickname such as
-// "<nickname> copy". The copy is the user's own, not a starter.
+// "<nickname> copy", and a UUID of its own. The copy is the user's own, not a starter.
 func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 	var newID int64
 
@@ -680,7 +685,7 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Prompt, error) {
 		}
 
 		dup := p
-		dup.StarterKey = ""
+		dup.StarterKey, dup.UUID = "", ""
 		dup.Name = textutil.Clip(p.Name+" (copy)", maxNameRunes)
 
 		if dup.Nickname, err = st.freeNickname(ctx, p.Nickname+" copy"); err != nil {

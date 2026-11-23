@@ -145,7 +145,8 @@ func (f *PromptFollower) rename(ctx context.Context, q *queries.Queries, row que
 	}
 
 	n, err := q.SetRoutineSpec(ctx, queries.SetRoutineSpecParams{
-		Spec: string(data), PastRulesHash: hash, UpdatedAt: f.s.clock.Now(), ID: row.ID, Was: row.Spec,
+		Spec: string(data), SpecVersion: int64(sp.Version), PastRulesHash: hash, UpdatedAt: f.s.clock.Now(), ID: row.ID,
+		Was: row.Spec,
 	})
 
 	return n > 0, err

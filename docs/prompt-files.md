@@ -32,6 +32,7 @@ setting a prompt has, and you can edit one by hand.
   "slotsSeeded": ["checks_failing", "conflicts", "changes_requested", "rereview"],
   "prompts": [
     {
+      "uuid": "6f9619ff-8b86-4d01-b42d-00cf4fc964ff",
       "name": "Look for security problems",
       "nickname": "Security",
       "appliesTo": "any",
@@ -70,6 +71,7 @@ Each prompt:
 
 | Field | Meaning |
 |---|---|
+| `uuid` | The prompt's UUID, which names it for good: it never changes once the prompt has one, whatever it is renamed, reset, or imported over, so a routine that runs the prompt still finds it. A library it is imported into keeps it when none of its prompts has it, and otherwise gives the prompt a new one; a value that isn't a UUID is dropped the same way. Left out of an older file, whose prompts are each given one. |
 | `name` | Its title, up to 80 characters on one line. |
 | `nickname` | The short label the launch button shows, up to 20 characters. Nicknames are unique in a library, ignoring case. |
 | `appliesTo` | `pr`, `issue`, or `any`, or `repo` for an agent prompt for repositories, which a launch fills in for a clone rather than for an item, as an [upgrade on Deps](guide/deps.md) does, and which applies to no kind of item. A reply's is `pr`, but a comment reply's, which may be for issues too; a reply is never `repo`. |
@@ -87,8 +89,9 @@ Each prompt:
 
 ## Reading a file
 
-- **Prompts are named by nickname, never by a database ID,** so a file reads the same in any
-  library.
+- **Prompts are named by nickname and by UUID, never by a database ID,** so a file reads the same
+  in any library. A prompt added keeps its `uuid` when no prompt in the library has it; one saved
+  over a starter keeps the starter's own.
 - **Fields the app doesn't know are ignored,** and a field left out takes its empty value. A
   file a newer version of the app wrote in the same version of the format still imports.
 - **A newer version of the format is refused** with a message asking you to update the app. The

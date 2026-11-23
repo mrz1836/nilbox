@@ -1400,9 +1400,16 @@ export const ReviewVerdict = {
  */
 export interface Routine {
     /**
-     * ID names it.
+     * ID names it on this Mac.
      */
     "id": number;
+
+    /**
+     * UUID names it for good: it never changes once given, and travels with the routine in
+     * an export and a backup, so a backup brought back finds the routine it was, whatever
+     * it is called now.
+     */
+    "uuid": string;
 
     /**
      * Name and Description are the user's words for it.

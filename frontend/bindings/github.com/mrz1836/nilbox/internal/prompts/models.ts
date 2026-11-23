@@ -130,6 +130,12 @@ export interface BundleDefaults {
  * settings, as the library stores them.
  */
 export interface BundlePrompt {
+    /**
+     * UUID names the prompt for good (Prompt.UUID), so a library it is imported into keeps
+     * it when no prompt there has it, and what names the prompt still finds it. A file an
+     * older build wrote has none, and the prompt is given one.
+     */
+    "uuid"?: string;
     "name": string;
     "nickname": string;
     "appliesTo": AppliesTo;
@@ -536,6 +542,13 @@ export interface Input {
  */
 export interface Prompt {
     "id": number;
+
+    /**
+     * UUID names the prompt for good: it never changes once given, whatever the prompt is
+     * renamed, reset, or imported over, so what names a prompt, as a routine's step does,
+     * finds it first by its UUID. It is canonical, 36 lowercase characters.
+     */
+    "uuid": string;
 
     /**
      * Name is the prompt's full title.

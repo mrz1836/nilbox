@@ -130,6 +130,11 @@ func (d *BundleDefaults) setReply(slot ReplySlot, nickname string) {
 // BundlePrompt is one prompt in portable form: its text, its names, and its launch
 // settings, as the library stores them.
 type BundlePrompt struct {
+	// UUID names the prompt for good (Prompt.UUID), so a library it is imported into keeps
+	// it when no prompt there has it, and what names the prompt still finds it. A file an
+	// older build wrote has none, and the prompt is given one.
+	UUID string `json:"uuid,omitempty"`
+
 	Name      string    `json:"name"`
 	Nickname  string    `json:"nickname"`
 	AppliesTo AppliesTo `json:"appliesTo"`
@@ -218,8 +223,8 @@ func (d *BundleDefaults) name(defaults DefaultPrompts, p Prompt) {
 // bundlePrompt returns a stored prompt in portable form.
 func bundlePrompt(p Prompt) BundlePrompt {
 	return BundlePrompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Purpose: purposeOf(p.Purpose),
-		Action: actionOf(p), Models: agent.CloneModels(p.Models),
+		UUID: p.UUID, Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body,
+		Purpose: purposeOf(p.Purpose), Action: actionOf(p), Models: agent.CloneModels(p.Models),
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs),
 		StarterKey: p.StarterKey, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}

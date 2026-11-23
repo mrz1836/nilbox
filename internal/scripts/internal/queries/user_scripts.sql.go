@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+const countUserScriptUUID = `-- name: CountUserScriptUUID :one
+SELECT COUNT(*) FROM user_scripts WHERE uuid = ?1
+`
+
+// CountUserScriptUUID counts the scripts with uuid: one means it is taken.
+func (q *Queries) CountUserScriptUUID(ctx context.Context, uuid string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUserScriptUUID, uuid)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteUserScript = `-- name: DeleteUserScript :execrows
 DELETE FROM user_scripts WHERE id = ?1
 `
@@ -24,7 +36,7 @@ func (q *Queries) DeleteUserScript(ctx context.Context, id int64) (int64, error)
 }
 
 const getUserScript = `-- name: GetUserScript :one
-SELECT id, name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at
+SELECT id, name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at, uuid
 FROM user_scripts
 WHERE id = ?1
 `
@@ -45,16 +57,17 @@ func (q *Queries) GetUserScript(ctx context.Context, id int64) (UserScript, erro
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UUID,
 	)
 	return i, err
 }
 
 const insertUserScript = `-- name: InsertUserScript :one
 INSERT INTO user_scripts (
-    name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at
+    name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at, uuid
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5, ?6,
-    ?7, ?8, ?9, ?10
+    ?7, ?8, ?9, ?10, ?11
 )
 RETURNING id
 `
@@ -70,9 +83,11 @@ type InsertUserScriptParams struct {
 	Position   int64
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	UUID       string
 }
 
-// InsertUserScript saves a new script at a place in the order, and returns its ID.
+// InsertUserScript saves a new script, under its UUID, at a place in the order, and returns
+// its ID.
 func (q *Queries) InsertUserScript(ctx context.Context, arg InsertUserScriptParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertUserScript,
 		arg.Name,
@@ -85,6 +100,7 @@ func (q *Queries) InsertUserScript(ctx context.Context, arg InsertUserScriptPara
 		arg.Position,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.UUID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -92,7 +108,7 @@ func (q *Queries) InsertUserScript(ctx context.Context, arg InsertUserScriptPara
 }
 
 const listUserScripts = `-- name: ListUserScripts :many
-SELECT id, name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at
+SELECT id, name, command, icon, scope, scope_repos, runs_in, confirm, position, created_at, updated_at, uuid
 FROM user_scripts
 ORDER BY position, id
 `
@@ -119,6 +135,7 @@ func (q *Queries) ListUserScripts(ctx context.Context) ([]UserScript, error) {
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UUID,
 		); err != nil {
 			return nil, err
 		}
@@ -148,7 +165,22 @@ func (q *Queries) SetUserScriptPosition(ctx context.Context, arg SetUserScriptPo
 	return err
 }
 
-const updateUserScript = `-- name: UpdateUserScript :execrows
+const setUserScriptUUID = `-- name: SetUserScriptUUID :exec
+UPDATE user_scripts SET uuid = ?1 WHERE id = ?2
+`
+
+type SetUserScriptUUIDParams struct {
+	UUID string
+	ID   int64
+}
+
+// SetUserScriptUUID gives a script a UUID. Nothing else changes, its updated_at included.
+func (q *Queries) SetUserScriptUUID(ctx context.Context, arg SetUserScriptUUIDParams) error {
+	_, err := q.db.ExecContext(ctx, setUserScriptUUID, arg.UUID, arg.ID)
+	return err
+}
+
+const updateUserScript = `-- name: UpdateUserScript :one
 UPDATE user_scripts SET
     name = ?1,
     command = ?2,
@@ -159,6 +191,7 @@ UPDATE user_scripts SET
     confirm = ?7,
     updated_at = ?8
 WHERE id = ?9
+RETURNING uuid
 `
 
 type UpdateUserScriptParams struct {
@@ -173,9 +206,10 @@ type UpdateUserScriptParams struct {
 	ID         int64
 }
 
-// UpdateUserScript saves a script's fields as edited, leaving its place in the order.
-func (q *Queries) UpdateUserScript(ctx context.Context, arg UpdateUserScriptParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, updateUserScript,
+// UpdateUserScript saves a script's fields as edited, leaving its place in the order and its
+// UUID, which it returns; sql.ErrNoRows when the script was deleted.
+func (q *Queries) UpdateUserScript(ctx context.Context, arg UpdateUserScriptParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, updateUserScript,
 		arg.Name,
 		arg.Command,
 		arg.Icon,
@@ -186,8 +220,36 @@ func (q *Queries) UpdateUserScript(ctx context.Context, arg UpdateUserScriptPara
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	var uuid string
+	err := row.Scan(&uuid)
+	return uuid, err
+}
+
+const userScriptsWithoutUUID = `-- name: UserScriptsWithoutUUID :many
+SELECT id FROM user_scripts WHERE uuid = '' ORDER BY id
+`
+
+// UserScriptsWithoutUUID returns the IDs of the scripts with no UUID yet, as a build from
+// before UUIDs inserts them.
+func (q *Queries) UserScriptsWithoutUUID(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, userScriptsWithoutUUID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected()
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

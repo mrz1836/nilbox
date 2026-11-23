@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scripts/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -71,44 +72,54 @@ func (y yourStore) get(ctx context.Context, id int64) (UserScript, bool, error) 
 	return fromRow(row), true, nil
 }
 
-// create saves u, checked, as a new script at the end of the order, and returns its ID.
-func (y yourStore) create(ctx context.Context, u UserScript) (int64, error) {
-	var id int64
-
+// create saves u, checked, as a new script at the end of the order, and returns it as stored,
+// with its ID and its UUID.
+func (y yourStore) create(ctx context.Context, u UserScript) (UserScript, error) {
 	err := y.reorder(ctx, func(q *queries.Queries, rows []queries.UserScript) ([]queries.UserScript, error) {
 		row, err := y.insert(ctx, q, u, int64(len(rows)))
-		id = row.ID
+		u.ID, u.UUID = row.ID, row.UUID
 
 		return append(rows, row), err
 	})
 
-	return id, err
+	return u, err
 }
 
-// update saves u, checked, in place of the script with its ID, which keeps its place.
-func (y yourStore) update(ctx context.Context, u UserScript) error {
+// update saves u, checked, in place of the script with its ID, which keeps its place and
+// its UUID, and returns it as stored, with that UUID.
+func (y yourStore) update(ctx context.Context, u UserScript) (UserScript, error) {
 	if y.q == nil {
-		return ErrNotSetUp
+		return UserScript{}, ErrNotSetUp
 	}
 
+	var err error
+
+	u.UUID, err = y.updateWith(ctx, y.q, u)
+
+	return u, err
+}
+
+// updateWith is update through q, as inside an import's transaction, and returns the UUID the
+// script keeps.
+func (y yourStore) updateWith(ctx context.Context, q *queries.Queries, u UserScript) (string, error) {
 	repos, err := store.EncodeJSON(u.Repos)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	n, err := y.q.UpdateUserScript(ctx, queries.UpdateUserScriptParams{
+	kept, err := q.UpdateUserScript(ctx, queries.UpdateUserScriptParams{
 		ID: u.ID, Name: u.Name, Command: u.Command, Icon: string(u.Icon), Scope: string(u.Scope), ScopeRepos: repos,
 		RunsIn: string(u.RunsIn), Confirm: boolInt(u.Confirm), UpdatedAt: y.clock.Now(),
 	})
 
 	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", goneError(u.ID)
 	case err != nil:
-		return fmt.Errorf("save your script %d: %w", u.ID, err)
-	case n == 0:
-		return goneError(u.ID)
+		return "", fmt.Errorf("save your script %d: %w", u.ID, err)
 	}
 
-	return nil
+	return kept, nil
 }
 
 // remove deletes the script id.
@@ -139,10 +150,10 @@ func (y yourStore) duplicate(ctx context.Context, id int64) (UserScript, error) 
 		}
 
 		made = fromRow(rows[i])
-		made.Name = copyName(made.Name)
+		made.Name, made.UUID = copyName(made.Name), ""
 
 		row, err := y.insert(ctx, q, made, int64(i+1))
-		made.ID = row.ID
+		made.ID, made.UUID = row.ID, row.UUID
 
 		return slices.Insert(rows, i+1, row), err
 	})
@@ -181,10 +192,17 @@ func (y yourStore) move(ctx context.Context, id int64, way Direction, shown func
 	})
 }
 
-// insert stores u as a new script at position, and returns its row.
+// insert stores u as a new script at position, and returns its row. It keeps u's UUID when
+// that is canonical and no script has it, as a script brought back or imported does, and
+// otherwise gives the script a new one.
 func (y yourStore) insert(ctx context.Context, q *queries.Queries, u UserScript, position int64,
 ) (queries.UserScript, error) {
 	repos, err := store.EncodeJSON(u.Repos)
+	if err != nil {
+		return queries.UserScript{}, err
+	}
+
+	id, err := uuidFor(ctx, q, u.UUID)
 	if err != nil {
 		return queries.UserScript{}, err
 	}
@@ -193,17 +211,71 @@ func (y yourStore) insert(ctx context.Context, q *queries.Queries, u UserScript,
 	row := queries.UserScript{
 		Name: u.Name, Command: u.Command, Icon: string(u.Icon), Scope: string(u.Scope), ScopeRepos: repos,
 		RunsIn: string(u.RunsIn), Confirm: boolInt(u.Confirm), Position: position, CreatedAt: now, UpdatedAt: now,
+		UUID: id,
 	}
 
 	row.ID, err = q.InsertUserScript(ctx, queries.InsertUserScriptParams{
 		Name: row.Name, Command: row.Command, Icon: row.Icon, Scope: row.Scope, ScopeRepos: row.ScopeRepos,
 		RunsIn: row.RunsIn, Confirm: row.Confirm, Position: row.Position, CreatedAt: now, UpdatedAt: now,
+		UUID: row.UUID,
 	})
 	if err != nil {
 		return queries.UserScript{}, fmt.Errorf("save your script: %w", err)
 	}
 
 	return row, nil
+}
+
+// uuidFor returns the UUID a new script is stored under: want, in its canonical form, when
+// it is a UUID no script has, and otherwise a new one.
+func uuidFor(ctx context.Context, q *queries.Queries, want string) (string, error) {
+	u, ok := textutil.CanonicalUUID(want)
+	if !ok {
+		return textutil.NewUUID(), nil
+	}
+
+	taken, err := q.CountUserScriptUUID(ctx, u)
+
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("check your script's UUID: %w", err)
+	case taken > 0:
+		return textutil.NewUUID(), nil
+	default:
+		return u, nil
+	}
+}
+
+// GiveUUIDs gives a UUID to every one of the user's scripts in db without one, as a build
+// from before UUIDs inserts them, in one transaction, and returns how many it gave. Core
+// calls it as the app starts.
+func GiveUUIDs(ctx context.Context, db *sql.DB) (int, error) {
+	if db == nil {
+		return 0, nil
+	}
+
+	given := 0
+
+	err := store.InTx(ctx, db, func(tx *sql.Tx) error {
+		q := queries.New(tx)
+
+		ids, err := q.UserScriptsWithoutUUID(ctx)
+		if err != nil {
+			return fmt.Errorf("read your scripts without a UUID: %w", err)
+		}
+
+		for _, id := range ids {
+			if err = q.SetUserScriptUUID(ctx, queries.SetUserScriptUUIDParams{UUID: textutil.NewUUID(), ID: id}); err != nil {
+				return fmt.Errorf("give your script %d a UUID: %w", id, err)
+			}
+		}
+
+		given = len(ids)
+
+		return nil
+	})
+
+	return given, err
 }
 
 // reorder runs change in one transaction over the scripts as stored, in their order, and
@@ -257,7 +329,7 @@ func fromRow(r queries.UserScript) UserScript {
 	}
 
 	u := UserScript{
-		ID: r.ID, Name: r.Name, Command: r.Command, Icon: Icon(r.Icon), Scope: Scope(r.Scope), Repos: repos,
+		ID: r.ID, UUID: r.UUID, Name: r.Name, Command: r.Command, Icon: Icon(r.Icon), Scope: Scope(r.Scope), Repos: repos,
 		RunsIn: integrationprefs.RunsIn(r.RunsIn), Confirm: r.Confirm != 0,
 	}
 

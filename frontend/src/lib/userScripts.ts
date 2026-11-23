@@ -7,9 +7,10 @@ import type { RunsIn, UserScript, UserScriptIcon, UserScriptScope } from '../pla
 import { unlisted } from './unlisted'
 
 // newUserScript is a script as the editor starts a new one: for every repository, run
-// where the setting sends runs, without asking first. ID 0 asks Save to create it.
+// where the setting sends runs, without asking first. ID 0 asks Save to create it, and Save
+// gives it its UUID.
 export function newUserScript(): UserScript {
-  return { id: 0, name: '', command: '', icon: 'play', scope: 'all', repos: [], runsIn: '', confirm: false }
+  return { id: 0, uuid: '', name: '', command: '', icon: 'play', scope: 'all', repos: [], runsIn: '', confirm: false }
 }
 
 // scopeLabels name each scope as the editor offers it.

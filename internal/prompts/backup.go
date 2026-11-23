@@ -314,7 +314,7 @@ func planReplace(lib Library, b Bundle, keep map[int64]string) replacement {
 
 // matchStep works out the step for raw, one of a file's prompts: saved over the first
 // stored prompt not yet matched with its nickname, ignoring case, and its purpose, which
-// it then marks matched, or else added.
+// it then marks matched and which keeps its own UUID, or else added.
 func matchStep(lib []Prompt, matched map[int64]bool, raw BundlePrompt) replaceStep {
 	in, notes := cleanImport(raw)
 	step := replaceStep{file: raw.Nickname, in: in, notes: textutil.NonNil(notes), change: backup.ChangeAdd}
@@ -328,7 +328,7 @@ func matchStep(lib []Prompt, matched map[int64]bool, raw BundlePrompt) replaceSt
 
 	q := lib[i]
 	matched[q.ID] = true
-	step.id, step.nickname, step.change = q.ID, in.Nickname, backup.ChangeUpdate
+	step.id, step.nickname, step.change, step.in.UUID = q.ID, in.Nickname, backup.ChangeUpdate, q.UUID
 
 	if q.Nickname == in.Nickname && sameContent(q, in) {
 		step.change = backup.ChangeSame
@@ -337,10 +337,13 @@ func matchStep(lib []Prompt, matched map[int64]bool, raw BundlePrompt) replaceSt
 	return step
 }
 
-// nameAdded names an added step: a nickname none of taken has, and its starter key when
-// none of taken came from that starter. It returns the step's prompt, now taken too.
+// nameAdded names an added step: a nickname none of taken has, its starter key when none
+// of taken came from that starter, and the file's UUID when none of taken has it. It
+// returns the step's prompt, now taken too.
 func nameAdded(step *replaceStep, taken []Prompt) Prompt {
-	step.nickname = (&planner{lib: taken}).freeNickname(step.in.Nickname, -1)
+	pl := &planner{lib: taken}
+	step.nickname = pl.freeNickname(step.in.Nickname, -1)
+	step.in.UUID = pl.freeUUID(step.in.UUID)
 	step.keepStarter = step.in.StarterKey != "" &&
 		!slices.ContainsFunc(taken, func(q Prompt) bool { return q.StarterKey == step.in.StarterKey })
 

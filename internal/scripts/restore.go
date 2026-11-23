@@ -19,18 +19,20 @@ import (
 const userScriptsTable = "user_scripts"
 
 // restoreColumns are the columns a database set aside holds the user's scripts in. A build
-// that lacks one reads it as its empty value, which the script's checks then take or refuse.
+// that lacks one reads it as its empty value, which the script's checks then take or refuse,
+// and a script without a UUID, as an older build's, is given a new one.
 func restoreColumns() []string {
-	return []string{"id", "name", "command", "icon", "scope", "scope_repos", "runs_in", "confirm", "position"}
+	return []string{"id", "name", "command", "icon", "scope", "scope_repos", "runs_in", "confirm", "position", "uuid"}
 }
 
 // Restore brings back the user's own scripts, which the app lost with a database it set
 // aside at startup (setAside, "" for none): a reset the user asked for, or a database it
 // could not use. It runs only while db holds no script of the user's, reads the database
 // set aside without changing it, whichever build wrote it, and stores every script in it
-// in its order, each checked as Save checks it: one Save would refuse is left out. It
-// stores them all in one transaction, or none, and returns how many it stored. A database
-// set aside that holds no scripts, as one an older build wrote, brings back none.
+// in its order under the UUID it had there, each checked as Save checks it: one Save would
+// refuse is left out. It stores them all in one transaction, or none, and returns how many
+// it stored. A database set aside that holds no scripts, as one an older build wrote,
+// brings back none.
 func Restore(ctx context.Context, db *sql.DB, clk clock.Clock, setAside string) (int, error) {
 	if setAside == "" {
 		return 0, nil
@@ -133,7 +135,7 @@ func keptScript(row store.Row) UserScript {
 	confirm := row.Bool("confirm")
 
 	u := UserScript{
-		Name: row.Text("name"), Command: row.Text("command"), Icon: Icon(row.Text("icon")),
+		UUID: row.Text("uuid"), Name: row.Text("name"), Command: row.Text("command"), Icon: Icon(row.Text("icon")),
 		Scope: Scope(cmp.Or(row.Text("scope"), string(ScopeAll))), Repos: row.Strings("scope_repos"),
 		RunsIn: integrationprefs.RunsIn(row.Text("runs_in")), Confirm: confirm != nil && *confirm,
 	}

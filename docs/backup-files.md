@@ -42,6 +42,7 @@ export is a section of the file; one you leave unticked is absent.
   "scripts": {
     "scripts": [
       {
+        "uuid": "5d2e8f41-7a63-4c90-9b18-e4f6a2c3d5b7",
         "name": "Fix all",
         "command": "magex format:fix && magex lint",
         "icon": "play",
@@ -58,6 +59,7 @@ export is a section of the file; one you leave unticked is absent.
     "app": "v0.4.0",
     "routines": [
       {
+        "uuid": "3a7f1c52-9d84-4e6b-8f21-6c0d5e9b4a13",
         "name": "Tell me about failing checks",
         "mode": "ask",
         "enabled": true,
@@ -145,10 +147,18 @@ is each entry left out.
 
 ### Scripts
 
-`scripts` lists your scripts in their order, each with every field the script editor saves:
-`name`, `command`, `icon` (`play`, `test`, `lint`, `build`, or `configure`), `scope` (`all`,
-`go`, or `repos`), `repos` (`owner/name`, for `repos` alone), `runsIn` (`app`, `terminal`, or
-`""` for the setting), and `confirm` (*Ask before running*). A script has no ID in a file.
+`scripts` lists your scripts in their order, each with its `uuid`, which names it for good (left
+out of an older file), and every field the script editor saves: `name`, `command`, `icon`
+(`play`, `test`, `lint`, `build`, or `configure`), `scope` (`all`, `go`, or `repos`), `repos`
+(`owner/name`, for `repos` alone), `runsIn` (`app`, `terminal`, or `""` for the setting), and
+`confirm` (*Ask before running*). Its ID is this Mac's alone, and never in a file.
+
+An import finds a script by its `uuid` first. One the same as the script here with that UUID is
+left as it is; one changed since is saved over it under Replace, keeping its UUID, so a routine
+that runs it still does, and under Merge, which never changes your own, it is added as a copy
+with a UUID of its own. A script whose UUID no script here has is matched as before: Merge skips
+one identical to a script here, and Replace keeps it. A script added keeps its `uuid` when no
+script here has it.
 
 ### Autopilot
 
@@ -172,7 +182,9 @@ it has or to inherit; its `prompts` arrive only where no prompt here has the nic
 every routine arrives switched off, added at the end of the list under its name, or another
 when a routine here has it.
 
-Each routine has its `name` (unique, ignoring case), `description` (left out when empty),
+Each routine has its `uuid`, which names it for good (left out of an older file; a routine
+brought back or imported keeps it when no routine here has it, and is otherwise given a new
+one), its `name` (unique, ignoring case), `description` (left out when empty),
 `mode` (`dryRun`, `ask`, or `auto`), `enabled` (whether it was on where it was exported),
 `template` (the template it was made from, left out for none), and `spec`, its definition: one
 JSON object with its own `version`, naming prompts by nickname or by starter and profiles by

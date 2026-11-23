@@ -113,8 +113,9 @@ func TestSaveCreatesAndEdits(t *testing.T) {
 		Repos: []string{"acme-org/sdk"}, RunsIn: integrationprefs.RunsInTerminal, Confirm: true,
 	})
 	assert.Positive(t, saved.ID)
+	assert.Regexp(t, uuidPattern, saved.UUID, "a new script gets a UUID")
 	assert.Equal(t, UserScript{
-		ID: saved.ID, Name: fixAllName, Command: "magex format:fix", Icon: IconLint, Scope: ScopeGo, Repos: []string{},
+		ID: saved.ID, UUID: saved.UUID, Name: fixAllName, Command: "magex format:fix", Icon: IconLint, Scope: ScopeGo, Repos: []string{},
 		RunsIn: integrationprefs.RunsInTerminal, Confirm: true,
 	}, saved, "trimmed, and a Go scope keeps no repositories")
 
@@ -288,9 +289,11 @@ func TestDuplicatePlacesTheCopyRightAfter(t *testing.T) {
 	require.NoError(t, err)
 
 	want := first
-	want.ID, want.Name = made.ID, "First copy"
-	assert.Equal(t, want, made, "everything but its name and ID as the original's")
+	want.ID, want.UUID, want.Name = made.ID, made.UUID, "First copy"
+	assert.Equal(t, want, made, "everything but its name, ID, and UUID as the original's")
 	assert.NotEqual(t, first.ID, made.ID)
+	assert.Regexp(t, uuidPattern, made.UUID)
+	assert.NotEqual(t, first.UUID, made.UUID, "the copy has a UUID of its own")
 	assert.Equal(t, []string{firstName, "First copy", "Second"}, r.order())
 
 	got, _, err := r.svc.yours.get(t.Context(), made.ID)
@@ -764,7 +767,7 @@ func TestAStoredScriptThisBuildDoesntKnow(t *testing.T) {
 	got, _, err := r.svc.yours.get(t.Context(), u.ID)
 	require.NoError(t, err)
 	assert.Equal(t, UserScript{
-		ID: u.ID, Name: u.Name, Command: u.Command, Icon: IconPlay, Scope: ScopeAll, Repos: []string{},
+		ID: u.ID, UUID: u.UUID, Name: u.Name, Command: u.Command, Icon: IconPlay, Scope: ScopeAll, Repos: []string{},
 		RunsIn: "", Confirm: true,
 	}, got)
 

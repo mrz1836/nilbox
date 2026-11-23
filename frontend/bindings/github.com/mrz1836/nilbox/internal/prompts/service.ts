@@ -74,7 +74,7 @@ export function Delete(id: number): $CancellablePromise<void> {
 
 /**
  * Duplicate saves a copy of a prompt: "<title> (copy)" with a free nickname such as
- * "<nickname> copy". The copy is the user's own, not a starter.
+ * "<nickname> copy", and a UUID of its own. The copy is the user's own, not a starter.
  */
 export function Duplicate(id: number): $CancellablePromise<$models.Prompt> {
     return $Call.ByID(2646528044, id);

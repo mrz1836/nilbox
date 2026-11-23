@@ -16,10 +16,15 @@ import (
 // deleted. A starter whose nickname is taken gets a free one. It then gives each copy of a
 // starter whose text is still one of the starter's earlier texts the text this build ships
 // (Starter.Earlier), keeping the copy's title, nickname, and settings, and fills each
-// situation's slot never filled before (see seedSlots). It does all of it or, when a write
-// fails, none.
+// situation's slot never filled before (see seedSlots). First it gives a UUID to every
+// prompt without one, as a build from before UUIDs inserts them. It does all of it or, when
+// a write fails, none.
 func Seed(ctx context.Context, s *Store) error {
 	return s.inTx(ctx, func(st *Store) error {
+		if _, err := st.giveUUIDs(ctx); err != nil {
+			return err
+		}
+
 		seeded, err := st.seeded(ctx)
 		if err != nil {
 			return err

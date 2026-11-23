@@ -276,8 +276,8 @@ func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (
 
 	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
 		AccountLogin: sv.viewer, Name: sv.name, NameKey: draft.NameKey(sv.name), Description: sv.desc,
-		Mode: string(s.offers.ModeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
-		CreatedAt: now, UpdatedAt: now,
+		Mode: string(s.offers.ModeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
+		TemplateKey: sv.template, SortOrder: int64(len(rows)), CreatedAt: now, UpdatedAt: now, UUID: textutil.NewUUID(),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("save the routine: %w", err)
@@ -379,10 +379,10 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 		}
 
 		// A copy is never accepted as one that merges past the rules: the user accepts it on
-		// its own once they save it.
+		// its own once they save it. It is a routine of its own, with a UUID of its own.
 		row := rows[i]
 		row.Name, row.Enabled, row.EnabledAt, row.LastError = copyName(row.Name, rows), false, nil, ""
-		row.PastRulesHash = ""
+		row.PastRulesHash, row.UUID = "", textutil.NewUUID()
 
 		if viewer != "" {
 			row.AccountLogin = viewer
@@ -394,8 +394,8 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 
 		row.ID, err = q.InsertRoutine(ctx, queries.InsertRoutineParams{
 			AccountLogin: row.AccountLogin, Name: row.Name, NameKey: draft.NameKey(row.Name), Description: row.Description,
-			Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey, SortOrder: int64(len(rows)),
-			BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
+			Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey,
+			SortOrder: int64(len(rows)), BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now, UUID: row.UUID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("copy the routine %d: %w", id, err)

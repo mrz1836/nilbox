@@ -74,6 +74,11 @@ type Bundle struct {
 
 // BundleRoutine is one routine in the export format.
 type BundleRoutine struct {
+	// UUID names the routine for good (Routine.UUID), so a routine brought back keeps it
+	// when no routine here has it, and a backup finds the routine it was. A file an older
+	// build wrote has none.
+	UUID string `json:"uuid,omitempty"`
+
 	Name        string              `json:"name"`
 	Description string              `json:"description,omitempty"`
 	Mode        autopilotprefs.Mode `json:"mode"`
@@ -103,7 +108,7 @@ func bundleOf(rows []queries.AutopilotRoutine, app string, now time.Time) Bundle
 		}
 
 		out.Routines = append(out.Routines, BundleRoutine{
-			Name: r.Name, Description: r.Description, Mode: storedMode(r.Mode), Enabled: r.Enabled,
+			UUID: r.UUID, Name: r.Name, Description: r.Description, Mode: storedMode(r.Mode), Enabled: r.Enabled,
 			Template: r.TemplateKey, Spec: json.RawMessage(r.Spec),
 		})
 	}

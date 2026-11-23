@@ -29,9 +29,11 @@ func (s *Service) Save(ctx context.Context, script UserScript) (UserScript, erro
 	}
 
 	if u.ID == 0 {
-		u.ID, err = s.yours.create(ctx, u)
+		// A new script gets a UUID of its own, never one the window sent.
+		u.UUID = ""
+		u, err = s.yours.create(ctx, u)
 	} else {
-		err = s.yours.update(ctx, u)
+		u, err = s.yours.update(ctx, u)
 	}
 
 	if err != nil {
@@ -39,6 +41,7 @@ func (s *Service) Save(ctx context.Context, script UserScript) (UserScript, erro
 	}
 
 	s.logger.InfoContext(ctx, "a script of the user's was saved", "script", u.ID, "scope", string(u.Scope))
+	s.told(ctx)
 
 	return u, nil
 }
@@ -50,6 +53,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	}
 
 	s.logger.InfoContext(ctx, "a script of the user's was deleted", "script", id)
+	s.told(ctx)
 
 	return nil
 }
@@ -63,6 +67,7 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (UserScript, error) {
 	}
 
 	s.logger.InfoContext(ctx, "a script of the user's was duplicated", "script", id, "copy", made.ID)
+	s.told(ctx)
 
 	return made, nil
 }
@@ -263,4 +268,12 @@ func (s *Service) yoursMissing(ctx context.Context, c clone, id string) error {
 
 	return uierr.New(fmt.Sprintf("%q doesn't show in %s. Edit it to choose the repositories it shows in.", u.Name,
 		c.display()), fmt.Errorf("%w: %s in %s", ErrNotFound, ref(SourceYours, id), c.display()))
+}
+
+// told tells Changed of a change to the user's own scripts, whether or not the caller
+// still waits, since the change is made.
+func (s *Service) told(ctx context.Context) {
+	if s.changed != nil {
+		s.changed(context.WithoutCancel(ctx))
+	}
 }

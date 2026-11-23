@@ -88,9 +88,16 @@ func (r restored) info(home string, reset *store.Reset) *appinfo.Restored {
 // restoreScripts brings back the user's own scripts from the database set aside at
 // startup, when reset says one was, as after a reset the user asked for or a database the
 // app could not use, and returns how many came back. They have no copy kept beside the
-// database, so a database deleted brings none back. What can't be brought back is logged,
+// database, so a database deleted brings none back. First it gives a UUID to every script
+// without one, as a build from before UUIDs stores them. What can't be done is logged,
 // never fatal.
 func restoreScripts(ctx context.Context, pool *sql.DB, opts Options, reset *store.Reset, logger *slog.Logger) int {
+	if given, err := scripts.GiveUUIDs(ctx, pool); err != nil {
+		logger.WarnContext(ctx, "could not give your scripts their UUIDs", "error", err)
+	} else if given > 0 {
+		logger.InfoContext(ctx, "gave your scripts their UUIDs", "scripts", given)
+	}
+
 	if reset == nil {
 		return 0
 	}

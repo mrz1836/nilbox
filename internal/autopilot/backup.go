@@ -174,7 +174,7 @@ func checkImport(r BundleRoutine, defaultMode autopilotprefs.Mode) (keptRoutine,
 	}
 
 	k, _ := keptFrom(name, r.Description, r.Template, r.Mode, r.Spec)
-	k.name = name
+	k.name, k.uuid = name, r.UUID
 
 	if !r.Mode.Valid() {
 		k.mode = catalogMode(defaultMode, sp.spec)
