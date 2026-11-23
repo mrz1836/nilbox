@@ -69,8 +69,8 @@ func execRunner(env []string) execpath.Runner {
 	return execpath.Exec{Env: env}
 }
 
-// The describe folder's layout (internal/describeit's part of docs/architecture.md). Every
-// folder is the user's alone, and every file is written whole (appdata.WriteFile).
+// The describe folder's layout (docs/architecture/describeit.md). Every folder is the user's
+// alone, and every file is written whole (appdata.WriteFile).
 const (
 	// contextName is the snapshot the tool mode reads (kit.Snapshot).
 	contextName = "context.json"

@@ -230,7 +230,7 @@ A release updates itself. About a minute after it opens, then every 6 hours, it 
 newer release, downloads it quietly, and, when you click **Restart to update**, backs up your data
 and restarts into it. **Settings → About → When a new version is out** chooses *Download it and
 tell me* (the default), *Just tell me*, or *Don't check*, and the menu bar's **Check for
-Updates…** checks at once ([how updates work](docs/desktop.md#updates)).
+Updates…** checks at once ([how updates work](docs/guide/updates.md)).
 
 Opened on data a newer version saved (after running a build from source, say), Nilbox leaves the
 data untouched and offers **Update and Reopen**, which installs the latest release and opens it;
@@ -303,8 +303,8 @@ with `go run` at the version `go.mod` pins. Every other `magex` command is liste
   binary with `--debug` to keep debug records too. No log holds your GitHub token. An update that
   didn't install keeps its helper's log as `logs/update-<version>.log`.
 
-Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets). How updates
-work: [docs/desktop.md](docs/desktop.md#updates).
+Full setup and every build target: [Build targets](docs/development/build-targets.md). How
+updates work: [Updates](docs/guide/updates.md).
 
 </details>
 
@@ -313,7 +313,7 @@ work: [docs/desktop.md](docs/desktop.md#updates).
 ## ⚡ Quick Start
 
 Seven steps, in the order you'll use them. On the first launch Nilbox walks you through the first
-few itself: a short [setup](docs/desktop.md#first-run-setup) checks your GitHub sign-in, finds
+few itself: a short [setup](docs/guide/first-run-setup.md) checks your GitHub sign-in, finds
 your clones, picks your agent and terminal, and sets up your notifications, with the command
 that fixes anything missing. **Settings → About → Run setup again** brings it back.
 
@@ -402,19 +402,19 @@ template, such as **Fix Dependabot security failures**, fill in where it watches
 **Test** to see what it would match now and why, and **Save**. Switch it on in **Dry run**
 first, then **Ask first**, where each match waits for your **Run**, and put it on
 **Autopilot** once you trust it. **Pause Autopilot** stops every new start at once. Or just tell
-the tab what you want, in your own words: [Describe it](docs/desktop.md#describe-it) has Claude
+the tab what you want, in your own words: [Describe it](docs/guide/autopilot/describe-it.md) has Claude
 Code propose the routine, with the prompts and settings it needs, as cards you test and apply.
 
 <br/>
 
-> 📖 **For how every feature behaves, see the [Desktop Guide →](docs/desktop.md)**
+> 📖 **For how every feature behaves, see the [Desktop Guide →](docs/README.md)**
 
 <br/>
 
 ## ✨ Features
 
 Everything Nilbox does, grouped by what you're doing. Expand any feature for the details; each
-links to its full write-up in the [Desktop Guide](docs/desktop.md).
+links to its full write-up in the [Desktop Guide](docs/README.md).
 
 <br>
 
@@ -463,7 +463,7 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 - **Counts you can trust:** each item is in one list, so the lists' counts add up to the Inbox
   tab's, and a list you collapse stays collapsed across launches.
 
-More in [Inbox cards](docs/desktop.md#inbox-cards).
+More in [Inbox cards](docs/guide/inbox-cards.md).
 
 </details>
 
@@ -490,7 +490,7 @@ More in [Inbox cards](docs/desktop.md#inbox-cards).
   and marks it.
 - Each page keeps its own query until the app quits.
 
-More in [Filtering](docs/desktop.md#filtering).
+More in [Filtering](docs/guide/filtering.md).
 
 </details>
 
@@ -512,7 +512,7 @@ More in [Filtering](docs/desktop.md#filtering).
   read:project`). Without it the inbox works as before and offers the command until you close the
   tip. With it, projects come with the details the inbox already reads, so they add no request.
 
-More in [Issue projects](docs/desktop.md#issue-projects).
+More in [Issue projects](docs/guide/inbox-cards.md#issue-projects).
 
 </details>
 
@@ -542,8 +542,8 @@ More in [Issue projects](docs/desktop.md#issue-projects).
   Reduce motion on, it holds still.
 - Snoozes, dismissals, pins, and mutes live on your Mac. GitHub never hears about them.
 
-More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin) and
-[Inbox nil](docs/desktop.md#inbox-nil).
+More in [Snooze, dismiss, and pin](docs/guide/snooze-dismiss-pin.md) and
+[Inbox nil](docs/guide/inbox-nil.md).
 
 </details>
 
@@ -567,7 +567,7 @@ More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin) and
   hour, well under GitHub's limits on writes (80 and 500), held while REST is down to its last
   hundredth, and paused as long as GitHub asks.
 
-More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
+More in [The item menu and edits on GitHub](docs/guide/item-menu.md).
 
 </details>
 
@@ -613,7 +613,7 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   them approved says so on its card and in the sheet, read from the reviews a refresh already reads.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and a
   draft per pull request that survives closing the sheet.
-- **Your replies, your agent's verdict:** your [review replies](docs/desktop.md#review-replies)
+- **Your replies, your agent's verdict:** your [review replies](docs/guide/prompts.md#review-replies)
   start the text, and the latest Claude or Codex session on the pull request shows what it last
   said, with **Use as review comment** to put it in your review. **Open in Claude** (or Codex) is
   right there too.
@@ -626,7 +626,7 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   read, it reads GitHub once more, for a point, and never within 20 seconds of its last read; a
   closed sheet reads nothing.
 
-More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
+More in [Reviewing a pull request](docs/guide/reviewing-a-pull-request.md).
 
 </details>
 
@@ -658,7 +658,7 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 - **Instant and cheap:** it opens from what it read last time, with no request, then checks GitHub
   for one GraphQL point.
 
-More in [Reading an issue](docs/desktop.md#reading-an-issue).
+More in [Reading an issue](docs/guide/reading-an-issue.md).
 
 </details>
 
@@ -695,8 +695,8 @@ More in [Reading an issue](docs/desktop.md#reading-an-issue).
   your text goes as a comment first (two for **Merge when ready**, which reads the merge state
   before it comments).
 
-More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
-[Edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
+More in [Reviewing a pull request](docs/guide/reviewing-a-pull-request.md) and
+[Edits on GitHub](docs/guide/item-menu.md).
 
 </details>
 
@@ -738,8 +738,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 - **One session per folder, unless you say so:** while a session runs on an item, its button is
   **Show in terminal**, and starting another in the same folder asks first.
 
-More in [Launching a session](docs/desktop.md#launching-a-session) and
-[Worktrees](docs/desktop.md#worktrees).
+More in [Launching a session](docs/guide/launching-a-session.md) and
+[Worktrees](docs/guide/launching-a-session.md#worktrees).
 
 </details>
 
@@ -758,7 +758,7 @@ More in [Launching a session](docs/desktop.md#launching-a-session) and
 - **Save as the default** for the repository, or for its whole org, in one click, with **Undo**.
 - **Launch defaults** per org and per repository set the agent; each agent's profile, model, and
   extra flags; the prompts for pull requests and issues; and the effort, plan mode, and worktree.
-  They resolve in a [fixed order](docs/desktop.md#launch-defaults), so each repository launches on
+  They resolve in a [fixed order](docs/guide/launch-defaults.md), so each repository launches on
   the right account with either agent.
 - **Codex's effort and Fast mode:** Codex keeps its own unless you turn on **Set Codex's effort at
   launch** or **Start Codex in Fast mode** in **Settings → Launching**, or tick **Fast mode** in
@@ -767,8 +767,8 @@ More in [Launching a session](docs/desktop.md#launching-a-session) and
 - **Your agents, as they are:** Nilbox never stores model credentials and never reads an agent's
   sign-in.
 
-More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles) and
-[Launch defaults](docs/desktop.md#launch-defaults).
+More in [Coding agents and profiles](docs/guide/agents-and-profiles.md) and
+[Launch defaults](docs/guide/launch-defaults.md).
 
 </details>
 
@@ -791,7 +791,7 @@ More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles)
   and nothing about sessions leaves your Mac.
 - **Follow agent sessions** under **Settings → Launching** turns it all off.
 
-More in [Following a session](docs/desktop.md#following-a-session).
+More in [Following a session](docs/guide/following-a-session.md).
 
 </details>
 
@@ -822,7 +822,7 @@ More in [Following a session](docs/desktop.md#following-a-session).
   and import one after seeing what each prompt would do. Importing never changes a prompt you
   wrote or edited, and **Restore from a backup** brings prompts back from any copy the app kept.
 
-More in [Prompts](docs/desktop.md#prompts).
+More in [Prompts](docs/guide/prompts.md).
 
 </details>
 
@@ -848,8 +848,8 @@ More in [Prompts](docs/desktop.md#prompts).
 - **Permissions stay put:** a profile's extra flags can never set permissions, and a shared prompt
   file can't loosen them.
 
-More in [Outside contributors](docs/desktop.md#outside-contributors) and
-[Sensitive files](docs/desktop.md#sensitive-files).
+More in [Outside contributors](docs/guide/outside-contributors.md) and
+[Sensitive files](docs/guide/sensitive-files.md).
 
 </details>
 
@@ -882,7 +882,7 @@ Off until you turn it on in **Settings → Labs**.
   chip on every row a routine touched, **Needs you** for what waits, This week's counts, and
   the menu bar's Autopilot group with **Pause Autopilot**.
 
-More in [Autopilot](docs/desktop.md#autopilot).
+More in [Autopilot](docs/guide/autopilot/README.md).
 
 </details>
 
@@ -912,8 +912,8 @@ More in [Autopilot](docs/desktop.md#autopilot).
   proposals wait in the same tab, under *From your Claude Code*. Those sessions see less (no
   inbox names) and ask before each of its tool calls.
 
-More in [Describe it](docs/desktop.md#describe-it) and
-[Use Nilbox in your own Claude Code](docs/desktop.md#use-nilbox-in-your-own-claude-code).
+More in [Describe it](docs/guide/autopilot/describe-it.md) and
+[Use Nilbox in your own Claude Code](docs/guide/autopilot/your-own-claude-code.md).
 
 </details>
 
@@ -939,8 +939,8 @@ More in [Describe it](docs/desktop.md#describe-it) and
 - **Quitting:** **Let them finish** leaves runs that keep to their own budget working, and the
   next start follows each to its verdict.
 
-More in [Agents in the background](docs/desktop.md#agents-in-the-background) and
-[Fences](docs/desktop.md#fences-what-a-background-agent-may-do).
+More in [Agents in the background](docs/guide/autopilot/agents-in-the-background.md) and
+[Fences](docs/guide/autopilot/fences.md).
 
 </details>
 
@@ -992,8 +992,8 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
 - **Guarded against a clone's own config:** a worktree whose status can't be read safely, such as
   one whose clone names a hook or a filter git would run, says why and is never removed.
 
-More in [The Worktrees view](docs/desktop.md#the-worktrees-view) and
-[Branches](docs/desktop.md#branches).
+More in [The Worktrees view](docs/guide/worktrees-view.md) and
+[Branches](docs/guide/worktrees-view.md#branches).
 
 </details>
 
@@ -1034,7 +1034,7 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view) and
   that's on by default. Nilbox never releases by itself: magex tags and pushes only when you click
   the button that names the version.
 
-More in [Release](docs/desktop.md#release).
+More in [Release](docs/guide/release.md).
 
 </details>
 
@@ -1059,7 +1059,7 @@ More in [Release](docs/desktop.md#release).
 - **The PATH warning** shows while your shell's PATH won't let the hook find go-pre-commit, with
   the line that fixes it.
 
-More in [Hooks](docs/desktop.md#hooks).
+More in [Hooks](docs/guide/hooks.md).
 
 </details>
 
@@ -1082,7 +1082,7 @@ More in [Hooks](docs/desktop.md#hooks).
   the repository's conventions. Your clone isn't touched, and once the pull request merges, the
   worktree is cleaned up like any other.
 
-More in [Deps](docs/desktop.md#deps).
+More in [Deps](docs/guide/deps.md).
 
 </details>
 
@@ -1115,7 +1115,7 @@ More in [Deps](docs/desktop.md#deps).
 - **Nothing runs just to list them:** the files are read, and magex's own targets are listed in a
   folder of the app's own. **Settings → Integrations** chooses which sources the page reads.
 
-More in [Repo scripts](docs/desktop.md#repo-scripts).
+More in [Repo scripts](docs/guide/repo-scripts.md).
 
 </details>
 
@@ -1143,7 +1143,7 @@ More in [Repo scripts](docs/desktop.md#repo-scripts).
   run. One you stopped, or one a quit interrupted, tells nothing.
 - **History:** the newest 200 runs, with up to 512 MB of logs.
 
-More in [Runs](docs/desktop.md#runs) and [The Scripts tab](docs/desktop.md#the-scripts-tab).
+More in [Runs](docs/guide/runs.md) and [The Scripts tab](docs/guide/scripts-tab.md).
 
 </details>
 
@@ -1168,8 +1168,8 @@ More in [Runs](docs/desktop.md#runs) and [The Scripts tab](docs/desktop.md#the-s
 - **Minimums:** magex 1.29.5 and go-pre-commit 1.12.0. An older copy's card says so, and when your
   `PATH` misses `~/.local/bin`, the card gives the line to add to `~/.zprofile`.
 
-More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-and-installs) and
-[Your shell's environment](docs/desktop.md#your-shells-environment).
+More in [Tools the app finds and installs](docs/guide/tools.md) and
+[Your shell's environment](docs/guide/shell-environment.md).
 
 </details>
 
@@ -1197,8 +1197,8 @@ More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-a
   unread, beside every GitHub notification Nilbox keeps a copy of, read ones too, and what
   clearing did, with **Undo**.
 
-More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications) and
-[The Notifications page](docs/desktop.md#the-notifications-page).
+More in [Menu bar and notifications](docs/guide/menu-bar.md) and
+[The Notifications page](docs/guide/notifications-page.md).
 
 </details>
 
@@ -1218,7 +1218,7 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Kept across restarts,** and complete: every GitHub request the app makes goes through the one
   function that reports to the gauge, and a repository test fails the build otherwise.
 
-More in [The window](docs/desktop.md#the-window).
+More in [The window](docs/guide/window.md).
 
 </details>
 
@@ -1258,10 +1258,10 @@ More in [The window](docs/desktop.md#the-window).
   and the GitHub CLI's. **Report a bug** opens a GitHub issue with those details filled in, and
   your settings and integrations folded away beneath them, with nothing personal: no account,
   repository, path, or name of your own. **Run setup again** walks the first-run setup once
-  more, and **Reset Nilbox…** [starts over](docs/desktop.md#starting-over) on fresh data,
+  more, and **Reset Nilbox…** [starts over](docs/guide/starting-over.md) on fresh data,
   keeping your prompts, launch defaults, and scripts.
 
-More in [The window](docs/desktop.md#the-window).
+More in [The window](docs/guide/window.md).
 
 </details>
 
@@ -1318,14 +1318,14 @@ More in [The window](docs/desktop.md#the-window).
 > taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
 > request, approval of held workflow runs, or close you send from the review sheet, or a comment or
 > close you send from the issue
-> sheet, or a step of an [Autopilot](docs/desktop.md#what-autopilot-may-change-on-github) routine
+> sheet, or a step of an [Autopilot](docs/guide/autopilot/changes-on-github.md) routine
 > you made and turned on, which sends only what those sheets send, and never a close. The git
 > it runs reaches a clone's own
 > remote only to make a worktree, to check a release before and after magex pushes its tag, and
 > for Repo scripts' branch check and **Pull**, which ask an origin that isn't on GitHub only when
 > you click **Check**. Your preferences, triage state, and cache, the diffs of pull requests you
 > review and the conversations of issues you read included, never leave your machine. The one
-> exception is [Describe it](docs/desktop.md#describe-it), and only when you use it: it shows
+> exception is [Describe it](docs/guide/autopilot/describe-it.md), and only when you use it: it shows
 > Claude Code your words, your Autopilot setup, and the names in your inbox, never an item's text
 > or code, which Claude Code sends only to Anthropic.
 
@@ -1337,10 +1337,10 @@ View the full documentation for Nilbox:
 
 | Document                                                   | Description                                                                         |
 |------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| **[Desktop Guide](docs/desktop.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
+| **[Desktop Guide](docs/README.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
 | **[Performance](docs/performance.md)**                     | Measured startup, refresh, launch, size, and API budget, and how to reproduce them  |
 | **[CLAUDE.md](CLAUDE.md)**                                 | Nilbox's own rules, the gate every change passes, and the package index             |
-| **[Architecture](docs/architecture.md)**                   | The full design notes of every package, which CLAUDE.md indexes                     |
+| **[Architecture](docs/README.md#architecture)**                   | The full design notes of every package, which CLAUDE.md indexes                     |
 | **[AGENTS.md](.github/AGENTS.md)**                         | The shared engineering rulebook for contributors and AI agents                      |
 | **[Tech Conventions](.github/tech-conventions/README.md)** | Commits, branches, pull requests, testing, releases, and security practices         |
 | **[Support](.github/SUPPORT.md)**                          | Questions, bug reports, and private contact                                         |
@@ -1361,7 +1361,7 @@ magex test               # run the Go tests
 ```
 
 Before you open a pull request, run [the gate](CLAUDE.md#the-gate) (below). The
-[Desktop Guide](docs/desktop.md#build-targets) has every target in full, and how to build and
+[Desktop Guide](docs/development/build-targets.md) has every target in full, and how to build and
 run the app.
 
 <details>
@@ -1380,7 +1380,7 @@ magex frontend:install                                  # frontend dependencies,
 ```
 
 Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in the
-[Desktop Guide](docs/desktop.md#prerequisites).
+[Desktop Guide](docs/development/prerequisites.md).
 
 </details>
 
@@ -1445,7 +1445,7 @@ are kept across restarts until you clear them.
 | `magex inspect:help`              | Every inspector target: the log, the page's console, the live database, and more |
 
 Settings → About → Inspector turns pointing off (⌥⌘P is then the app's again) and clears the
-notes. The [Desktop Guide](docs/desktop.md#the-inspector) has the inspector in full.
+notes. The [Desktop Guide](docs/development/inspector.md) has the inspector in full.
 
 </details>
 
@@ -1549,7 +1549,7 @@ The method and every run are in [docs/performance.md](docs/performance.md).
 | `magex app:rehearse`     | Build a pair of rehearsal builds to try an update end to end on this Mac (`case=normal`, `tampered`, or `broken`; macOS)                               |
 
 Each one's settings and environment are in the
-[Desktop Guide](docs/desktop.md#packaging-a-release).
+[Desktop Guide](docs/development/packaging-a-release.md).
 
 </details>
 
@@ -1639,7 +1639,7 @@ unsigned, on a macOS runner with no secret in reach, waits for GoFortress to pas
 in a job of its own and publishes the release with its zip, disk image, checksums, and signed
 update manifest attached. `magex app:build` stamps the app with
 the same version, build number, and commit, all shown in Settings → About. The
-[Desktop Guide](docs/desktop.md#publishing-a-release) has the details, the secrets the workflow
+[Desktop Guide](docs/development/publishing-a-release.md) has the details, the secrets the workflow
 needs, and what to do when a release goes wrong.
 
 </details>

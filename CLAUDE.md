@@ -72,7 +72,7 @@ releases), so this check is local.
 inspector: when the owner reports something wrong in the window, `magex inspect:trail` shows
 what they clicked, and `inspect:shot`, `inspect:cards`, `inspect:dom`, `inspect:js`,
 `inspect:console`, `inspect:logs`, and `inspect:sql` show the window, the page, the log, and the
-live database as they are now ([the inspector](docs/desktop.md#the-inspector)). The owner can
+live database as they are now ([the inspector](docs/development/inspector.md)). The owner can
 also point at an element (⌥⌘P) and leave a note: `magex inspect:notes` has the open ones (the
 words, the element and where, its styles, components, and source file, and a boxed picture).
 While working on the window with them, keep `inspect:notes follow=true` running in the
@@ -145,7 +145,7 @@ The `internal/appinfo` tests read the synced `.github/ISSUE_TEMPLATE/bug_report.
 `environment` field, which **Report a bug** fills in) and the `magefiles` tests the synced
 `10-mage-x.env` (its golangci-lint pin), so a sync that changes either fails them; a synced
 `config.yml` with `blank_issues_enabled: false` would break **Send feedback**. See
-[`internal/appinfo`](docs/architecture.md#internalappinfo).
+[`internal/appinfo`](docs/architecture/appinfo.md).
 
 <br>
 
@@ -225,30 +225,30 @@ build when broken.
 
 ## Layout
 
-One line per package. Its full design is its section in
-[`docs/architecture.md`](docs/architecture.md): read that before changing the package, and put
-new design detail there, never here (`TestProjectGuideStaysSmall` caps this file at 30,000
-bytes).
+One line per package. Its full design is its file in
+[`docs/architecture/`](docs/README.md#architecture) (the package path minus `internal/`): read
+that before changing the package, and put new design detail there, never here
+(`TestProjectGuideStaysSmall` caps this file at 30,000 bytes).
 
 **The app and its shell**
 
-- [`cmd/nilbox`](docs/architecture.md#cmdnilbox): the entry point; headless by default, the
+- [`cmd/nilbox`](docs/architecture/cmd/nilbox.md): the entry point; headless by default, the
   desktop app with the `desktop` tag; `--data-dir`, the update helper, and the fence hook and
   tool modes.
-- [`internal/brand`](docs/architecture.md#internalbrand): product identity, design tokens, and the
+- [`internal/brand`](docs/architecture/brand.md): product identity, design tokens, and the
   logo; `brandgen` generates the theme, `Info.plist`, and the icon artwork in `build/`.
-- [`internal/core`](docs/architecture.md#internalcore): assembles the app and builds every
+- [`internal/core`](docs/architecture/core.md): assembles the app and builds every
   service the window binds.
-- [`internal/event`, `internal/desktop`](docs/architecture.md#internalevent-and-internaldesktop):
+- [`internal/event`, `internal/desktop`](docs/architecture/event-and-desktop.md):
   the app's events; the shell's logic (menu bar, window close, quit guard, workers, shutdown).
-- [`internal/appinfo`](docs/architecture.md#internalappinfo): app info, Report a bug, and Send
+- [`internal/appinfo`](docs/architecture/appinfo.md): app info, Report a bug, and Send
   feedback.
-- [`internal/devtools`](docs/architecture.md#internaldevtools): the inspector a build from
+- [`internal/devtools`](docs/architecture/devtools.md): the inspector a build from
   source carries (the `devtools` tag, never a release's), which `magex inspect:*` talks to.
-- [`internal/store`](docs/architecture.md#internalstore): opens the database, self-heals,
+- [`internal/store`](docs/architecture/store.md): opens the database, self-heals,
   backs up and restores; what outlives the database.
 
-**Shared building blocks** ([notes](docs/architecture.md#shared-building-blocks))
+**Shared building blocks** ([notes](docs/architecture/shared-building-blocks.md))
 
 - `internal/repo`, `internal/item`: names for repositories, pull requests, issues, and worktrees.
 - `internal/agent`: the coding agents' registry (Claude Code, Codex): flags, models, fence,
@@ -266,113 +266,112 @@ bytes).
 
 **GitHub, the inbox, and notifications**
 
-- [`internal/budget`, `internal/github`](docs/architecture.md#internalbudget-and-internalgithub):
+- [`internal/budget`, `internal/github`](docs/architecture/budget-and-github.md):
   the one GitHub client, its request and write rules, and the API budget.
-- [`internal/inbox`](docs/architecture.md#internalinbox): the searches, Review requested and
+- [`internal/inbox`](docs/architecture/inbox.md): the searches, Review requested and
   Yours, triage, the checks and merge followers, and the routines' watched searches.
-- [`internal/reporules`](docs/architecture.md#internalreporules): pinned and muted repositories
+- [`internal/reporules`](docs/architecture/reporules.md): pinned and muted repositories
   and orgs.
-- [`internal/heldruns`](docs/architecture.md#internalheldruns): which held workflow runs count
+- [`internal/heldruns`](docs/architecture/heldruns.md): which held workflow runs count
   toward where a pull request stands, and the Ignored workflows setting.
-- [`internal/threadrules`](docs/architecture.md#internalthreadrules): the rules for clearing
+- [`internal/threadrules`](docs/architecture/threadrules.md): the rules for clearing
   GitHub notifications.
-- [`internal/ghthreads`](docs/architecture.md#internalghthreads): mirrors the user's GitHub
+- [`internal/ghthreads`](docs/architecture/ghthreads.md): mirrors the user's GitHub
   notifications, marks threads done or read, and marks them done in bulk.
-- [`internal/statusprefs`](docs/architecture.md#internalstatusprefs): the service status
+- [`internal/statusprefs`](docs/architecture/statusprefs.md): the service status
   catalog and what the user watches.
-- [`internal/svcstatus`](docs/architecture.md#internalsvcstatus): follows GitHub's, Claude's,
+- [`internal/svcstatus`](docs/architecture/svcstatus.md): follows GitHub's, Claude's,
   and OpenAI's status pages.
-- [`internal/milestones`](docs/architecture.md#internalmilestones): the log of the inbox at
+- [`internal/milestones`](docs/architecture/milestones.md): the log of the inbox at
   nil: the streak, the achievements, and confetti at most once a day.
 
 **The sheets**
 
-- [`internal/review`](docs/architecture.md#internalreview): the review sheet's service: offers,
+- [`internal/review`](docs/architecture/review.md): the review sheet's service: offers,
   merges, line comments, and the diff cache.
-- [`internal/issues`](docs/architecture.md#internalissues): the issue sheet's service: comment,
+- [`internal/issues`](docs/architecture/issues.md): the issue sheet's service: comment,
   close, labels and assignees, and the issue cache.
-- [`internal/timeline`](docs/architecture.md#internaltimeline): the conversation both sheets
+- [`internal/timeline`](docs/architecture/timeline.md): the conversation both sheets
   show.
-- [`internal/avatars`](docs/architecture.md#internalavatars): the profile pictures the sheets
+- [`internal/avatars`](docs/architecture/avatars.md): the profile pictures the sheets
   and the inbox's cards show, people's and bots'.
-- [`internal/people`](docs/architecture.md#internalpeople): the local directory of who works on
+- [`internal/people`](docs/architecture/people.md): the local directory of who works on
   each repository and who can be assigned there, which the pickers suggest from.
-- [`internal/assignees`](docs/architecture.md#internalassignees): whom both sheets' assignee
+- [`internal/assignees`](docs/architecture/assignees.md): whom both sheets' assignee
   pickers offer, and when a read of GitHub is due.
-- [`internal/bump`](docs/architecture.md#internalbump): reads a dependency update from a bot's
+- [`internal/bump`](docs/architecture/bump.md): reads a dependency update from a bot's
   pull request.
 
 **Agents and launches**
 
-- [`internal/launcher`](docs/architecture.md#internallauncher): resolves, plans, and opens a
+- [`internal/launcher`](docs/architecture/launcher.md): resolves, plans, and opens a
   launch in the user's terminal; holds, trust, and `workspacetrust`.
-- [`internal/sessions`](docs/architecture.md#internalsessions): follows the agent sessions
+- [`internal/sessions`](docs/architecture/sessions.md): follows the agent sessions
   launches start.
 
 **Clones and worktrees**
 
-- [`internal/localrepos`](docs/architecture.md#internallocalrepos): finds the user's clones in
+- [`internal/localrepos`](docs/architecture/localrepos.md): finds the user's clones in
   the clone root and the other repository locations.
-- [`internal/pushwatch`](docs/architecture.md#internalpushwatch): notices a push made on this
+- [`internal/pushwatch`](docs/architecture/pushwatch.md): notices a push made on this
   Mac to an inbox pull request, from its branch's ref in the clones, and has it read again.
-- [`internal/worktrees`](docs/architecture.md#internalworktrees): makes the app's worktrees (one
+- [`internal/worktrees`](docs/architecture/worktrees.md): makes the app's worktrees (one
   per item per clone), records them in `worklog`, and removes them and their branches safely.
-- [`internal/gitread`](docs/architecture.md#internalgitread): the allowlisted read-only git, and
+- [`internal/gitread`](docs/architecture/gitread.md): the allowlisted read-only git, and
   the guarded setups for the git commands that change a clone.
 
 **Integrations and runs**
 
-- [`internal/integrations`](docs/architecture.md#internalintegrations): finds, installs, and
+- [`internal/integrations`](docs/architecture/integrations.md): finds, installs, and
   updates magex and go-pre-commit (`toolinstall` downloads and checks a release).
-- [`internal/scriptrun`](docs/architecture.md#internalscriptrun): runs and follows the
+- [`internal/scriptrun`](docs/architecture/scriptrun.md): runs and follows the
   integrations' commands and a routine's background agent, never Describe it's turns.
-- [`internal/release`](docs/architecture.md#internalrelease): the Release page.
-- [`internal/hooks`](docs/architecture.md#internalhooks): the Hooks page.
-- [`internal/scripts`](docs/architecture.md#internalscripts): Repo scripts, and Pull.
-- [`internal/manifests`](docs/architecture.md#internalmanifests): the Deps page: each clone's
+- [`internal/release`](docs/architecture/release.md): the Release page.
+- [`internal/hooks`](docs/architecture/hooks.md): the Hooks page.
+- [`internal/scripts`](docs/architecture/scripts.md): Repo scripts, and Pull.
+- [`internal/manifests`](docs/architecture/manifests.md): the Deps page: each clone's
   go.mod and package.json files and their ages.
 
 **Updates**
 
-- [`internal/update`](docs/architecture.md#internalupdate): how the app updates itself.
-- [`internal/updateprefs`](docs/architecture.md#internalupdateprefs): the `update.mode` setting.
-- [`internal/semver`](docs/architecture.md#internalsemver): semantic versions.
+- [`internal/update`](docs/architecture/update.md): how the app updates itself.
+- [`internal/updateprefs`](docs/architecture/updateprefs.md): the `update.mode` setting.
+- [`internal/semver`](docs/architecture/semver.md): semantic versions.
 
 **Autopilot**
 
-- [`internal/autopilot`](docs/architecture.md#internalautopilot): runs the user's routines; its
+- [`internal/autopilot`](docs/architecture/autopilot/README.md): runs the user's routines; its
   settings are `internal/autopilotprefs`.
-- [`internal/autopilot/draft`](docs/architecture.md#internalautopilotdraft): the one check of a
+- [`internal/autopilot/draft`](docs/architecture/autopilot/draft.md): the one check of a
   routine's draft, for the builder, Save, and kit.
-- [`internal/agentrun`](docs/architecture.md#agents-in-the-background): runs a routine's agent
+- [`internal/agentrun`](docs/architecture/autopilot/agents-in-the-background.md): runs a routine's agent
   step in the background.
-- [`internal/agentrun/stream`](docs/architecture.md#internalagentrunstream): reads an agent's
+- [`internal/agentrun/stream`](docs/architecture/agentrun/stream.md): reads an agent's
   stream, for background runs and Describe it's turns.
-- [`internal/fence`](docs/architecture.md#internalfence): keeps an unattended agent run inside
+- [`internal/fence`](docs/architecture/fence.md): keeps an unattended agent run inside
   its tools preset.
 
 **Describe it**
 
-- [`internal/autopilot/kit`](docs/architecture.md#internalautopilotkit): what Claude Code reads
+- [`internal/autopilot/kit`](docs/architecture/autopilot/kit.md): what Claude Code reads
   and proposes: the snapshot, a proposal, its checks and risks, and the words.
-- [`internal/describeit`](docs/architecture.md#internaldescribeit): the conversation, its cards,
+- [`internal/describeit`](docs/architecture/describeit.md): the conversation, its cards,
   and the plugin for the user's own Claude Code.
-- [`internal/mcpserver`](docs/architecture.md#internalmcpserver): the tool mode, the app's
+- [`internal/mcpserver`](docs/architecture/mcpserver.md): the tool mode, the app's
   binary serving Describe it's tools; it writes only proposals.
 
 **Backup and setup**
 
-- [`internal/backup`](docs/architecture.md#internalbackup): exports and imports the user's setup.
-- [`internal/setup`](docs/architecture.md#internalsetup): the first-run setup, and a reset.
+- [`internal/backup`](docs/architecture/backup.md): exports and imports the user's setup.
+- [`internal/setup`](docs/architecture/setup.md): the first-run setup, and a reset.
 
 **The window and the tools**
 
-- [`frontend/`](docs/architecture.md#frontend): the React + TypeScript + Vite + Tailwind window.
+- [`frontend/`](docs/architecture/frontend/README.md): the React + TypeScript + Vite + Tailwind window.
 - `magefiles/`: the custom `magex` targets (above); `internal/measure` and
   `magefiles/measure.go` take the numbers in [`docs/performance.md`](docs/performance.md).
 
-Building and running the desktop app, and the rules it follows on your machine, are in
-[`docs/desktop.md`](docs/desktop.md).
+Every doc, and what's in it: [`docs/README.md`](docs/README.md).
 
 Conventions for commits, branches, pull requests, testing, and security live in
 [`.github/tech-conventions/`](.github/tech-conventions/README.md).
@@ -394,7 +393,7 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   the routines, and the user's own scripts come back on their own. Combine shipped migrations
   only by a squash, which carries every database over untouched: freeze each history
   (`-freeze`), write the base at the next hundred, and prove it builds the frozen schema; the
-  steps are in [`internal/store`](docs/architecture.md#internalstore).
+  steps are in [`internal/store`](docs/architecture/store.md).
 - **Ownership.** Every table has one owner package (`tableOwners` in
   `internal/repoguard/datalayer_test.go`): profiles owns `agent_profiles`, keyed by `(agent,
   name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner
@@ -443,12 +442,12 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   damaged database, a schema the migrations did not create, or a history this build disagrees
   with aside as `<path>.broken-<UTC stamp>` for a fresh one, and refuses a database from a newer
   build (`store.ErrNewerSchema`), leaving it untouched. A reset the user asked for, `store.Backup`,
-  and `store.RestoreBackup` are in [`internal/store`](docs/architecture.md#internalstore).
+  and `store.RestoreBackup` are in [`internal/store`](docs/architecture/store.md).
 - **Prompts, launch defaults, the Autopilot routines, and the user's scripts outlive the
   database.** They keep copies beside it (`prompts.json`, `launch-defaults.json`,
   `autopilot.json`) or come back from a database set aside, and their file formats
   ([`docs/prompt-files.md`](docs/prompt-files.md), [`docs/backup-files.md`](docs/backup-files.md))
-  stay in step; see [`internal/store`](docs/architecture.md#internalstore).
+  stay in step; see [`internal/store`](docs/architecture/store.md).
 - **Tests** open a fresh, migrated database with `testutil.DB(t)`, a given file with
   `testutil.DBAt(t, path)`, and a closed one with `testutil.ClosedDB(t)`. To make a write fail,
   add a trigger that calls `RAISE(ABORT, ...)`, or drop the table.

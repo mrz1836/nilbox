@@ -6,7 +6,7 @@ prompts and review replies, your launch defaults, your own scripts, and your Aut
 routines (one an import adds or saves over arrives switched off, and one already the same stays
 as it is, on or off). The app writes one from
 **Settings → Back up and restore → Export…**, and reads one from **Import…** there. How an import
-treats what is already on the Mac is in [Backing up your setup](desktop.md#backing-up-your-setup).
+treats what is already on the Mac is in [Backing up your setup](guide/backing-up.md).
 
 A backup is UTF-8 JSON, at most 16 MB, written readable only by you. Each category you tick on
 export is a section of the file; one you leave unticked is absent.
@@ -89,8 +89,8 @@ as it was. The example leaves most out, as a file edited by hand may.
 | `settings` | Your settings ([below](#settings)). |
 | `repositories` | Your clone folder, other repository locations, and pinned and muted repositories and orgs ([below](#repositories)). |
 | `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults, `startersAdded`, and `slotsSeeded` included. |
-| `launchDefaults` | Your org and repository [launch defaults](desktop.md#launch-defaults), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
-| `scripts` | Your own [scripts](desktop.md#repo-scripts), in their order ([below](#scripts)). |
+| `launchDefaults` | Your org and repository [launch defaults](guide/launch-defaults.md), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
+| `scripts` | Your own [scripts](guide/repo-scripts.md), in their order ([below](#scripts)). |
 | `autopilot` | Your Autopilot routines, exactly as `autopilot.json` holds them ([below](#autopilot)). |
 
 Every section is an object, or absent. The prompts, launch defaults, and Autopilot sections

@@ -22,7 +22,7 @@ import (
 // freeze names the newest migration of a history to freeze before a squash retires it.
 var freeze = flag.Int("freeze", 0, //nolint:gochecknoglobals // a test flag
 	"write squashed/NNNN.json and NNNN.schema, the history of the embedded migrations through version NNNN and "+
-		"the schema they build, before a squash combines them (docs/architecture.md, internal/store)")
+		"the schema they build, before a squash combines them (docs/architecture/store.md)")
 
 // squashedDir holds the squashed histories, beside the migrations.
 const squashedDir = "squashed"
