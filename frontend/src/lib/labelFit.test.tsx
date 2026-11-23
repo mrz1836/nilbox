@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 import { followResizes } from '../test/stubs'
 import { labelsShown, measureLabelRoom, useLabelRoom, type LabelRoom } from './labelFit'
@@ -54,7 +54,9 @@ function box(el: Element, left: number, width: number) {
 }
 
 // line builds a card's title line: a title, then the labels' strip with two chips and a
-// "+N", laid out as a long title cut short beside them.
+// "+N", laid out as a long title cut short beside them. It stands in the document until the
+// test ends, as a card's line does: an element out of it has no computed style, so its
+// strip's gap would read as none.
 function line() {
   const el = document.createElement('div')
   const title = document.createElement('button')
@@ -81,6 +83,10 @@ function line() {
   box(el, 0, 600)
   box(title, 20, 376)
   box(strip, 400, 192)
+  document.body.append(el)
+  onTestFinished(() => {
+    el.remove()
+  })
 
   return { el, title, strip }
 }
