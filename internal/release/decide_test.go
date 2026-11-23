@@ -606,11 +606,48 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "checks running", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			fixes: []Fix{FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksPending },
+			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksPending },
 		},
 		{
 			name: "checks expected", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			fixes: []Fix{FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
+			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
+		},
+		{
+			name: "one check never started", id: CheckChecks, state: CheckWarn,
+			text:  ".github/dependabot.yml never started on a1b2c3d; the other checks passed",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 1
+				f.Repo.Queued = []QueuedCheck{{Name: ".github/dependabot.yml", URL: "https://github.com/acme-org/sdk/runs/7"}}
+			},
+		},
+		{
+			name: "two checks never started", id: CheckChecks, state: CheckWarn,
+			text:  "Deploy and Scan never started on a1b2c3d; the other checks passed",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 3
+				f.Repo.Queued = []QueuedCheck{{Name: "Deploy"}, {Name: ""}, {Name: "Scan"}, {Name: "Deploy"}}
+			},
+		},
+		{
+			name: "many checks never started", id: CheckChecks, state: CheckWarn,
+			text:  "Deploy, Scan, and 2 more checks never started on a1b2c3d; the other checks passed",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 4
+				f.Repo.Queued = []QueuedCheck{{Name: "Deploy"}, {Name: "Scan"}, {Name: "Lint"}, {Name: "Vet"}}
+			},
+		},
+		{
+			name: "a check never started, unnamed", id: CheckChecks, state: CheckWarn,
+			text: "1 check never started on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) { f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 1 },
+		},
+		{
+			name: "checks never started, unnamed", id: CheckChecks, state: CheckWarn,
+			text: "3 checks never started on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) { f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 3 },
 		},
 		{name: "no checks", id: CheckChecks, absent: true, change: func(f *Facts) { f.Repo.Checks = ChecksNone }},
 		{name: "checks unknown", id: CheckChecks, absent: true, change: func(f *Facts) { f.Repo.Checks = "NEW" }},
@@ -679,6 +716,49 @@ func TestDecideCheckDetails(t *testing.T) {
 		got, ok := checkOf(Decide(f), CheckChecks)
 		require.True(t, ok)
 		assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID, got.Link)
+	})
+
+	t.Run("running checks link their commit's checks", func(t *testing.T) {
+		t.Parallel()
+
+		for _, checks := range []Checks{ChecksPending, ChecksExpected} {
+			f := readyFacts()
+			f.Repo.Checks = checks
+
+			got, ok := checkOf(Decide(f), CheckChecks)
+			require.True(t, ok)
+			assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID+"/checks", got.Link, string(checks))
+		}
+	})
+
+	t.Run("one check never started links its own run's page", func(t *testing.T) {
+		t.Parallel()
+
+		f := readyFacts()
+		f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 1
+		f.Repo.Queued = []QueuedCheck{{Name: ".github/dependabot.yml", URL: "https://github.com/acme-org/sdk/runs/7"}}
+
+		got, ok := checkOf(Decide(f), CheckChecks)
+		require.True(t, ok)
+		assert.Equal(t, CheckWarn, got.State)
+		assert.Equal(t, "https://github.com/acme-org/sdk/runs/7", got.Link)
+	})
+
+	t.Run("checks never started otherwise link their commit's checks", func(t *testing.T) {
+		t.Parallel()
+
+		for name, queued := range map[string][]QueuedCheck{
+			"several":     {{Name: "Deploy", URL: "https://github.com/acme-org/sdk/runs/7"}, {Name: "Scan"}},
+			"one without": {{Name: ".github/dependabot.yml"}},
+			"none named":  nil,
+		} {
+			f := readyFacts()
+			f.Repo.Checks, f.Repo.Stuck, f.Repo.Queued = ChecksStuck, max(len(queued), 1), queued
+
+			got, ok := checkOf(Decide(f), CheckChecks)
+			require.True(t, ok)
+			assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID+"/checks", got.Link, name)
+		}
 	})
 
 	t.Run("the busy run can be watched", func(t *testing.T) {

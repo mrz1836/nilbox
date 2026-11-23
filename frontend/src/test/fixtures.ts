@@ -3652,6 +3652,7 @@ export function releaseCandidate(overrides: Partial<ReleaseCandidate> = {}): Rel
     headline: 'Fix retries on 502 (#45)',
     headAt: '2026-06-15T11:48:00Z',
     checks: 'SUCCESS',
+    stuck: 0,
     clone: {
       branch: 'feature-x',
       detached: false,

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -129,11 +130,15 @@ type RepoFacts struct {
 	Permission string
 
 	// DefaultBranch is its default branch, and HeadOID and Checks its newest commit and
-	// that commit's checks, Failing those of them that failed.
+	// that commit's checks, as of when GitHub was read (checksAt), Failing those of them
+	// that failed and Queued its check runs GitHub queued and never started. Stuck, when
+	// Checks is ChecksStuck, counts those runs, which can be more than Queued lists.
 	DefaultBranch string
 	HeadOID       string
 	Checks        Checks
 	Failing       []FailedCheck
+	Queued        []QueuedCheck
+	Stuck         int
 
 	// Branches are those of main and master that origin has (D10).
 	Branches []string
@@ -256,6 +261,10 @@ type GatherConfig struct {
 
 	// Home is the user's home folder, for ~ paths.
 	Home string
+
+	// Clock tells how old the newest commit is, for its checks (checksAt). It defaults to
+	// the real clock.
+	Clock clock.Clock
 }
 
 // Gatherer gathers a release's facts, reading GitHub, origin, and the clone at once.
@@ -268,13 +277,14 @@ type Gatherer struct {
 	env     func() ([]string, bool)
 	runner  func(env []string) execpath.Runner
 	home    string
+	clock   clock.Clock
 }
 
 // NewGatherer returns a Gatherer over cfg.
 func NewGatherer(cfg GatherConfig) *Gatherer {
 	g := &Gatherer{
 		git: cfg.Git, github: cfg.GitHub, origins: cfg.Origins, tools: cfg.Tools, locks: cfg.Locks,
-		env: cfg.Env, runner: cfg.Runner, home: cfg.Home,
+		env: cfg.Env, runner: cfg.Runner, home: cfg.Home, clock: clock.Or(cfg.Clock),
 	}
 
 	if g.env == nil {
@@ -385,7 +395,7 @@ func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 }
 
 // repo asks GitHub about the repository: its status, round one, with the newest commit's
-// failed checks.
+// failed checks and those that never started.
 func (g *Gatherer) repo(ctx context.Context, name repo.Name) RepoFacts {
 	out := RepoFacts{Name: name, Branches: []string{}}
 
@@ -397,8 +407,12 @@ func (g *Gatherer) repo(ctx context.Context, name repo.Name) RepoFacts {
 	}
 
 	out.Found, out.Archived, out.Permission = found, status.Archived, status.Permission
-	out.DefaultBranch, out.HeadOID, out.Checks = status.DefaultBranch, status.HeadOID, status.Checks
-	out.Failing = status.Failing
+	out.DefaultBranch, out.HeadOID, out.Checks = status.DefaultBranch, status.HeadOID, checksAt(status, g.clock.Now())
+	out.Failing, out.Queued = status.Failing, status.QueuedChecks
+
+	if out.Checks == ChecksStuck {
+		out.Stuck = status.Queued
+	}
 
 	return out
 }

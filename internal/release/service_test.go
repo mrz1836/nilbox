@@ -524,7 +524,8 @@ func TestARefreshCutShortKeepsNothing(t *testing.T) {
 func TestAnUnknownPermissionDoesntBlock(t *testing.T) {
 	t.Parallel()
 
-	c := candidateFor(clone{dir: "/x", origin: name("sdk")}, RepoStatus{DefaultBranch: "main", HeadOID: "a"}, true, Compare{}, false)
+	c := candidateFor(clone{dir: "/x", origin: name("sdk")}, RepoStatus{DefaultBranch: "main", HeadOID: "a"}, true, Compare{}, false,
+		testNow())
 	assert.Equal(t, GroupNoReleases, c.Group, "GitHub not saying isn't read-only")
 }
 
@@ -580,7 +581,7 @@ func TestTwoClonesOfOneRepositoryAskOnce(t *testing.T) {
 func TestARepositoryWithNoCommitsCantRelease(t *testing.T) {
 	t.Parallel()
 
-	c := candidateFor(clone{dir: "/x", origin: name("empty")}, RepoStatus{Permission: "WRITE"}, true, Compare{}, false)
+	c := candidateFor(clone{dir: "/x", origin: name("empty")}, RepoStatus{Permission: "WRITE"}, true, Compare{}, false, testNow())
 	assert.Equal(t, GroupCantRelease, c.Group)
 	assert.Equal(t, "It has no commits on GitHub yet.", c.Reason)
 	assert.Empty(t, c.HeadAt)

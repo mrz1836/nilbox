@@ -288,11 +288,152 @@ func TestFollowChecksLeavesAnOldCommitsChecks(t *testing.T) {
 
 	r.clock.Advance(followChecksFor)
 	require.NoError(t, r.svc.followChecks(t.Context()))
-	assert.Equal(t, 2, r.github.calls(), "and neither is web's, once its commit is as old")
+	assert.Equal(t, []repo.Name{name("web")}, r.github.askedAt(2),
+		"web's, still running when read within it, is read once more once its commit is as old")
+
+	r.clock.Advance(FollowChecksInterval)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	assert.Equal(t, 3, r.github.calls(), "but not again, since it still runs")
 
 	_, err = r.svc.Candidates(t.Context(), true)
 	require.NoError(t, err)
-	assert.Equal(t, 3, r.github.calls(), "Read GitHub again still reads them")
+	assert.Equal(t, 4, r.github.calls(), "Read GitHub again still reads them")
+}
+
+// setUnfinished has GitHub answer that the newest commit of acme-org/<repoName> has queued
+// check runs that never started, and running other checks that haven't finished.
+func (f *fakeGitHub) setUnfinished(repoName string, queued, running int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	status := f.statuses[name(repoName).Key()]
+	status.Queued, status.Running = queued, running
+	f.statuses[name(repoName).Key()] = status
+}
+
+func TestFollowChecksReadsARunningRowOnceMoreToFindItStuck(t *testing.T) {
+	t.Parallel()
+
+	r, _, keeper := checksRig() // web's newest commit is a minute old, its checks pending
+	r.github.setUnfinished("web", 1, 0)
+
+	_, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+
+	// Read again when its commit is 1 h 59 m old: a queued run is still young.
+	r.clock.Advance(followChecksFor - 2*time.Minute)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	require.Equal(t, 2, r.github.calls())
+	require.Equal(t, ChecksPending, rowOf(t, servedNow(r.svc), "acme-org/web").Checks)
+
+	before := r.events.Count()
+
+	r.clock.Advance(2 * time.Minute)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	assert.Equal(t, []repo.Name{name("web")}, r.github.askedAt(2), "one more read once its commit is two hours old")
+
+	web := rowOf(t, servedNow(r.svc), "acme-org/web")
+	assert.Equal(t, ChecksStuck, web.Checks, "which finds the run never started")
+	assert.Equal(t, 1, web.Stuck)
+	assert.Equal(t, []event.Event{event.ReleasesUpdated{}}, r.events.All()[before:], "and tells the window")
+	assert.Equal(t, ChecksStuck, keptRow(t, keeper, "acme-org/web").Checks, "and keeps it for the next start")
+
+	r.clock.Advance(FollowChecksInterval)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	assert.Equal(t, 3, r.github.calls(), "a stuck row isn't followed")
+}
+
+func TestFollowChecksLeavesARowStillRunningWhenReadOld(t *testing.T) {
+	t.Parallel()
+
+	r, _, _ := checksRig()
+	r.github.setUnfinished("web", 1, 1) // a run in progress beside the queued one
+
+	_, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+
+	r.clock.Advance(followChecksFor + time.Minute)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	require.Equal(t, 2, r.github.calls(), "the one read more")
+	assert.Equal(t, ChecksPending, rowOf(t, servedNow(r.svc), "acme-org/web").Checks,
+		"a check really running keeps it running")
+
+	r.clock.Advance(FollowChecksInterval)
+	require.NoError(t, r.svc.followChecks(t.Context()))
+	assert.Equal(t, 2, r.github.calls(), "and a row read when its commit was old isn't read again")
+}
+
+func TestChecksAt(t *testing.T) {
+	t.Parallel()
+
+	now := testNow()
+	old, young := now.Add(-followChecksFor-time.Second), now.Add(-followChecksFor+time.Second)
+
+	tests := []struct {
+		name   string
+		status RepoStatus
+		want   Checks
+	}{
+		{
+			name:   "only queued runs on an old commit",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: old, Queued: 1}, want: ChecksStuck,
+		},
+		{
+			name:   "several queued runs on an old commit",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: old, Queued: 3}, want: ChecksStuck,
+		},
+		{
+			name:   "only queued runs on a young commit",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: young, Queued: 1}, want: ChecksPending,
+		},
+		{
+			name:   "exactly as old as the follow",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: now.Add(-followChecksFor), Queued: 1}, want: ChecksPending,
+		},
+		{
+			name:   "queued beside a run in progress or a pending status",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: old, Queued: 1, Running: 1}, want: ChecksPending,
+		},
+		{
+			name:   "pending with nothing queued",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: old, Running: 1}, want: ChecksPending,
+		},
+		{
+			name:   "pending with no counts",
+			status: RepoStatus{Checks: ChecksPending, HeadAt: old}, want: ChecksPending,
+		},
+		{name: "failing", status: RepoStatus{Checks: ChecksFailure, HeadAt: old, Queued: 1}, want: ChecksFailure},
+		{name: "erred", status: RepoStatus{Checks: ChecksError, HeadAt: old, Queued: 1}, want: ChecksError},
+		{name: "passed", status: RepoStatus{Checks: ChecksSuccess, HeadAt: old}, want: ChecksSuccess},
+		{name: "expected", status: RepoStatus{Checks: ChecksExpected, HeadAt: old, Queued: 1}, want: ChecksExpected},
+		{name: "none", status: RepoStatus{HeadAt: old}, want: ChecksNone},
+		{name: "no commit time", status: RepoStatus{Checks: ChecksPending, Queued: 1}, want: ChecksPending},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, checksAt(tt.status, now))
+		})
+	}
+}
+
+func TestCandidateCountsTheRunsThatNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	status := RepoStatus{
+		DefaultBranch: "main", HeadOID: "a", HeadAt: testNow().Add(-3 * time.Hour),
+		Checks: ChecksPending, Queued: 2,
+	}
+	c := candidateFor(clone{dir: "/x", origin: name("sdk")}, status, true, Compare{}, false, testNow())
+	assert.Equal(t, ChecksStuck, c.Checks)
+	assert.Equal(t, 2, c.Stuck)
+
+	status.Running = 1
+	c = candidateFor(clone{dir: "/x", origin: name("sdk")}, status, true, Compare{}, false, testNow())
+	assert.Equal(t, ChecksPending, c.Checks)
+	assert.Zero(t, c.Stuck, "only a stuck row counts them")
 }
 
 func TestFollowChecksReadsFifteenARoundTheLongestUnreadFirst(t *testing.T) {

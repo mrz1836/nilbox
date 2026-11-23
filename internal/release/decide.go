@@ -614,8 +614,9 @@ func (d decider) nothingNewCheck() (Check, bool) {
 	return checkBlock(CheckNothingNew, text), true
 }
 
-// ciCheck: the checks on the default branch's newest commit, as GitHub rolls them up. It
-// only warns.
+// ciCheck: the checks on the default branch's newest commit, as GitHub rolls them up, or
+// stuck on check runs that never started (checksAt). It only warns, and View on GitHub
+// shows what failed, never started, or still runs.
 func (d decider) ciCheck() (Check, bool) {
 	r := d.f.Repo
 	if !r.Found || r.HeadOID == "" || d.branch != r.DefaultBranch {
@@ -632,8 +633,16 @@ func (d decider) ciCheck() (Check, bool) {
 		out.Link = failingURL(r)
 
 		return out, true
+	case ChecksStuck:
+		out := checkWarn(CheckChecks, stuckText(r.Queued, r.Stuck, short), FixView, FixCheckAgain)
+		out.Link = stuckURL(r)
+
+		return out, true
 	case ChecksPending, ChecksExpected:
-		return checkWarn(CheckChecks, "Checks are still running on "+short, FixCheckAgain), true
+		out := checkWarn(CheckChecks, "Checks are still running on "+short, FixView, FixCheckAgain)
+		out.Link = checksURL(r.Name, r.HeadOID)
+
+		return out, true
 	case ChecksNone:
 		return Check{}, false
 	default:
@@ -1020,32 +1029,79 @@ func failingURL(r RepoFacts) string {
 	return commitURL(r.Name, r.HeadOID)
 }
 
-// failedNamed is how many of the checks that failed the checks line names; past it, it
-// names one fewer and counts the rest.
+// stuckURL is where the checks line's View on GitHub shows the check runs that never
+// started on the newest commit: the run's own page when it is one GitHub gave a page, and
+// otherwise the commit's checks page, which lists check runs.
+func stuckURL(r RepoFacts) string {
+	if len(r.Queued) == 1 && r.Queued[0].URL != "" {
+		return r.Queued[0].URL
+	}
+
+	return checksURL(r.Name, r.HeadOID)
+}
+
+// failedNamed is how many of the checks that failed, or that never started, the checks
+// line names; past it, it names one fewer and counts the rest.
 const failedNamed = 3
 
 // failingText says which checks failed on the commit short, by name, a name twice once,
 // or only that checks failed when GitHub listed none of them.
 func failingText(failed []FailedCheck, short string) string {
 	names := make([]string, 0, len(failed))
-
 	for _, c := range failed {
-		if c.Name != "" && !slices.Contains(names, c.Name) {
-			names = append(names, c.Name)
+		names = append(names, c.Name)
+	}
+
+	names = checkNames(names)
+
+	switch len(names) {
+	case 0:
+		return "Checks are failing on " + short
+	case 1:
+		return names[0] + " is failing on " + short
+	default:
+		return textutil.Series(names) + " are failing on " + short
+	}
+}
+
+// stuckText says which check runs never started on the commit short, by name as
+// failingText names them, and that the rest passed, or only how many never started,
+// stuck, when GitHub named none of them.
+func stuckText(queued []QueuedCheck, stuck int, short string) string {
+	names := make([]string, 0, len(queued))
+	for _, c := range queued {
+		names = append(names, c.Name)
+	}
+
+	names = checkNames(names)
+
+	switch len(names) {
+	case 0:
+		return textutil.Counted(max(stuck, 1), "check", "checks") + " never started on " + short
+	case 1:
+		return names[0] + " never started on " + short + "; the other checks passed"
+	default:
+		return textutil.Series(names) + " never started on " + short + "; the other checks passed"
+	}
+}
+
+// checkNames is the names a checks line lists, in order, without an empty one or a name
+// twice: past failedNamed, one fewer, and a count of the rest, as in "2 more checks".
+func checkNames(all []string) []string {
+	names := make([]string, 0, len(all))
+
+	for _, name := range all {
+		if name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
 		}
 	}
 
-	switch {
-	case len(names) == 0:
-		return "Checks are failing on " + short
-	case len(names) == 1:
-		return names[0] + " is failing on " + short
-	case len(names) > failedNamed:
+	if len(names) > failedNamed {
 		rest := textutil.Counted(len(names)-failedNamed+1, "more check", "more checks")
 		names = append(names[:failedNamed-1:failedNamed-1], rest)
 	}
 
-	return textutil.Series(names) + " are failing on " + short
+	return names
 }
 
 // hasState reports whether any check is in state.

@@ -158,6 +158,13 @@ describe('CandidateRow', () => {
     },
     { name: 'passed checks', checks: 'SUCCESS', clone: cloneState(), want: 'ready', bar: ['bg-success'] },
     {
+      name: 'checks stuck on a run never started',
+      checks: 'STUCK',
+      clone: cloneState(),
+      want: 'ready',
+      bar: ['bg-success'],
+    },
+    {
       name: 'passed checks, behind and on a branch',
       checks: 'SUCCESS',
       clone: cloneState({ behind: true, branch: 'feature-x' }),
@@ -193,6 +200,21 @@ describe('CandidateRow', () => {
     const { row } = renderCandidate(releaseCandidate({ checks: 'PENDING' }))
 
     expect(row.querySelector('[data-checks-running]')).toBeInTheDocument()
+  })
+
+  it.each<{ stuck: number; words: string }>([
+    { stuck: 1, words: 'checks passed, 1 never started' },
+    { stuck: 3, words: 'checks passed, 3 never started' },
+  ])('marks checks stuck on $stuck runs never started as passed, in amber', ({ stuck, words }) => {
+    const { row } = renderCandidate(releaseCandidate({ checks: 'STUCK', stuck }))
+    const text = within(row).getByText(words)
+    const cell = text.parentElement
+
+    expect(text).toHaveClass('sr-only')
+    expect(cell).toHaveAttribute('title', words)
+    expect(cell?.querySelector('svg')).toHaveClass('text-warning')
+    expect(row.querySelector('[data-checks-running]')).not.toBeInTheDocument()
+    expect(edge(row)).not.toHaveClass('motion-safe:animate-pulse')
   })
 
   it('splits the repository into a muted owner and its name', () => {

@@ -91,9 +91,11 @@ const running = (
   </span>
 )
 
-// checksIcons mark the checks on a commit: passed, running, failing, or none at all.
+// checksIcons mark the checks on a commit: passed, passed but for runs that never started
+// (the check in the warning colour), running, failing, or none at all.
 const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
   SUCCESS: <CheckIcon className="size-3.5 shrink-0 text-success" />,
+  STUCK: <CheckIcon className="size-3.5 shrink-0 text-warning" />,
   PENDING: running,
   EXPECTED: running,
   FAILURE: <XIcon className="size-3.5 shrink-0 text-danger" />,
@@ -146,9 +148,9 @@ function RepoCell({ repo, pinnedWith }: { repo: string; pinnedWith: string }) {
 }
 
 // ChecksCell is the checks on a row's newest commit, as an icon, its words in its tooltip
-// and for a screen reader.
-function ChecksCell({ checks }: { checks: CommitChecks }) {
-  const words = commitChecksText(checks)
+// and for a screen reader, with how many of its runs never started when they are stuck.
+function ChecksCell({ checks, stuck }: { checks: CommitChecks; stuck: number }) {
+  const words = commitChecksText(checks, stuck)
 
   return (
     <span title={words} className="col-start-2 row-start-1 inline-flex">
@@ -308,7 +310,7 @@ export function CandidateRow({ candidate, pinnedWith = '', wave = noWave, onRele
         data-readiness={canRelease ? ready : undefined}
         className={`col-start-1 row-start-1 my-0.5 self-stretch rounded-full @max-4xl:row-end-3 ${canRelease ? readinessBar[ready] : 'bg-transparent'}`}
       />
-      {group !== 'cantRelease' && <ChecksCell checks={candidate.checks} />}
+      {group !== 'cantRelease' && <ChecksCell checks={candidate.checks} stuck={candidate.stuck} />}
       <RepoCell repo={repo} pinnedWith={pinnedWith} />
       {group === 'unreleased' && <CountCell candidate={candidate} />}
       <div className={metaClass}>

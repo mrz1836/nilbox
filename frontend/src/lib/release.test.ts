@@ -224,6 +224,8 @@ describe('release', () => {
     expect(readiness(releaseCandidate({ checks: 'EXPECTED' }))).toBe('running')
     expect(readiness(releaseCandidate({ checks: 'SUCCESS' }))).toBe('ready')
     expect(readiness(releaseCandidate({ checks: 'SUCCESS', clone: null }))).toBe('ready')
+    expect(readiness(releaseCandidate({ checks: 'STUCK', stuck: 1 }))).toBe('ready')
+    expect(readiness(releaseCandidate({ checks: 'STUCK', stuck: 1, clone: blocked }))).toBe('blocked')
     expect(readiness(releaseCandidate({ checks: '' }))).toBe('none')
   })
 
@@ -267,6 +269,10 @@ describe('release', () => {
     expect(commitChecksText('FAILURE')).toBe('checks failing')
     expect(commitChecksText('ERROR')).toBe('checks failing')
     expect(commitChecksText('')).toBe('no checks')
+    expect(commitChecksText('STUCK', 1)).toBe('checks passed, 1 never started')
+    expect(commitChecksText('STUCK', 3)).toBe('checks passed, 3 never started')
+    expect(commitChecksText('STUCK')).toBe('checks passed, 1 never started')
+    expect(commitChecksText('SUCCESS', 2), 'only stuck checks count their runs').toBe('checks passed')
   })
 
   it('reads what a release set out to do, and nothing from a run that kept none', () => {

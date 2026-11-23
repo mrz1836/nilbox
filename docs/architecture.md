@@ -2976,8 +2976,9 @@ out exactly as magex does, tested against a table recorded from the real magex. 
 follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
 a `ToolSource`, GitHub's status of the one repository with its newest commit's checks and
 statuses, which the checks line names when they fail, in `GitHub.RepoStatus`'s one query
-(the list's batches read the rollup's state alone), origin's refs with one `ls-remote`,
-and the clone with `gitread`), and the pure `Decide` works out the sheet's `Offer`: every
+(the list's batches read the rollup's state and its per-state counts, under the alias
+`counts`, never the checks one by one; still one point a batch), origin's refs with one
+`ls-remote`, and the clone with `gitread`), and the pure `Decide` works out the sheet's `Offer`: every
 check, every bump's version over the clone's and origin's tags, the Major gate, and the
 argv, `push=true` (never the bare word) plus `expect=`, `json=true`, and `ff-only` only for a
 magex whose `Definition.Features` has them. The bound `Prepare` takes the sheet's choice and,
@@ -3024,15 +3025,39 @@ repository muted now: at most `followChecksMax` (15, one status batch and at mos
 comparison batch, about two points) a round, the longest unread first, each left alone
 while read within `followChecksFresh` (25 s, by a refresh, a patch, or the round before,
 `Service.readAt`), and none whose newest commit is older than `followChecksFor` (2 h), so
-a check never reported can't spend the budget for good. It asks GitHub nothing while none
-runs, and follows only a list it could patch (`patchable`: read from GitHub in this run,
-from the locations as set now, current, its last read not failed), after the read of the
-list under way (`startReading`). It reads each row as a patch does (`readRows`: status,
-comparison, and clone state, so a push the checks run for shows too), but quietly: no
-`event.ReleasesProgress`, never `Refreshing`, and only a row that changed keeps the list
-and emits `event.ReleasesUpdated`. A round GitHub fails is logged and leaves the list
-current, never out of date; the next round tries again. The bound
-`ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
+a check never reported can't spend the budget for good. The one exception is a `PENDING`
+row worked out while its commit was no older than that (`Candidate.workedAt`, stamped by
+`candidateFor`): it gets one more read after, the first that can find it stuck (below), and
+its row, worked out later, isn't followed again, stuck or still running. It asks GitHub
+nothing while none runs, and follows only a list it could patch (`patchable`: read from
+GitHub in this run, from the locations as set now, current, its last read not failed),
+after the read of the list under way (`startReading`). It reads each row as a patch does
+(`readRows`: status, comparison, and clone state, so a push the checks run for shows too),
+but quietly: no `event.ReleasesProgress`, never `Refreshing`, and only a row that changed
+keeps the list and emits `event.ReleasesUpdated` (the rows it read land in the list either
+way, so each one's `workedAt` is current). A round GitHub fails is logged and leaves the
+list current, never out of date; the next round tries again.
+
+**Checks stuck on a run that never started.** A check run GitHub queues and never starts,
+as an app's check with no workflow (Dependabot's config check, say), keeps the rollup
+`PENDING` until the next commit, though the Actions page never lists it. `checksAt`
+(`checks.go`), the one rule, used by `candidateFor` for the list and by `Gatherer.repo` for
+the sheet, each with its own clock, reads such a commit's checks as `ChecksStuck` (`STUCK`,
+never GitHub's own): the rollup is `PENDING`, so nothing failed; at least one check run is
+`QUEUED` (`RepoStatus.Queued`, from `ReleaseStatus.HeadQueued`); no other check is unfinished
+(`RepoStatus.Running`: a run in progress, waiting, or pending, a status pending or expected,
+and a state this build doesn't know, so nothing really running is hidden); and the commit is
+more than `followChecksFor` old. An `EXPECTED` rollup, a required check never reported, is
+left as it is. The list reads a stuck row as ready (a green edge, no pulse, an amber ✓, and
+`Candidate.Stuck` for *checks passed, 1 never started*). The sheet's checks line warns and
+names the queued runs as the failing line names its checks (`checkNames`; the core adapter
+fills `RepoStatus.QueuedChecks` from the sheet's one query), and its **View on GitHub** opens
+the run's own page (`github.Check.RunURL`, the CheckRun's `url`, which only the release read
+asks for; its `detailsUrl` can be the app's own site) when exactly one never started, else
+the commit's checks page. A running line's **View on GitHub** opens the commit's checks page
+too.
+
+The bound `ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
 `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
 `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
 inbox already holds, and a clone with that origin, from the page's list or else only the
