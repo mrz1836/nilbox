@@ -37,7 +37,9 @@ import (
 // (the ghthreads package); it edits nothing else on its own. Each is one REST request too,
 // through chore, which asks the client's ChoreGate first: a lane of its own, slower than
 // the edits', so a burst of chores never holds up an edit the user asked for, though it
-// keeps the same reserve, and a hold either lane hears stops both.
+// keeps the same reserve, and a hold either lane hears stops both. A bulk mark the user
+// starts (Mark all done) marks their notifications done the same way, one DELETE each
+// (MarkThreadDoneInBulk), in the ChoreGate's bulk lane, slower still.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
@@ -136,10 +138,27 @@ type ChoreGate interface {
 	// error that says why not and when to try again.
 	AllowChore(resource string) error
 
+	// AllowBulkChore asks to send one of a bulk mark's writes now (MarkThreadDoneInBulk),
+	// in a lane of its own, slower than the chores', so a long job never holds up a click
+	// or a clear. It counts the write and returns nil when it may go, or returns an error
+	// as AllowChore does.
+	AllowBulkChore(resource string) error
+
 	// HoldWrites hears that GitHub asked the app to send no more writes for wait, which
 	// holds the edits too.
 	HoldWrites(wait time.Duration)
 }
+
+// choreLane is which of the ChoreGate's lanes a chore is paced in.
+type choreLane int
+
+const (
+	// clearLane is the chore lane: a click, or a clear by the user's rules (AllowChore).
+	clearLane choreLane = iota
+
+	// bulkLane is a bulk mark's lane (AllowBulkChore).
+	bulkLane
+)
 
 // ErrChoreRefused is returned for a chore the client never sends: a method but DELETE or
 // PATCH, a thread ID that isn't positive, or a client with no ChoreGate.
@@ -655,11 +674,12 @@ func mutate[T any](ctx context.Context, c *Client, tok Token, name string, req g
 
 // chore sends one of the chore lane's writes, method (DELETE, which marks the thread done,
 // or PATCH, which marks it read) on the notification thread threadID, through do, once the
-// client's ChoreGate allows it, and tells both gates when GitHub asks the app to slow down
-// (holdWrites), as edit does. It is edit's twin for the chore lane: any other method, a
-// thread ID that isn't positive, or a client without a ChoreGate is refused before anything
-// is sent. A chore with no token is never sent, so it is not counted.
-func (c *Client) chore(ctx context.Context, tok Token, method string, threadID int64) error {
+// client's ChoreGate allows it in lane (AllowChore for the chore lane, AllowBulkChore for a
+// bulk mark's), and tells both gates when GitHub asks the app to slow down (holdWrites), as
+// edit does. It is edit's twin for the notification writes: any other method, a thread ID
+// that isn't positive, or a client without a ChoreGate is refused before anything is sent.
+// A chore with no token is never sent, so it is not counted.
+func (c *Client) chore(ctx context.Context, tok Token, method string, threadID int64, lane choreLane) error {
 	if method != http.MethodDelete && method != http.MethodPatch {
 		return fmt.Errorf("%w: %q", ErrChoreRefused, method)
 	}
@@ -673,7 +693,12 @@ func (c *Client) chore(ctx context.Context, tok Token, method string, threadID i
 	}
 
 	if !tok.IsZero() {
-		if err := c.Chores.AllowChore(ResourceCore); err != nil {
+		allow := c.Chores.AllowChore
+		if lane == bulkLane {
+			allow = c.Chores.AllowBulkChore
+		}
+
+		if err := allow(ResourceCore); err != nil {
 			return err
 		}
 	}

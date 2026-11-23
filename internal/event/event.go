@@ -108,6 +108,9 @@ const (
 	// NameGHThreadsUpdated is GHThreadsUpdated's name.
 	NameGHThreadsUpdated = "ghthreads:updated"
 
+	// NameGHThreadsBulk is GHThreadsBulk's name.
+	NameGHThreadsBulk = "ghthreads:bulk"
+
 	// NameServiceStatusUpdated is ServiceStatusUpdated's name.
 	NameServiceStatusUpdated = "servicestatus:updated"
 
@@ -205,6 +208,7 @@ func WindowEvents() []WindowEvent {
 		WorktreesProgress{},
 		ManifestsProgress{},
 		GHThreadsUpdated{},
+		GHThreadsBulk{},
 		ServiceStatusUpdated{},
 		UpdatesUpdated{},
 		UpdateRestartRequested{},
@@ -793,6 +797,25 @@ type GHThreadsUpdated struct{}
 func (GHThreadsUpdated) Name() string { return NameGHThreadsUpdated }
 
 func (GHThreadsUpdated) window() {}
+
+// GHThreadsBulk says how far the bulk mark of the user's GitHub notifications (Mark all
+// done) has got, after each notification it marked done or gave up on: how many it
+// marked, how many it couldn't, and how many in its scope the mirror still lists, with
+// More when GitHub holds more than the mirror. It comes once a notification, every second
+// and a half at most. A pause, the end, or a stop comes as GHThreadsUpdated, and the
+// window reads everything again; the mirror's rows the marks took out come that way too,
+// every few seconds.
+type GHThreadsBulk struct {
+	Done   int  `json:"done"`
+	Failed int  `json:"failed"`
+	Left   int  `json:"left"`
+	More   bool `json:"more"`
+}
+
+// Name returns NameGHThreadsBulk.
+func (GHThreadsBulk) Name() string { return NameGHThreadsBulk }
+
+func (GHThreadsBulk) window() {}
 
 // ServiceStatusUpdated says a pass of the service status check ended, whether its checks
 // worked or not, or what the user watches changed: the window reads the status again.

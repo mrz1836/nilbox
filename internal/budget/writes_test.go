@@ -25,6 +25,12 @@ func noChores() Writes {
 	return Writes{PerHour: ChoresPerHour, PerMinute: ChoresPerMinute, Reserve: minReserve}
 }
 
+// noBulk is the bulk lane of a tracker that sent none, with nothing known of the REST
+// budget.
+func noBulk() Writes {
+	return Writes{PerHour: BulkPerHour, PerMinute: BulkPerMinute, Reserve: minReserve}
+}
+
 // core is a REST reading with remaining points of limit left, refilling at reset.
 func core(limit, remaining int) github.RateReading {
 	return github.RateReading{

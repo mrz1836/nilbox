@@ -68,6 +68,22 @@ export interface DescribeItUpdated {
 }
 
 /**
+ * GHThreadsBulk says how far the bulk mark of the user's GitHub notifications (Mark all
+ * done) has got, after each notification it marked done or gave up on: how many it
+ * marked, how many it couldn't, and how many in its scope the mirror still lists, with
+ * More when GitHub holds more than the mirror. It comes once a notification, every second
+ * and a half at most. A pause, the end, or a stop comes as GHThreadsUpdated, and the
+ * window reads everything again; the mirror's rows the marks took out come that way too,
+ * every few seconds.
+ */
+export interface GHThreadsBulk {
+    "done": number;
+    "failed": number;
+    "left": number;
+    "more": boolean;
+}
+
+/**
  * GHThreadsUpdated says what the window shows of the user's GitHub notifications changed:
  * a pass read them, or checked their items' states, and found something new; reading them
  * was turned off; or whether GitHub lets the token read them, or the last pass's error,

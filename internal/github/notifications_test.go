@@ -254,6 +254,35 @@ func TestListThreadsKeepsOnlyPage1sETag(t *testing.T) {
 	assert.Empty(t, second.ETag, "a later page is never sent with an ETag, so none is kept")
 }
 
+func TestListThreadsBeforeSendsTheCutoffAndNoETag(t *testing.T) {
+	t.Parallel()
+
+	client, log, _ := fakeGitHub(t, func(string, *http.Request) answer {
+		return answer{status: http.StatusOK, body: "[]", headers: map[string]string{"ETag": weakETag}}
+	})
+
+	// A cutoff in another zone, with a fraction of a second, is sent in whole seconds, UTC.
+	zone := time.FixedZone("UTC-5", -5*60*60)
+	before := time.Date(2026, 11, 12, 13, 4, 5, 600_000_000, zone)
+
+	page, err := client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{ETag: weakETag, Before: before})
+	require.NoError(t, err)
+
+	assert.Equal(t, []sentRequest{{
+		method: http.MethodGet, path: "/notifications", query: threadsQuery + "&before=2026-11-12T18%3A04%3A05Z",
+	}}, log.all(), "the cutoff follows the fixed parameters, and the listing is never conditional")
+	assert.Empty(t, page.ETag, "a listing before a time is no page 1 of the inbox, so its ETag is not kept")
+	assert.False(t, page.NotModified)
+}
+
+func TestThreadListQuery(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "all=true&is_done=false&per_page=50&page=3", threadListQuery(3, time.Time{}))
+	assert.Equal(t, "all=true&is_done=false&per_page=50&page=1&before=2026-01-02T03%3A04%3A05Z",
+		threadListQuery(1, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)))
+}
+
 func TestWithETagIsSentOnlyWithAGet(t *testing.T) {
 	t.Parallel()
 
@@ -703,11 +732,13 @@ func TestParseSubjectUnderABasePath(t *testing.T) {
 	assert.False(t, ok, "a base that can't be read accepts nothing")
 }
 
-// fakeChoreGate is a ChoreGate that allows chores until refuse is set, and records them.
+// fakeChoreGate is a ChoreGate that allows chores until refuse is set, and records them:
+// the chore lane's in allowed, and the bulk lane's in bulk.
 type fakeChoreGate struct {
 	mu      sync.Mutex
 	refuse  error
 	allowed []string
+	bulk    []string
 	held    []time.Duration
 }
 
@@ -720,6 +751,19 @@ func (g *fakeChoreGate) AllowChore(resource string) error {
 	}
 
 	g.allowed = append(g.allowed, resource)
+
+	return nil
+}
+
+func (g *fakeChoreGate) AllowBulkChore(resource string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.refuse != nil {
+		return g.refuse
+	}
+
+	g.bulk = append(g.bulk, resource)
 
 	return nil
 }
@@ -737,6 +781,14 @@ func (g *fakeChoreGate) record() ([]string, []time.Duration) {
 	defer g.mu.Unlock()
 
 	return append([]string(nil), g.allowed...), append([]time.Duration(nil), g.held...)
+}
+
+// bulkRecord returns what the gate allowed in its bulk lane.
+func (g *fakeChoreGate) bulkRecord() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	return append([]string(nil), g.bulk...)
 }
 
 // choreServer returns a client with a chore gate whose server answers every request with
@@ -770,6 +822,52 @@ func TestMarkThreadDone204(t *testing.T) {
 	spent := client.Rates.(*recordRates).all() //nolint:forcetypeassert // the fake GitHub's recorder
 	require.Len(t, spent, 1)
 	assert.Equal(t, 1, spent[0].spent, "a chore spends one REST point")
+}
+
+func TestMarkThreadDoneInBulkGoesThroughTheBulkLane(t *testing.T) {
+	t.Parallel()
+
+	client, log, gate := choreServer(t, http.StatusNoContent, "", nil)
+
+	require.NoError(t, client.MarkThreadDoneInBulk(t.Context(), NewToken(fakeToken), firstThread))
+
+	assert.Equal(t, []sentRequest{{method: http.MethodDelete, path: "/notifications/threads/20000000001"}}, log.all(),
+		"the same DELETE as a Done")
+
+	allowed, held := gate.record()
+	assert.Empty(t, allowed, "the chore lane is left alone")
+	assert.Equal(t, []string{ResourceCore}, gate.bulkRecord(), "the bulk lane counted it")
+	assert.Empty(t, held)
+
+	require.NoError(t, client.MarkThreadDone(t.Context(), NewToken(fakeToken), firstThread))
+
+	allowed, _ = gate.record()
+	assert.Equal(t, []string{ResourceCore}, allowed, "a Done still goes through the chore lane")
+	assert.Len(t, gate.bulkRecord(), 1)
+}
+
+func TestMarkThreadDoneInBulkErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		client, _, _ := choreServer(t, http.StatusNotFound, `{"message":"Not Found"}`, nil)
+
+		err := client.MarkThreadDoneInBulk(t.Context(), NewToken(fakeToken), firstThread)
+		require.ErrorIs(t, err, ErrThreadNotFound)
+		assert.NotContains(t, err.Error(), fakeToken)
+	})
+
+	t.Run("refused by the gate", func(t *testing.T) {
+		t.Parallel()
+
+		client, log, gate := choreServer(t, http.StatusNoContent, "", nil)
+		gate.refuse = errGateClosed
+
+		require.ErrorIs(t, client.MarkThreadDoneInBulk(t.Context(), NewToken(fakeToken), firstThread), errGateClosed)
+		assert.Empty(t, log.all(), "a refused write is never sent")
+	})
 }
 
 func TestMarkThreadRead205(t *testing.T) {
@@ -867,12 +965,14 @@ func TestChoreRefusesOtherPathsAndMethods(t *testing.T) {
 	tok := NewToken(fakeToken)
 
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, "", "delete", "PATCH "} {
-		require.ErrorIs(t, client.chore(t.Context(), tok, method, firstThread), ErrChoreRefused, "%q", method)
+		require.ErrorIs(t, client.chore(t.Context(), tok, method, firstThread, clearLane), ErrChoreRefused, "%q", method)
+		require.ErrorIs(t, client.chore(t.Context(), tok, method, firstThread, bulkLane), ErrChoreRefused, "%q", method)
 	}
 
 	for _, id := range []int64{0, -1, -firstThread} {
-		require.ErrorIs(t, client.chore(t.Context(), tok, http.MethodDelete, id), ErrChoreRefused, id)
+		require.ErrorIs(t, client.chore(t.Context(), tok, http.MethodDelete, id, clearLane), ErrChoreRefused, id)
 		require.ErrorIs(t, client.MarkThreadDone(t.Context(), tok, id), ErrChoreRefused, id)
+		require.ErrorIs(t, client.MarkThreadDoneInBulk(t.Context(), tok, id), ErrChoreRefused, id)
 		require.ErrorIs(t, client.MarkThreadRead(t.Context(), tok, id), ErrChoreRefused, id)
 	}
 
@@ -880,6 +980,7 @@ func TestChoreRefusesOtherPathsAndMethods(t *testing.T) {
 
 	allowed, _ := gate.record()
 	assert.Empty(t, allowed, "nor counted")
+	assert.Empty(t, gate.bulkRecord(), "in either lane")
 
 	assert.Equal(t, "/notifications/threads/20000000001", threadPath(firstThread), "a thread's path is its ID alone")
 }
@@ -926,6 +1027,18 @@ func TestASlowDownHoldsBothLanes(t *testing.T) {
 				client.Writes, client.Chores = edits, chores
 
 				require.ErrorIs(t, client.MarkThreadDone(t.Context(), tok, firstThread), ErrUnexpectedStatus)
+			},
+			want: 30 * time.Second,
+		},
+		{
+			name: "a bulk mark",
+			send: func(t *testing.T, edits *fakeGate, chores *fakeChoreGate) {
+				t.Helper()
+
+				client, _, _ := choreServer(t, http.StatusTooManyRequests, "", slowDown)
+				client.Writes, client.Chores = edits, chores
+
+				require.ErrorIs(t, client.MarkThreadDoneInBulk(t.Context(), tok, firstThread), ErrUnexpectedStatus)
 			},
 			want: 30 * time.Second,
 		},

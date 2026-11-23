@@ -30,7 +30,7 @@ import { activityTarget, autopilotBadge, type AutopilotRequest } from './lib/aut
 import { attempt, logFailure, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping, useKeyDown } from './lib/keys'
-import { filterThreads } from './lib/githubThreads'
+import { bulkToastText, filterThreads } from './lib/githubThreads'
 import { cloneWhere } from './lib/locations'
 import {
   appNotificationSuggestions,
@@ -111,6 +111,7 @@ import {
   type AgentID,
   type AppNotification,
   type AutopilotTarget,
+  type GitHubBulkDone,
   type IntegrationTools,
   type InboxSnapshot,
   type LinkedItem,
@@ -360,6 +361,43 @@ function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: bo
   return { toast, close, announced }
 }
 
+// useBulkDoneToast says, in the background, from any page, when a bulk mark of the user's
+// GitHub notifications (Mark all done) that the window saw running finishes: "Marked 1,180
+// notifications done on GitHub", with how many couldn't be. One the user stopped says so
+// in its band alone, and one already over when the window opened says nothing.
+function useBulkDoneToast(bulk: GitHubBulkDone | null) {
+  // running is the job last seen running, by when it started, or ''.
+  const [running, setRunning] = useState('')
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+
+  if (bulk !== null && bulk.running && running !== bulk.startedAt) {
+    setRunning(bulk.startedAt)
+  }
+
+  if (bulk !== null && !bulk.running && running !== '') {
+    setRunning('')
+
+    if (running === bulk.startedAt && !bulk.stopped) {
+      const { text, detail } = bulkToastText(bulk)
+
+      // Its id is the job's own, apart from every other toast's.
+      setToast({
+        id: -Date.parse(bulk.startedAt),
+        text,
+        tone: bulk.failed > 0 ? 'warning' : 'success',
+        background: true,
+        ...(detail === '' ? {} : { detail }),
+      })
+    }
+  }
+
+  const close = () => {
+    setToast(null)
+  }
+
+  return { toast, close }
+}
+
 // updatedToastId is the id of the toast that says the app updated, apart from every other
 // toast's.
 const updatedToastId = Number.MIN_SAFE_INTEGER
@@ -601,6 +639,7 @@ export function App() {
   // toolbar's button, the inbox's cards, the Notifications page, and their settings share
   // them. Every one is listed only while the page shows its GitHub tab.
   const githubThreads = useGitHubThreads(nav.view === 'notifications' && notificationsTab === 'github')
+  const bulkDone = useBulkDoneToast(githubThreads.bulk)
   // settingsQueue is the one queue every settings save in the window goes through
   // (useSettingsSave), the toolbar's and the settings page's alike.
   const [settingsQueue] = useState(serial)
@@ -856,8 +895,9 @@ export function App() {
   const closeRunToast = () => {
     setRunToast(null)
   }
-  // The update's toast says what the window opened on, so it shows first.
-  const shownToast = updated.toast ?? foundToast ?? runToast ?? changeShown
+  // The update's toast says what the window opened on, so it shows first; a bulk mark that
+  // finished, in the background, comes last.
+  const shownToast = updated.toast ?? foundToast ?? runToast ?? changeShown ?? bulkDone.toast
   const closeToast =
     updated.toast !== null
       ? updated.close
@@ -865,9 +905,11 @@ export function App() {
         ? found.close
         : runToast !== null
           ? closeRunToast
-          : changeToast === null
-            ? closeSweepToast
-            : closeChangeToast
+          : changeToast !== null
+            ? closeChangeToast
+            : sweepToast !== null
+              ? closeSweepToast
+              : bulkDone.close
   // toastSeconds is how long every toast shows, the inbox's too, as set in Settings.
   const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
   // hiddenKey is the patterns of the labels the cards leave out as one string, so a save of

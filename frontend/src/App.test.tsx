@@ -29,6 +29,7 @@ import {
   githubThread,
   githubThreadList,
   githubThreads,
+  bulkRunning,
   item,
   notification,
   itemResolution,
@@ -793,6 +794,50 @@ describe('App', () => {
       expect(tab).toHaveTextContent('Inbox1')
     })
     expect(tab).toHaveAccessibleDescription('1 item in the inbox')
+  })
+
+  it('toasts a bulk mark of GitHub notifications that finished, from any page, but not one stopped', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ bulkDone: bulkRunning() }))
+
+    await renderApp()
+    await vi.waitFor(() => {
+      expect(platform.githubThreadsSnapshot).toHaveBeenCalled()
+    })
+
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ bulkDone: bulkRunning({ running: false, done: 1177, failed: 3, left: 0 }) }),
+    )
+    act(() => {
+      send('ghthreads:updated')
+    })
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(toast).toHaveTextContent('Marked 1,177 notifications done on GitHub')
+    expect(toast).toHaveTextContent('3 couldn’t be marked')
+
+    // One the user stopped says so in its band alone.
+    await userEvent.click(within(toast).getByRole('button', { name: 'Close' }))
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ bulkDone: bulkRunning({ startedAt: '2026-06-15T12:00:00Z' }) }),
+    )
+    act(() => {
+      send('ghthreads:updated')
+    })
+    await vi.waitFor(() => {
+      expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(3)
+    })
+
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ bulkDone: bulkRunning({ startedAt: '2026-06-15T12:00:00Z', running: false, stopped: true }) }),
+    )
+    act(() => {
+      send('ghthreads:updated')
+    })
+    await vi.waitFor(() => {
+      expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(4)
+    })
+
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
   })
 
   it("opens the recently cleaned-up list from a cleanup toast's View", async () => {

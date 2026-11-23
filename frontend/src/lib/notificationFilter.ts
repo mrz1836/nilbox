@@ -10,6 +10,7 @@ import {
   fold,
   haystack,
   isEmpty,
+  matchesFilter,
   matchesQuery,
   parseQuery,
   suggest,
@@ -185,6 +186,22 @@ export function filterGitHubThreads(threads: readonly GitHubThread[], query: str
   const groups = threadGroups(kept)
 
   return { groups, matches: groups.length }
+}
+
+// reposNamed returns the repositories among repos ("owner/name") that a query's repo:
+// filters keep, as the GitHub tab's list keeps them, or null when it names none: a bulk
+// mark of the tab starts with those ticked, as GitHub's own per-repository Mark as done
+// does once the inbox is filtered to one.
+export function reposNamed(query: string, repos: readonly string[]): ReadonlySet<string> | null {
+  const filters = parseQuery(query, notificationSpec).filters.filter((f) => f.key === 'repo')
+
+  if (filters.length === 0) {
+    return null
+  }
+
+  const known = new Set(repos.map(fold))
+
+  return new Set(repos.filter((repo) => filters.every((f) => matchesFilter(f, [fold(repo)], known))))
 }
 
 // facets are what the field offers on an empty query, on each tab.

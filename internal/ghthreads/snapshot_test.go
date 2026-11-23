@@ -21,10 +21,11 @@ func TestSnapshotBeforeAnyPass(t *testing.T) {
 	r := newRig(t)
 
 	assert.Equal(t, Snapshot{
-		Status: Status{Reading: true, Access: AccessUnchecked},
-		Unread: []Thread{},
-		Queued: []QueuedClear{},
-		Recent: []SettledClear{},
+		Status:   Status{Reading: true, Access: AccessUnchecked},
+		Unread:   []Thread{},
+		Queued:   []QueuedClear{},
+		Recent:   []SettledClear{},
+		BulkDone: noBulkDone(),
 	}, r.snapshot(), "nothing read yet, and never null lists")
 	assertNoRequests(t, r.gh.requests(), "a snapshot never asks GitHub")
 }

@@ -29,6 +29,13 @@ import (
 // within ChoreGap, as GitHub asks of a client that writes many times. They keep the same
 // reserve, and the same hold: a wait GitHub asked for after an edit or a chore stops both.
 //
+// A bulk mark's writes (github.ChoreGate's AllowBulkChore: Mark all done, which marks a
+// backlog of notifications done one at a time) go in a third lane, the bulk lane, so a long
+// job never uses up the chores that clicks and clears send: at most BulkPerMinute and
+// BulkPerHour, and never two within BulkGap. It keeps the reserve and the hold too, and the
+// two notification lanes never send within ChoreGap of each other, so the app never makes
+// two notification writes in one second.
+//
 // Every edit or chore allowed is counted, sent or not, so the pace errs on the side of
 // fewer. A refusal says when the next may go, in words and as RetryIn: when several limits
 // refuse at once, the one whose wait is longest.
@@ -46,6 +53,17 @@ const (
 	ChoresPerMinute = 50
 	ChoresPerHour   = 300
 	ChoreGap        = time.Second
+
+	// BulkPerMinute and BulkPerHour are the most of a bulk mark's writes the app sends
+	// GitHub in a minute and in an hour, and BulkGap the least time between two. They are
+	// safe for a job that runs for half an hour: a DELETE costs 5 points of GitHub's REST
+	// limit of 900 points a minute, so 40 a minute spend 200 of them; one every 1.5
+	// seconds is slower than the one a second GitHub asks of a client that writes many
+	// times; and marking a notification done creates no content, so none of it counts
+	// toward GitHub's limits on content (80 a minute and 500 an hour).
+	BulkPerMinute = 40
+	BulkPerHour   = 1200
+	BulkGap       = 1500 * time.Millisecond
 
 	// reserveDivisor sets the reserve at a hundredth of a budget, and minReserve keeps it
 	// at least that many points.
@@ -90,8 +108,8 @@ func refused(msg string, wait time.Duration, cause error) error {
 	return uierr.New(msg, &refusal{wait: max(wait, 0), cause: cause})
 }
 
-// RetryIn is how long after err, an edit or a chore AllowWrite or AllowChore refused, the
-// next may go; 0 for any other error.
+// RetryIn is how long after err, an edit or a chore AllowWrite, AllowChore, or AllowBulkChore
+// refused, the next may go; 0 for any other error.
 func RetryIn(err error) time.Duration {
 	if r, ok := errors.AsType[*refusal](err); ok {
 		return r.wait
@@ -121,8 +139,8 @@ func Reserve(limit int) int {
 }
 
 // lane is one kind of change the Tracker paces, with counts of its own: the edits
-// (writeLane) or the chores (choreLane). The reserve and GitHub's holds are the Tracker's,
-// shared by both.
+// (writeLane), the chores (choreLane), or a bulk mark's writes (bulkLane). The reserve and
+// GitHub's holds are the Tracker's, shared by all three.
 type lane struct {
 	// sent are when the lane's changes of the last hour were sent, oldest first.
 	sent []time.Time
@@ -148,6 +166,13 @@ func writeLane() lane {
 func choreLane() lane {
 	return lane{
 		perMinute: ChoresPerMinute, perHour: ChoresPerHour, gap: ChoreGap, pace: chorePaceError, tooSoon: choreGapError,
+	}
+}
+
+// bulkLane is the lane of a bulk mark's writes: slower still, never two within BulkGap.
+func bulkLane() lane {
+	return lane{
+		perMinute: BulkPerMinute, perHour: BulkPerHour, gap: BulkGap, pace: bulkPaceError, tooSoon: bulkGapError,
 	}
 }
 
@@ -198,12 +223,18 @@ func (l *lane) allow(now time.Time, shared error) error {
 
 // tooSoonError refuses a change less than gap after the last; nil otherwise.
 func (l *lane) tooSoonError(now time.Time) error {
-	n := len(l.sent)
-	if l.gap <= 0 || n == 0 || now.Sub(l.sent[n-1]) >= l.gap {
+	return l.tooSoonAfter(now, l.sent, l.gap)
+}
+
+// tooSoonAfter refuses a change in l less than gap after the last of sent, oldest first,
+// with l's words; nil otherwise, or when gap is none.
+func (l *lane) tooSoonAfter(now time.Time, sent []time.Time, gap time.Duration) error {
+	n := len(sent)
+	if gap <= 0 || n == 0 || now.Sub(sent[n-1]) >= gap {
 		return nil
 	}
 
-	return l.tooSoon(l.sent[n-1].Add(l.gap).Sub(now))
+	return l.tooSoon(sent[n-1].Add(gap).Sub(now))
 }
 
 // minuteError refuses a change past the minute's pace; nil otherwise. The next may go
@@ -262,21 +293,38 @@ func (l *lane) restore(kept []time.Time) {
 // returns nil when it may go, or returns an error, with a sentence for the user, that
 // says why not and when to try again (RetryIn).
 func (t *Tracker) AllowWrite(resource string) error {
-	return t.allow(resource, &t.writes)
+	return t.allow(resource, &t.writes, nil)
 }
 
 // AllowChore asks to send one chore now, spending from resource. It counts the chore and
-// returns nil when it may go, or returns an error as AllowWrite does.
+// returns nil when it may go, or returns an error as AllowWrite does. It is refused, too,
+// less than ChoreGap after the bulk lane's last write.
 func (t *Tracker) AllowChore(resource string) error {
-	return t.allow(resource, &t.chores)
+	return t.allow(resource, &t.chores, &t.bulk)
 }
 
-// allow decides on one change in l, and tells the window of one allowed. The clock is
-// read under mu, so each lane's times are appended in order.
-func (t *Tracker) allow(resource string, l *lane) error {
+// AllowBulkChore asks to send one of a bulk mark's writes now, spending from resource, in
+// the bulk lane. It counts the write and returns nil when it may go, or returns an error
+// as AllowWrite does. It is refused, too, less than ChoreGap after the chore lane's last
+// chore, so a click or a clear and a bulk mark never write within a second of each other.
+func (t *Tracker) AllowBulkChore(resource string) error {
+	return t.allow(resource, &t.bulk, &t.chores)
+}
+
+// allow decides on one change in l, kept ChoreGap apart from the last of apart, when not
+// nil, and tells the window of one allowed. The clock is read under mu, so each lane's
+// times are appended in order.
+func (t *Tracker) allow(resource string, l, apart *lane) error {
 	t.mu.Lock()
 	now := t.clock.Now().UTC()
-	err := l.allow(now, t.sharedRefusalLocked(resource, now))
+	shared := t.sharedRefusalLocked(resource, now)
+
+	if apart != nil {
+		apart.prune(now)
+		shared = longest(shared, l.tooSoonAfter(now, apart.sent, ChoreGap))
+	}
+
+	err := l.allow(now, shared)
 	t.mu.Unlock()
 
 	if err == nil {
@@ -372,6 +420,26 @@ func choreGapError(wait time.Duration) error {
 	)
 }
 
+// bulkPaceError says the app sent n of a bulk mark's writes in the last period, and when
+// the next may go.
+func bulkPaceError(n int, period string, wait time.Duration) error {
+	return refused(
+		fmt.Sprintf("%s marked %d notifications done on GitHub in the last %s, the most it marks in that time. "+
+			"Try again %s.", brand.Name, n, period, waitText(wait)),
+		wait, fmt.Errorf("%w: %d bulk marks in the last %s", ErrWritePace, n, period),
+	)
+}
+
+// bulkGapError says the app sent a notification write less than a gap ago, and when the
+// bulk lane's next may go.
+func bulkGapError(wait time.Duration) error {
+	return refused(
+		fmt.Sprintf("%s marks notifications done on GitHub one at a time, a little apart. Try again %s.",
+			brand.Name, waitText(wait)),
+		wait, fmt.Errorf("%w: a notification write less than %s ago", ErrWritePace, BulkGap),
+	)
+}
+
 // waitText says when a wait of d ends, in words: "in 40 seconds", "in 12 minutes".
 func waitText(d time.Duration) string {
 	if seconds := int(math.Ceil(d.Seconds())); seconds < 60 {
@@ -382,8 +450,8 @@ func waitText(d time.Duration) string {
 }
 
 // Writes is what the app changed on GitHub lately in one lane, and how it paces that lane:
-// the edits it made for the user (Gauge.Writes), or its chores (Gauge.Chores). Every field
-// is a plain value.
+// the edits it made for the user (Gauge.Writes), its chores (Gauge.Chores), or a bulk
+// mark's writes (Gauge.Bulk). Every field is a plain value.
 type Writes struct {
 	// LastHour and LastMinute count the changes the app sent in the last hour and minute.
 	LastHour   int `json:"lastHour"`
@@ -397,16 +465,18 @@ type Writes struct {
 	// everything else signed in as the user.
 	Reserve int `json:"reserve"`
 
-	// HeldUntil is when GitHub's request to wait before the next change, which holds both
-	// lanes, ends, as RFC 3339, or "" when there is none.
+	// HeldUntil is when GitHub's request to wait before the next change, which holds every
+	// lane, ends, as RFC 3339, or "" when there is none.
 	HeldUntil string `json:"heldUntil"`
 }
 
-// restoreWritesLocked takes back the edits, the chores, and the hold an earlier run kept,
-// each lane unless this run already sent on it. The caller holds mu.
-func (t *Tracker) restoreWritesLocked(writes, chores []time.Time, heldUntil *time.Time) {
+// restoreWritesLocked takes back the edits, the chores, the bulk lane's writes, and the
+// hold an earlier run kept, each lane unless this run already sent on it. The caller
+// holds mu.
+func (t *Tracker) restoreWritesLocked(writes, chores, bulk []time.Time, heldUntil *time.Time) {
 	t.writes.restore(writes)
 	t.chores.restore(chores)
+	t.bulk.restore(bulk)
 
 	if heldUntil != nil && heldUntil.After(t.heldUntil) {
 		t.heldUntil = heldUntil.UTC()

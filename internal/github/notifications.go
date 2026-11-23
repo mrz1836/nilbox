@@ -20,10 +20,14 @@ import (
 // The app reads the user's GitHub notifications, which the REST API calls threads, as the
 // web inbox shows them (read and unread, not done), and clears one when the work behind it
 // is finished: it marks the thread done, or read, through the chore lane (chore in
-// edits.go). It calls three endpoints, and no other (the repoguard test
-// githubnotifications_test.go keeps it so): GET /notifications, and DELETE and PATCH on
-// /notifications/threads/{id}. It never marks every notification read, a repository's
-// read, or changes a subscription.
+// edits.go). A bulk mark the user starts (Mark all done) reads the listing before a time
+// (ThreadQuery.Before), past the newest the app mirrors, and marks each thread done with
+// its own DELETE, in the chore gate's bulk lane (MarkThreadDoneInBulk). It calls three
+// endpoints, and no other (the repoguard test githubnotifications_test.go keeps it so): GET
+// /notifications, and DELETE and PATCH on /notifications/threads/{id}, each write sent by
+// chore. It never marks every notification read, a repository's read, or changes a
+// subscription: GitHub's API has no call that marks many done at once, and the app sends
+// none of those that mark many read.
 //
 // The listing is conditional: page 1 is sent with the ETag its last answer carried, and
 // GitHub answers 304 Not Modified, which costs nothing, while page 1 is as it was. Measured
@@ -79,8 +83,13 @@ type ThreadQuery struct {
 	Page int
 
 	// ETag is the ETag the last answer for page 1 carried, which page 1 is sent with; ""
-	// sends none. A later page is never sent with one.
+	// sends none. A later page is never sent with one, nor a listing with Before.
 	ETag string
+
+	// Before, when set, lists only the threads updated before it (GitHub's before, sent
+	// in whole seconds, UTC): how a bulk mark reaches threads older than the newest the
+	// app mirrors.
+	Before time.Time
 }
 
 // ThreadPage is one page of the user's notifications, newest updated first.
@@ -165,10 +174,11 @@ type CommentAuthor struct {
 
 // ListThreads reads one page of the user's notifications, as the web inbox shows them:
 // read and unread, but not done, newest updated first. Its URL is always built from the
-// same fixed parameters, and only the page changes; the next page's number is read from
-// GitHub's Link header, which is never followed as given. Page 1 sent with the ETag of its
-// last answer, which GitHub answers 304 Not Modified while page 1 is as it was, costs
-// nothing; a 304 says nothing of the later pages (ThreadPage.NotModified).
+// same fixed parameters, and only the page, and the Before a bulk mark sends, change; the
+// next page's number is read from GitHub's Link header, which is never followed as given.
+// Page 1 sent with the ETag of its last answer, which GitHub answers 304 Not Modified while
+// page 1 is as it was, costs nothing; a 304 says nothing of the later pages
+// (ThreadPage.NotModified).
 func (c *Client) ListThreads(ctx context.Context, tok Token, q ThreadQuery) (*ThreadPage, error) {
 	page, err := c.listThreads(ctx, tok, q)
 
@@ -182,12 +192,8 @@ func (c *Client) listThreads(ctx context.Context, tok Token, q ThreadQuery) (*Th
 		return nil, fmt.Errorf("%w: page %d", ErrInvalidThreadPage, page)
 	}
 
-	var opts []requestOption
-	if page == 1 && q.ETag != "" {
-		opts = append(opts, withETag(q.ETag))
-	}
-
-	raw, header, err := c.do(ctx, tok, http.MethodGet, notificationsPath+"?"+threadListQuery(page), nil, opts...)
+	raw, header, err := c.do(ctx, tok, http.MethodGet, notificationsPath+"?"+threadListQuery(page, q.Before), nil,
+		listingOptions(page, q)...)
 
 	if unchanged, ok := errors.AsType[*notModifiedError](err); ok {
 		etag := unchanged.header.Get("ETag")
@@ -214,8 +220,8 @@ func (c *Client) listThreads(ctx context.Context, tok Token, q ThreadQuery) (*Th
 	out := &ThreadPage{Threads: threads, Dropped: dropped, PollInterval: pollInterval(header)}
 	out.NextPage, out.Capped = pageAfter(nextThreadPage(base, header, page))
 
-	// Only page 1 is ever sent with an ETag, so only its ETag is kept.
-	if page == 1 {
+	// Only page 1 of the whole listing is ever sent with an ETag, so only its ETag is kept.
+	if page == 1 && q.Before.IsZero() {
 		out.ETag = header.Get("ETag")
 	}
 
@@ -227,7 +233,15 @@ func (c *Client) listThreads(ctx context.Context, tok Token, q ThreadQuery) (*Th
 // /notifications/threads/{id}, which GitHub answers 204 No Content). A thread GitHub
 // can't find is ErrThreadNotFound, which the caller may take as done already.
 func (c *Client) MarkThreadDone(ctx context.Context, tok Token, id int64) error {
-	return Redact(markedError(id, "done", c.chore(ctx, tok, http.MethodDelete, id)), tok)
+	return Redact(markedError(id, "done", c.chore(ctx, tok, http.MethodDelete, id, clearLane)), tok)
+}
+
+// MarkThreadDoneInBulk marks the notification thread id done, as MarkThreadDone does, for
+// a bulk mark the user started (Mark all done): the same DELETE, paced in the chore gate's
+// bulk lane (AllowBulkChore) rather than the chore lane, so a long job never holds up a
+// click or a clear. A thread GitHub can't find is ErrThreadNotFound.
+func (c *Client) MarkThreadDoneInBulk(ctx context.Context, tok Token, id int64) error {
+	return Redact(markedError(id, "done", c.chore(ctx, tok, http.MethodDelete, id, bulkLane)), tok)
 }
 
 // MarkThreadRead marks the notification thread id read, which leaves it in the user's
@@ -235,7 +249,7 @@ func (c *Client) MarkThreadDone(ctx context.Context, tok Token, id int64) error 
 // /notifications/threads/{id}, which GitHub answers 205 Reset Content). A thread GitHub
 // can't find is ErrThreadNotFound.
 func (c *Client) MarkThreadRead(ctx context.Context, tok Token, id int64) error {
-	return Redact(markedError(id, "read", c.chore(ctx, tok, http.MethodPatch, id)), tok)
+	return Redact(markedError(id, "read", c.chore(ctx, tok, http.MethodPatch, id, clearLane)), tok)
 }
 
 // markedError is err, what a chore marking the thread id as done or read returned, with
@@ -252,11 +266,27 @@ func markedError(id int64, as string, err error) error {
 	return nil
 }
 
+// listingOptions are what the listing's page of q is sent with: page 1 of the whole
+// listing, the one without Before, with q's ETag, and every other with none.
+func listingOptions(page int, q ThreadQuery) []requestOption {
+	if page != 1 || q.ETag == "" || !q.Before.IsZero() {
+		return nil
+	}
+
+	return []requestOption{withETag(q.ETag)}
+}
+
 // threadListQuery is the listing's query for page: the web inbox's threads (all=true reads
 // the read ones too, is_done=false leaves the done ones out), as many to a page as GitHub
-// lists, always in this order.
-func threadListQuery(page int) string {
-	return "all=true&is_done=false&per_page=" + strconv.Itoa(ThreadsPerPage) + "&page=" + strconv.Itoa(page)
+// lists, always in this order, and, when before is set, only those updated before it, in
+// whole seconds, UTC.
+func threadListQuery(page int, before time.Time) string {
+	query := "all=true&is_done=false&per_page=" + strconv.Itoa(ThreadsPerPage) + "&page=" + strconv.Itoa(page)
+	if !before.IsZero() {
+		query += "&before=" + url.QueryEscape(before.UTC().Format(time.RFC3339))
+	}
+
+	return query
 }
 
 // threadPath is the REST path of the notification thread id.

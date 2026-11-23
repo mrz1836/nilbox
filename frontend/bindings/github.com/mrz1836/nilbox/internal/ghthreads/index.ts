@@ -8,11 +8,15 @@ export {
 
 export {
     Access,
+    BulkAge,
+    BulkPause,
     ClearState,
     SkipReason
 } from "./models.js";
 
 export type {
+    BulkDoneRequest,
+    BulkDoneStatus,
     QueuedClear,
     SettledClear,
     Snapshot,

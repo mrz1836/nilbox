@@ -41,6 +41,10 @@ function threadsState(snapshot: GitHubThreadsSnapshot, checkNow = vi.fn()): GitH
     list: null,
     listError: '',
     keep: vi.fn(answer),
+    bulk: snapshot.bulkDone,
+    startBulk: vi.fn(answer),
+    stopBulk: vi.fn(answer),
+    dismissBulk: vi.fn(answer),
   }
 }
 

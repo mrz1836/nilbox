@@ -39,6 +39,10 @@
 // A pass then decides which threads clear, queues them in the gh_thread_clears ledger, and
 // sends the ones due; the Syncer also runs a pass when the inbox tells of something the user
 // finished (Settler), when the rules change, and when a queued clear comes due.
+//
+// The user can also mark a backlog done in bulk (Mark all done, bulkdone.go): a job the
+// Syncer runs in the background, one notification at a time through the chore gate's bulk
+// lane, past the mirror's cap, until none it marks is left, or the user stops it.
 package ghthreads
 
 import (
@@ -85,8 +89,9 @@ const (
 
 // Client is what a pass asks GitHub: the token's account, a page of the notifications, the
 // state of pull requests and issues, and who wrote a thread's latest comment; and what it
-// sends: a thread marked done or read, through the chore lane. ParseSubject reads an API
-// URL GitHub gave and sends nothing. *github.Client implements it.
+// sends: a thread marked done or read, through the chore lane, or done by a bulk mark,
+// through the bulk lane. ParseSubject reads an API URL GitHub gave and sends nothing.
+// *github.Client implements it.
 type Client interface {
 	FetchViewer(ctx context.Context, tok github.Token) (string, error)
 	ListThreads(ctx context.Context, tok github.Token, q github.ThreadQuery) (*github.ThreadPage, error)
@@ -94,6 +99,7 @@ type Client interface {
 	FetchLatestComment(ctx context.Context, tok github.Token, rawURL string) (*github.CommentAuthor, error)
 	ParseSubject(raw string) (item.Ref, bool)
 	MarkThreadDone(ctx context.Context, tok github.Token, id int64) error
+	MarkThreadDoneInBulk(ctx context.Context, tok github.Token, id int64) error
 	MarkThreadRead(ctx context.Context, tok github.Token, id int64) error
 }
 
@@ -167,6 +173,12 @@ type Service struct {
 	// when it couldn't be read: the next pass tells the window only what changes it.
 	shown *Snapshot
 
+	// bulkPage is the page of the listing the last bulk run read, nil for none, and
+	// bulkToldAt when a run last told the window (tell), which a bulk run that changed only
+	// its counts does at most every bulkTellEvery.
+	bulkPage   *bulkPage
+	bulkToldAt time.Time
+
 	// sending holds a clear from its last check to its record in the ledger, so Keep, and a
 	// restore Settle hears of, never mark kept a clear on its way to GitHub.
 	sending sync.Mutex
@@ -192,6 +204,12 @@ type Service struct {
 	// one off.
 	sendAt  time.Time
 	sendGen uint64
+
+	// bulkAt is when the next bulk run is due, on the Service's clock, zero when none waits
+	// on a time: no bulk mark runs, or it waits for a pass. bulkGen counts the times it was
+	// set (bulkBy, bulkOff), so a run that ends never puts off a job started meanwhile.
+	bulkAt  time.Time
+	bulkGen uint64
 }
 
 // NewService returns a Service over cfg.

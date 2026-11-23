@@ -1,12 +1,21 @@
 import { useId } from 'react'
 
-import { buttonLabel, groupURL, inboxURL, summaryText, threadGroups, type ThreadGroup } from '../lib/githubThreads'
+import {
+  bulkDoneText,
+  buttonLabel,
+  groupURL,
+  inboxURL,
+  summaryText,
+  threadGroups,
+  type ThreadGroup,
+} from '../lib/githubThreads'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
-import { useNowAs } from '../lib/useNow'
+import { useNow, useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import { openExternal, type Settings } from '../platform'
 import { ErrorText, iconButtonClass, quietButtonClass, smallIconButtonClass, toolbarButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
+import { BulkDoneLine } from './notifications/BulkDoneStatus'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
 import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
@@ -35,7 +44,8 @@ export interface GitHubThreadsMenuProps {
 // closes as it goes. A click opens the counts and when GitHub was last checked, with a
 // button that checks it now; why they can't be read; the offer to clear them on their own;
 // and the newest unread, grouped by item. A line opens on GitHub and is marked read there,
-// as GitHub's own inbox does, and its Done marks it done. View all opens the Notifications
+// as GitHub's own inbox does, and its Done marks it done. While a bulk mark runs (Mark all
+// done), its progress shows at the top, from any page. View all opens the Notifications
 // page's GitHub tab, which lists every notification. Opening the panel reads the app's own
 // mirror again, from the database: it sends GitHub nothing and marks nothing read.
 export function GitHubThreadsMenu({
@@ -48,9 +58,12 @@ export function GitHubThreadsMenu({
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, close } = popover
-  const { snapshot, reload, checkNow, checking, checkError } = threads
+  const { snapshot, reload, checkNow, checking, checkError, bulk } = threads
   const { markDone, markRead, finishing, reading, markError, dismissMarkError } = threads
   const summary = useNowAs((now) => (snapshot === null ? '' : summaryText(now, snapshot.status, checking)))
+  const now = useNow()
+  // bulkLine is how a bulk mark that runs is going, which the panel says at its top.
+  const bulkLine = bulk?.running === true ? bulkDoneText(now, bulk) : null
   const hidden = settings?.githubNotifications.read === false || snapshot === null || !snapshot.status.reading
 
   // A panel open as the button goes closes, so it never opens again by itself when the
@@ -129,6 +142,11 @@ export function GitHubThreadsMenu({
             <RefreshIcon className={`size-4 ${checking ? 'text-accent motion-safe:animate-spin' : ''}`} />
           </button>
         </div>
+        {bulkLine !== null && (
+          <div className="border-b border-border px-4 py-2 text-xs">
+            <BulkDoneLine line={bulkLine} />
+          </div>
+        )}
         {refused ? (
           <Refused status={status} />
         ) : (

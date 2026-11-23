@@ -277,7 +277,7 @@ bytes).
 - [`internal/threadrules`](docs/architecture.md#internalthreadrules): the rules for clearing
   GitHub notifications.
 - [`internal/ghthreads`](docs/architecture.md#internalghthreads): mirrors the user's GitHub
-  notifications and marks threads done or read.
+  notifications, marks threads done or read, and marks them done in bulk.
 - [`internal/statusprefs`](docs/architecture.md#internalstatusprefs): the service status
   catalog and what the user watches.
 - [`internal/svcstatus`](docs/architecture.md#internalsvcstatus): follows GitHub's, Claude's,

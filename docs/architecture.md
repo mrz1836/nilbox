@@ -656,12 +656,26 @@ or read, sent only by a rule the user turned on or by the user's click, goes thr
 and the client's own `ChoreGate` (nil refuses every chore), whose `AllowChore` paces it apart
 from the edits, with counts of its own (50 a minute, 300 an hour, a second apart), the same
 reserve, and the same hold, so a wait GitHub asks of either lane stops both;
-`internal/repoguard/githubwrites_test.go` keeps it so. The notifications listing is
-conditional (page 1 sent with its last ETag as `If-None-Match`, through `do`'s `withETag`:
-measured in November 2026, github.com answered `If-Modified-Since` with a charged 200 and
-`If-None-Match` with a free 304), and a 304 spends nothing, but says only that page 1 is as it
-was; `internal/repoguard/githubnotifications_test.go` holds the client to `GET /notifications`
-and `DELETE` and `PATCH` on `/notifications/threads/{id}`. Every request carries what it was
+`internal/repoguard/githubwrites_test.go` keeps it so. A bulk mark (Mark all done) sends the
+same `DELETE` (`MarkThreadDoneInBulk`), through `chore` with its lane named last, which asks
+the gate's `AllowBulkChore`: a third lane, the bulk lane (`budget.BulkPerMinute` 40,
+`BulkPerHour` 1,200, `BulkGap` 1.5 seconds apart), so a long job never uses up the chores
+clicks and clears send. It keeps the reserve and the hold, and the two notification lanes
+never send within `ChoreGap` of each other. The pace is safe for a half-hour job: a `DELETE`
+costs 5 of GitHub's 900 REST points a minute, so 40 a minute spend 200; one every 1.5 seconds
+is slower than the one a second GitHub asks of a client that writes many times; and marking
+done creates no content. The lane's times are kept with the rest of the budget's state
+(`savedState.Bulk`), so a job that goes on after a restart keeps its pace, and the window sees
+them as `Gauge.Bulk`. The notifications listing is conditional (page 1 sent with its last ETag
+as `If-None-Match`, through `do`'s `withETag`: measured in November 2026, github.com answered
+`If-Modified-Since` with a charged 200 and `If-None-Match` with a free 304), and a 304 spends
+nothing, but says only that page 1 is as it was. `ThreadQuery.Before` lists only the threads
+updated before a time (GitHub's `before`, in whole seconds, UTC), which a bulk mark reads past
+the mirror's cap with, and such a listing is never conditional, nor keeps its ETag;
+`internal/repoguard/githubnotifications_test.go` holds the client to `GET /notifications`
+and `DELETE` and `PATCH` on `/notifications/threads/{id}`, each write sent by `chore`. GitHub
+has no call that marks many done, and the client sends neither of those that mark many read
+(`PUT /notifications`, `PUT /repos/{owner}/{name}/notifications`). Every request carries what it was
 sent for (`github.WithPurpose`: the inbox's refresh, the routines' searches, the checks
 follower, or Autopilot's own reads), and the `Tracker` splits each budget's spend by it
 (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
@@ -1504,6 +1518,53 @@ ledger, and told to the window. The
 Moments and settled clears are dropped 30 days on. It never imports the inbox, settings,
 core, notify, the sheets, or the desktop shell, and the inbox never imports it (the
 repoguard boundary test).
+
+**Marking a backlog done in bulk** (`bulkdone.go`, `bulkrun.go`). GitHub's API marks one thread
+done at a time, a click waits `MaxPaceWait` at most for the chore lane, and the mirror holds
+only the newest 1,000, so Mark all done is a job of its own, which the Syncer runs. The bound
+`StartBulkDone(BulkDoneRequest{Age, Repos, All})` refuses, with a `uierr` sentence, while
+reading is off, before a pass read an account, while access isn't `AccessOK`, for an age it
+doesn't know (`BulkAge`: `any`, `day`, `week`, `month`, `quarter`) or a request that names no
+repository, and while one runs; otherwise it stores the job in `ghthreads.bulkDone`, a JSON
+pref only it writes (`bulkState`: the account, the cutoff `Before`, the click's time less the
+age in whole seconds, the repositories or `All`, the `Cursor`, when it started and ended,
+whether it was `Stopped`, the mirror's matching rows at the start as `Expected`, `Done`,
+`Failed` and the `Skipped` IDs, the current thread's failed `Attempt`, and `NextAt`, `Pause`,
+and `LastError`), counting what the mirror lists in its scope, in one transaction, and wakes
+the Syncer. Every change of the pref is a read and a write in one `store.InTx`
+(`changeBulk`), so a `StopBulkDone` that lands while a run marks a thread is never undone by
+the run's count. `DismissBulkDone` deletes the pref of a job that ended, which outlasts a
+restart. The Syncer runs a bulk run (`passRequest.bulk`) when `untilBulk` says one is due,
+after the queued clears: `bulkAt`, on the Service's clock, set by the run that ended (with a
+generation, as the sends have, so a job started meanwhile is never put off) and armed after
+any other pass while a job runs and waits on no time (`armBulk`), which is how a job left
+unfinished goes on after a restart, and how one paused for another account's token or
+reading off goes on. A bulk run never counts as the last pass for the timer. With reading
+off it pauses the job (`BulkPauseReadingOff`) and sends nothing. Otherwise it borrows a
+token and checks its login is the job's account (`BulkPauseOtherAccount` until a pass, as
+for no token), then reads page 1 of the listing before the cursor
+(`ThreadQuery{Before: Cursor or Before}`), past the mirror's cap; one page stands for
+`bulkPageFor` (a minute) in memory (`bulkPage`), so one GET covers up to 50 marks. Its
+targets are the page's threads in scope (`strings.EqualFold` on the repository, every one
+for `All`) and not `Skipped`; a target the mirror lists as updated at or after the cutoff
+has new activity and is left alone. Each mark goes through `MarkThreadDoneInBulk`, the bulk
+lane, holding `sending` as a queued clear's send does: taken or not found, the thread leaves
+the mirror, a clear queued for it is settled (`settleQueuedFor`), and `Done` counts it, out of
+any pause, in one transaction; a lane refusal stops the run until `budget.RetryIn` says,
+pausing the job as `held` or `reserve` for GitHub's hold or the reserve (the lane's own pace
+is no pause); any other failure pauses it as `failing` for `FailedRetry`, and after
+`MaxAttempts` in a row the thread is given up (`Failed`, `Skipped`), the job stopping after
+`maxBulkSkipped`. A full page with none in scope moves the cursor to its oldest update and a
+second, which lists the threads updated in that second again, or a second back when that
+doesn't move it, at most `maxBulkPages` pages a run; a page whose targets were all marked
+moves it the same way; and a short page with none ends the job (`EndedAt`). The `Snapshot`'s
+`BulkDone` (`BulkDoneStatus`, every slice non-nil) is how it stands, with `Left`, the mirror's
+rows still in scope, `More` while the mirror is `Truncated`, and the bulk lane's
+`PerMinute` and `PerHour`. After each mark the run emits `event.GHThreadsBulk`
+(`ghthreads:bulk`) with the counts; `compared` leaves the counts out (and `NextAt` without a
+pause), and a bulk run calls `tell` only every `bulkTellEvery` (10 s), or at once when the
+job's state beyond its counts changed (a pause, the end, a stop), so the window's 1,000-row
+`List` isn't read again every 1.5 seconds. Start, stop, and the end are logged with counts.
 
 ## internal/statusprefs
 

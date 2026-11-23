@@ -37,7 +37,10 @@
 //     walk of every page, whether GitHub lets the token read them and when a refused
 //     listing is sent again, the last error, whether the walk stopped at the newest 1,000,
 //     whether the next pass walks every page, the fingerprint of the clearing rules the
-//     last pass queued under, and how many clears it held back for review).
+//     last pass queued under, and how many clears it held back for review), and
+//     ghthreads.bulkDone, the bulk mark of the user's notifications (Mark all done: whose
+//     and which it marks, where its next listing starts, how many it marked, gave up on,
+//     and why it waits, and how it ended, until the user dismisses it).
 //   - setup writes setup.*: whether the first-run setup is done (setup.done), which it
 //     decides once per database at startup, and the step the user was on (setup.step),
 //     where it opens again.

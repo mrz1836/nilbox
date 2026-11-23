@@ -2,11 +2,17 @@ import { useState } from 'react'
 
 import {
   checkGitHubThreadsNow,
+  dismissGitHubBulkDone,
   githubThreadsList,
   githubThreadsSnapshot,
   keepGitHubThreads,
   markGitHubThreadsDone,
   markGitHubThreadsRead,
+  startGitHubBulkDone,
+  stopGitHubBulkDone,
+  type GitHubBulkDone,
+  type GitHubBulkProgress,
+  type GitHubBulkRequest,
   type GitHubThreadList,
   type GitHubThreadsSnapshot,
 } from '../platform'
@@ -49,10 +55,38 @@ export interface GitHubThreadsState {
   // keep takes back the queued clears with clearIDs, the Cleared view's Undo, and shows
   // the mirror as Keep left it. It resolves with how that ended, and never rejects.
   keep: (clearIDs: readonly number[]) => Promise<Result<GitHubThreadsSnapshot>>
+  // bulk is how the bulk mark (Mark all done) stands, kept current by each notification
+  // it marks, or null until the mirror has loaded. startBulk starts one, stopBulk stops
+  // the one running, and dismissBulk forgets how the last ended; each shows the mirror as
+  // it left it, resolves with how that ended, and never rejects.
+  bulk: GitHubBulkDone | null
+  startBulk: (req: GitHubBulkRequest) => Promise<Result<GitHubThreadsSnapshot>>
+  stopBulk: () => Promise<Result<GitHubThreadsSnapshot>>
+  dismissBulk: () => Promise<Result<GitHubThreadsSnapshot>>
 }
 
 // noIDs is the empty set, shared so it stays the same object.
 const noIDs: ReadonlySet<number> = new Set()
+
+// Heard is the latest progress a running bulk mark told, and the job it belongs to, by
+// when it started.
+interface Heard {
+  startedAt: string
+  progress: GitHubBulkProgress
+}
+
+// withProgress is the bulk mark as the mirror read it, with the latest progress heard of
+// it when that is further along: a read of the mirror may be older than an event that
+// came after it, and a running job only ever counts up.
+function withProgress(bulk: GitHubBulkDone, heard: Heard | null): GitHubBulkDone {
+  if (heard === null || !bulk.running || heard.startedAt !== bulk.startedAt) {
+    return bulk
+  }
+
+  const { done, failed, left, more } = heard.progress
+
+  return done + failed > bulk.done + bulk.failed ? { ...bulk, done, failed, left, more } : bulk
+}
 
 // useGitHubThreads reads what the app mirrors of the user's GitHub notifications, and
 // reads it again whenever the shell says it changed. Reading it asks GitHub nothing and
@@ -76,6 +110,25 @@ export function useGitHubThreads(listing = false): GitHubThreadsState {
 
   const checking = useMutation(() => checkGitHubThreadsNow())
   const snapshot = mirror.data ?? null
+
+  const [heard, setHeard] = useState<Heard | null>(null)
+
+  useOn('ghthreads:bulk', (progress) => {
+    setHeard({ startedAt: snapshot?.bulkDone.startedAt ?? '', progress })
+  })
+
+  const bulk = snapshot === null ? null : withProgress(snapshot.bulkDone, heard)
+
+  // answered shows the mirror a bulk call answered with, or says why it failed.
+  const answered = async (call: () => PromiseLike<GitHubThreadsSnapshot>) => {
+    const result = await attempt(start(call))
+
+    if (result.ok) {
+      mirror.set(() => result.data)
+    }
+
+    return result
+  }
 
   const [finishing, setFinishing] = useState<ReadonlySet<number>>(noIDs)
   const [reading, setReading] = useState<ReadonlySet<number>>(noIDs)
@@ -130,15 +183,7 @@ export function useGitHubThreads(listing = false): GitHubThreadsState {
     return result
   }
 
-  const keep = async (clearIDs: readonly number[]) => {
-    const result = await attempt(start(() => keepGitHubThreads([...clearIDs])))
-
-    if (result.ok) {
-      mirror.set(() => result.data)
-    }
-
-    return result
-  }
+  const keep = (clearIDs: readonly number[]) => answered(() => keepGitHubThreads([...clearIDs]))
 
   return {
     snapshot,
@@ -160,5 +205,9 @@ export function useGitHubThreads(listing = false): GitHubThreadsState {
     list: listed.data ?? null,
     listError: listed.error,
     keep,
+    bulk,
+    startBulk: (req) => answered(() => startGitHubBulkDone({ ...req, repos: [...req.repos] })),
+    stopBulk: () => answered(() => stopGitHubBulkDone()),
+    dismissBulk: () => answered(() => dismissGitHubBulkDone()),
   }
 }

@@ -702,6 +702,41 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		// With no Syncer to run it, a bulk mark started stays running, marking nothing. Each
+		// call stops the one an earlier call left running first: they share the Core.
+		"ghthreads.Service.StartBulkDone": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			_, err := c.GHThreads.StopBulkDone(ctx)
+			require.NoError(t, err)
+
+			got, err := c.GHThreads.StartBulkDone(ctx, ghthreads.BulkDoneRequest{
+				Age: ghthreads.BulkAgeAny, Repos: []string{boundOwner + "/" + boundRepo},
+			})
+			require.True(t, got.BulkDone.Running)
+			require.Len(t, got.BulkDone.Repos, 1)
+
+			return got, err
+		},
+		"ghthreads.Service.StopBulkDone": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			_, err := c.GHThreads.StopBulkDone(ctx)
+			require.NoError(t, err)
+
+			_, err = c.GHThreads.StartBulkDone(ctx, ghthreads.BulkDoneRequest{Age: ghthreads.BulkAgeWeek, All: true})
+			require.NoError(t, err)
+
+			got, err := c.GHThreads.StopBulkDone(ctx)
+			require.True(t, got.BulkDone.Stopped)
+
+			return got, err
+		},
+		"ghthreads.Service.DismissBulkDone": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			_, err := c.GHThreads.StopBulkDone(ctx)
+			require.NoError(t, err)
+
+			got, err := c.GHThreads.DismissBulkDone(ctx)
+			require.Empty(t, got.BulkDone.StartedAt, "nothing left to show")
+
+			return got, err
+		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
 			require.Len(t, got.Items, 3, "an item's notification, one about no item, and one about a run")

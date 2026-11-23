@@ -50,6 +50,7 @@ import {
   githubSignIn,
   githubThreadList,
   githubThreads,
+  bulkRunning,
   hookActionResult,
   hookChecksResult,
   hookInstallAll,
@@ -581,6 +582,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     keepGitHubThreads: () => Promise.resolve(githubThreads()),
     markGitHubThreadsDone: () => Promise.resolve(githubThreads()),
     markGitHubThreadsRead: () => Promise.resolve(githubThreads()),
+    // A bulk mark started runs, and one stopped, or dismissed, shows nothing running.
+    startGitHubBulkDone: () => Promise.resolve(githubThreads({ bulkDone: bulkRunning({ done: 0 }) })),
+    stopGitHubBulkDone: () => Promise.resolve(githubThreads()),
+    dismissGitHubBulkDone: () => Promise.resolve(githubThreads()),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

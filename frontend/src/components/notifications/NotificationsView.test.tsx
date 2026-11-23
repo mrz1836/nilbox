@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
+import { doneURL } from '../../lib/githubThreads'
 import { startLists, type NotificationLists } from '../../lib/notifications'
 import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import type { NotificationsState } from '../../lib/useNotifications'
@@ -12,6 +13,7 @@ import { deferred } from '../../test/async'
 import { clockAt, FIXED_NOW, renderAt, withClock } from '../../test/clock'
 import {
   autopilotAlert,
+  bulkRunning,
   githubThread,
   githubThreadList,
   githubThreads,
@@ -67,6 +69,10 @@ function mirror(
     list: threads === null ? null : githubThreadList({ threads, status: snap.status }),
     listError: '',
     keep: vi.fn(answer),
+    bulk: snap.bulkDone,
+    startBulk: vi.fn(answer),
+    stopBulk: vi.fn(answer),
+    dismissBulk: vi.fn(answer),
     ...overrides,
   }
 }
@@ -630,6 +636,154 @@ describe('NotificationsView', () => {
 
       expect(screen.getByText(`${brand.name} isn’t reading your GitHub notifications`)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Turn on' })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Mark all done', () => {
+    const old = githubThread({ id: 1, updatedAt: '2026-05-01T00:00:00Z' })
+    const markAll = { name: 'Mark all done…' }
+
+    it('is offered with notifications to mark, outside Cleared, and never while one runs', () => {
+      // offered renders the tab as options say, and reports whether it offers the mark.
+      const offered = (options: PageOptions) => {
+        const view = renderPage({ tab: 'github', ...options })
+        const shown = screen.queryByRole('button', markAll) !== null
+
+        view.unmount()
+
+        return shown
+      }
+
+      expect(offered({ threads: mirror([old]) })).toBe(true)
+      expect(offered({ threads: mirror([]) })).toBe(false)
+      expect(offered({ threads: mirror([old], githubThreads({ status: { count: 1, access: 'refused' } })) })).toBe(
+        false,
+      )
+      expect(
+        offered({ lists: { ...startLists, github: { show: 'cleared', type: 'all' } }, threads: mirror([old]) }),
+      ).toBe(false)
+
+      renderPage({
+        tab: 'github',
+        threads: mirror([old], githubThreads({ status: { count: 1 }, bulkDone: bulkRunning() })),
+      })
+      expect(screen.queryByRole('button', markAll)).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Stop marking done' })).toBeInTheDocument()
+    })
+
+    it('asks first, then starts, and closes once it started', async () => {
+      const threads = mirror([old])
+      renderPage({ tab: 'github', threads })
+
+      await userEvent.click(screen.getByRole('button', markAll))
+
+      const dialog = screen.getByRole('dialog', { name: 'Mark notifications done on GitHub?' })
+      expect(dialog).toHaveTextContent('1 notification in 1 repository · 1 ticked')
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Mark 1 done' }))
+
+      expect(threads.startBulk).toHaveBeenCalledExactlyOnceWith({ age: 'any', repos: [], all: true })
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
+    })
+
+    it('keeps the dialog open with why a start failed', async () => {
+      const threads = mirror([old], undefined, {
+        startBulk: vi.fn(() => Promise.resolve({ ok: false as const, error: 'database is locked' })),
+      })
+      renderPage({ tab: 'github', threads })
+
+      await userEvent.click(screen.getByRole('button', markAll))
+      await userEvent.click(screen.getByRole('button', { name: 'Mark 1 done' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t start marking them done: database is locked')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('is offered where the page says GitHub holds more than it reads', async () => {
+      renderPage({ tab: 'github', threads: mirror([old], githubThreads({ status: { count: 1, truncated: true } })) })
+
+      const note = screen.getByText(/GitHub holds more than 1,000 notifications for you/)
+      await userEvent.click(within(note).getByRole('button', markAll))
+
+      expect(screen.getByRole('dialog')).toHaveTextContent('GitHub holds more than the newest 1,000')
+    })
+
+    it('shows how a running one goes, under the header, and stops it at once', async () => {
+      const threads = mirror([old], githubThreads({ status: { count: 1 }, bulkDone: bulkRunning() }))
+      renderPage({ tab: 'github', threads })
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Marking done on GitHub: 412 of 1,180 · about 19 minutes left',
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Stop marking done' }))
+      expect(threads.stopBulk).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('says why a running one waits', () => {
+      renderPage({
+        tab: 'github',
+        threads: mirror(
+          [old],
+          githubThreads({
+            status: { count: 1 },
+            bulkDone: bulkRunning({ pause: 'held', nextAt: '2026-06-15T12:00:40Z' }),
+          }),
+        ),
+      })
+
+      expect(screen.getByText('Paused: GitHub asked for a short break. Resuming in 40 seconds.')).toBeInTheDocument()
+    })
+
+    it('words a running one GitHub fails as a warning, still with Stop', () => {
+      renderPage({
+        tab: 'github',
+        threads: mirror(
+          [old],
+          githubThreads({
+            status: { count: 1 },
+            bulkDone: bulkRunning({ pause: 'failing', nextAt: '2026-06-15T12:01:00Z' }),
+          }),
+        ),
+      })
+
+      const status = screen.getByRole('status')
+      expect(status).toHaveTextContent('Couldn’t reach GitHub. Trying again in 1 minute.')
+      expect(status).toHaveClass('text-warning')
+      expect(screen.getByRole('button', { name: 'Stop marking done' })).toBeInTheDocument()
+    })
+
+    it('says how one ended until dismissed, with GitHub’s Done view', async () => {
+      const ended = bulkRunning({ running: false, done: 1177, failed: 3, left: 0, endedAt: '2026-06-15T11:59:30Z' })
+      const threads = mirror([old], githubThreads({ status: { count: 1 }, bulkDone: ended }))
+      renderPage({ tab: 'github', threads })
+
+      expect(
+        screen.getByText('Marked 1,177 done on GitHub · 3 couldn’t be marked; they’re still in your inbox'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', markAll)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'GitHub’s Done view' }))
+      expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(doneURL)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+      expect(threads.dismissBulk).toHaveBeenCalledOnce()
+    })
+
+    it('says a stopped one left the rest in the inbox', () => {
+      renderPage({
+        tab: 'github',
+        threads: mirror(
+          [old],
+          githubThreads({ status: { count: 1 }, bulkDone: bulkRunning({ running: false, stopped: true }) }),
+        ),
+      })
+
+      expect(screen.getByText('Stopped after marking 412 done. The rest are still in your inbox.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'GitHub’s Done view' })).not.toBeInTheDocument()
     })
   })
 

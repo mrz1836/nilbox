@@ -18,11 +18,21 @@ import type { ListedItem } from '../../lib/triage'
 import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { openExternal, setGitHubNotificationSwitch, type Settings } from '../../platform'
-import { buttonClass, ErrorText, iconButtonClass, quietButtonClass, Segmented, smallIconButtonClass } from '../controls'
+import { openExternal, setGitHubNotificationSwitch, type GitHubBulkRequest, type Settings } from '../../platform'
+import {
+  buttonClass,
+  ErrorText,
+  iconButtonClass,
+  linkClass,
+  quietButtonClass,
+  Segmented,
+  smallIconButtonClass,
+} from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { ExternalIcon, RefreshIcon, SlidersIcon, XIcon } from '../icons'
+import { CheckIcon, ExternalIcon, RefreshIcon, SlidersIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
+import { BulkDoneDialog } from './BulkDoneDialog'
+import { BulkDoneBand } from './BulkDoneStatus'
 import { ClearedList } from './ClearedList'
 import { DayGroups } from './DayGroups'
 import { Refused, TurnOnClearing } from './GitHubNotes'
@@ -121,7 +131,9 @@ export interface GitHubNotificationsTabProps {
 // last checked, and Check now. A line opens on GitHub and is marked read there; while the
 // pointer or the focus is on it, it offers Show in inbox (while the inbox lists its item),
 // Mark read, and Done. Cleared shows what clearing is about to do, with Undo, and what it
-// did. Every mark goes to GitHub at once, one line at a time: there is no bulk mark.
+// did. Every such mark goes to GitHub at once, one line at a time. Mark all done… marks a
+// backlog done in bulk, by age and repository (BulkDoneDialog), in the background, with a
+// band under the header that says how it goes, and Stop.
 export function GitHubNotificationsTab({
   threads,
   settings,
@@ -138,11 +150,37 @@ export function GitHubNotificationsTab({
 }: GitHubNotificationsTabProps) {
   const { snapshot, checkNow, checking, checkError, list, listError, keep } = threads
   const { markDone, markRead, finishing, reading, markError, dismissMarkError } = threads
+  const { bulk, startBulk, stopBulk, dismissBulk } = threads
   const summary = useNowAs((now) => (snapshot === null ? '' : summaryText(now, snapshot.status, checking)))
   const off = settings?.githubNotifications.read === false || snapshot?.status.reading === false
+  // asking is the bulk mark's dialog open, starting its start under way, and startError
+  // why the last start failed.
+  const [asking, setAsking] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
 
   const check = () => {
     void checkNow()
+  }
+
+  const ask = () => {
+    setStartError('')
+    setAsking(true)
+  }
+
+  const startMarking = async (req: GitHubBulkRequest) => {
+    setStarting(true)
+    setStartError('')
+
+    const result = await startBulk(req)
+
+    setStarting(false)
+
+    if (result.ok) {
+      setAsking(false)
+    } else {
+      setStartError(result.error)
+    }
   }
 
   if (off) {
@@ -155,6 +193,10 @@ export function GitHubNotificationsTab({
 
   const status = snapshot?.status ?? null
   const refused = status?.access === 'refused'
+  // offerBulk is whether Mark all done… is offered: reading, allowed, with notifications to
+  // mark, outside Cleared, and no bulk mark already running.
+  const offerBulk =
+    status !== null && !refused && status.count > 0 && show !== 'cleared' && bulk !== null && !bulk.running
   const kept = filterThreads(list?.threads ?? [], show, type)
   const matched = filterGitHubThreads(kept, query)
   const groups = matched?.groups ?? threadGroups(kept)
@@ -274,6 +316,18 @@ export function GitHubNotificationsTab({
           Settings
         </button>
       </div>
+      {bulk !== null && (
+        <BulkDoneBand
+          bulk={bulk}
+          onStop={() => {
+            void stopBulk()
+          }}
+          onDismiss={() => {
+            void dismissBulk()
+          }}
+          className={`${noteClass} py-2 pr-2`}
+        />
+      )}
       {status !== null &&
         (refused ? (
           <Refused status={status} className={noteClass} />
@@ -283,6 +337,14 @@ export function GitHubNotificationsTab({
       {status?.truncated === true && (
         <p className={`${noteClass} text-xs text-muted`}>
           GitHub holds more than 1,000 notifications for you. {brand.name} reads the newest 1,000.
+          {offerBulk && (
+            <>
+              {' '}
+              <button type="button" onClick={ask} className={linkClass}>
+                Mark all done…
+              </button>
+            </>
+          )}
         </p>
       )}
       <ErrorText error={checkError} className={noteClass}>
@@ -301,7 +363,32 @@ export function GitHubNotificationsTab({
         {show !== 'cleared' && (
           <Segmented label="Type" size="sm" value={type} options={typeOptions} onChange={onType} />
         )}
+        {offerBulk && (
+          <span className="ml-auto flex items-center gap-1">
+            <button type="button" onClick={ask} className={quietButtonClass}>
+              <CheckIcon className="size-3.5" />
+              Mark all done…
+            </button>
+          </span>
+        )}
       </Toolbar>
+      {asking && (
+        <BulkDoneDialog
+          threads={list?.threads ?? []}
+          truncated={status?.truncated === true}
+          query={query}
+          perMinute={bulk?.perMinute ?? 0}
+          perHour={bulk?.perHour ?? 0}
+          busy={starting}
+          error={startError}
+          onConfirm={(req) => {
+            void startMarking(req)
+          }}
+          onCancel={() => {
+            setAsking(false)
+          }}
+        />
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {listError !== '' && show !== 'cleared' && (
           <ErrorBanner className="mx-2 mt-3">Could not list your GitHub notifications: {listError}</ErrorBanner>
