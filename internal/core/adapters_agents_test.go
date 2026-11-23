@@ -438,11 +438,12 @@ func TestARunOnARepositoryWhoseToolIsMissingWaitsAndNamesTheTool(t *testing.T) {
 
 	now := time.Now()
 	pr := func(number int, name string) inbox.FixtureItem {
-		return inbox.FixtureItem{Item: github.Item{
+		return inbox.FixtureItem{
 			IsPR: true, NodeID: "NODE_" + strconv.Itoa(number), Number: number, Title: "Bump example-lib",
 			URL:       "https://github.com/acme-org/" + name + "/pull/" + strconv.Itoa(number),
 			CreatedAt: now, UpdatedAt: now, AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: name,
-		}, ReviewRequested: true}
+			ReviewRequested: true,
+		}
 	}
 
 	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{

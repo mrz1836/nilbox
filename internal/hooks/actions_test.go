@@ -549,7 +549,7 @@ func TestInstallAllWithoutAUsableGoPreCommit(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}, "")
+	r.tools.set(ToolFacts{State: integrations.StateMissing}, "")
 
 	_, err := r.svc.InstallAll(t.Context(), nil)
 	require.ErrorIs(t, err, ErrNoTool)

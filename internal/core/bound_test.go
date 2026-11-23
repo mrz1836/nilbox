@@ -1176,13 +1176,11 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	now := time.Now()
 	stored := func(kind item.Kind, number int, repoName string) inbox.FixtureItem {
 		return inbox.FixtureItem{
-			Item: github.Item{
-				IsPR: kind == item.KindPR, NodeID: "NODE_" + strconv.Itoa(number), Number: number,
-				Title:     "Fix the login redirect",
-				URL:       "https://github.com/acme-org/" + repoName + "/issues/" + strconv.Itoa(number),
-				CreatedAt: now, UpdatedAt: now, HeadRef: "fix-login", AuthorLogin: "octo-other",
-				AuthorAssociation: "CONTRIBUTOR", RepoOwner: boundOwner, RepoName: repoName,
-			},
+			IsPR: kind == item.KindPR, NodeID: "NODE_" + strconv.Itoa(number), Number: number,
+			Title:     "Fix the login redirect",
+			URL:       "https://github.com/acme-org/" + repoName + "/issues/" + strconv.Itoa(number),
+			CreatedAt: now, UpdatedAt: now, HeadRef: "fix-login", AuthorLogin: "octo-other",
+			AuthorAssociation: "CONTRIBUTOR", RepoOwner: boundOwner, RepoName: repoName,
 			ReviewRequested: true,
 			Details:         &github.ItemDetails{HeadOID: "abc123"},
 		}

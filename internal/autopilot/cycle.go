@@ -910,12 +910,10 @@ func (p *pass) newMatch(r *routineRun, f facts.Facts, d eval.Decision, dry bool)
 	owner, name := splitRepo(ref.Repo)
 
 	m := &match{
-		AutopilotMatch: queries.AutopilotMatch{
-			RoutineID: r.id(), ItemID: new(f.Item.ID), AccountLogin: p.inbox.Viewer, RepoOwner: owner, RepoName: name,
-			Kind: string(f.Item.Kind), Number: int64(f.Item.Number), Title: f.Item.Title, URL: f.Item.URL,
-			FireKey: d.FireKey, DryRun: dry, State: string(StateQueued), SpecHash: r.hash, CreatedAt: p.now,
-			UpdatedAt: p.now, DecidedAt: p.now,
-		},
+		RoutineID: r.id(), ItemID: new(f.Item.ID), AccountLogin: p.inbox.Viewer, RepoOwner: owner, RepoName: name,
+		Kind: string(f.Item.Kind), Number: int64(f.Item.Number), Title: f.Item.Title, URL: f.Item.URL,
+		FireKey: d.FireKey, DryRun: dry, State: string(StateQueued), SpecHash: r.hash, CreatedAt: p.now,
+		UpdatedAt: p.now, DecidedAt: p.now,
 		steps: stepsOf(r.spec), trace: textutil.NonNil(d.Trace),
 	}
 

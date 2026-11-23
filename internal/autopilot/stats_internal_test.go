@@ -67,11 +67,9 @@ func (r *statsRig) match(routine int, steps ...stepRun) int64 {
 
 	r.matches++
 	m := &match{
-		AutopilotMatch: queries.AutopilotMatch{
-			RoutineID: r.routines[routine], AccountLogin: "octo-user", RepoOwner: "acme-org", RepoName: "example-repo",
-			Kind: "pr", Number: int64(r.matches), FireKey: "appears:item:" + strconv.Itoa(r.matches),
-			State: string(StateDone), CreatedAt: r.now, UpdatedAt: r.now, DecidedAt: r.now,
-		},
+		RoutineID: r.routines[routine], AccountLogin: "octo-user", RepoOwner: "acme-org", RepoName: "example-repo",
+		Kind: "pr", Number: int64(r.matches), FireKey: "appears:item:" + strconv.Itoa(r.matches),
+		State: string(StateDone), CreatedAt: r.now, UpdatedAt: r.now, DecidedAt: r.now,
 		steps: steps,
 	}
 

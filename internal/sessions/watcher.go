@@ -7,12 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // The Watcher's pace.
@@ -178,7 +177,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 	}
 
 	if w.newID == nil {
-		w.newID = uuid.NewString
+		w.newID = textutil.NewUUID
 	}
 
 	if w.tick <= 0 {

@@ -19,7 +19,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -139,12 +138,13 @@ func newRoutineRigWith(t *testing.T, cfg routineRigConfig) *routineRig {
 
 	now := time.Now()
 	stored := func(number int, name string, pr bool) inbox.FixtureItem {
-		return inbox.FixtureItem{Item: github.Item{
+		return inbox.FixtureItem{
 			IsPR: pr, NodeID: "NODE_" + strconv.Itoa(number), Number: number, Title: "Change " + strconv.Itoa(number),
 			URL:       "https://github.com/acme-org/" + name + "/pull/" + strconv.Itoa(number),
 			CreatedAt: now, UpdatedAt: now, HeadRef: "feature-branch", AuthorLogin: rigViewer, AuthorAssociation: "OWNER",
 			RepoOwner: boundOwner, RepoName: name,
-		}, Authored: true}
+			Authored: true,
+		}
 	}
 
 	ids, err := inbox.StoreFixture(ctx, pool, inbox.Fixture{Viewer: rigViewer, Items: []inbox.FixtureItem{

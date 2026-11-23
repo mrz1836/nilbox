@@ -43,7 +43,7 @@ func failsOn(command string) answer {
 }
 
 // pinnedEnv is a project env file that pins fakeSQLCVersion among other settings.
-const pinnedEnv = "# Tool pins\nGO_PRIMARY_VERSION=1.26.x\n" + sqlcVersionKey + "=" + fakeSQLCVersion + "\n"
+const pinnedEnv = "# Tool pins\nGO_PRIMARY_VERSION=1.27.x\n" + sqlcVersionKey + "=" + fakeSQLCVersion + "\n"
 
 func TestDBGenerate(t *testing.T) {
 	t.Parallel()
@@ -84,7 +84,7 @@ func TestDBGenerate(t *testing.T) {
 	t.Run("no pin runs nothing", func(t *testing.T) {
 		t.Parallel()
 
-		g := sqlcRig(t, "GO_PRIMARY_VERSION=1.26.x\n", exits(0))
+		g := sqlcRig(t, "GO_PRIMARY_VERSION=1.27.x\n", exits(0))
 
 		err := g.runner().runSQLC("generate")
 

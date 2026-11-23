@@ -59,9 +59,10 @@ func storeIssues(t *testing.T, db *sql.DB, first, count int) []int64 {
 	stored := inbox.Fixture{Viewer: octoUser, At: testNow}
 
 	for number := first; number < first+count; number++ {
-		stored.Items = append(stored.Items, inbox.FixtureItem{Item: github.Item{
+		stored.Items = append(stored.Items, inbox.FixtureItem{
 			Number: number, CreatedAt: testNow, UpdatedAt: testNow, RepoOwner: "acme-org", RepoName: "example-repo",
-		}, Assigned: true})
+			Assigned: true,
+		})
 	}
 
 	ids, err := inbox.StoreFixture(t.Context(), db, stored)

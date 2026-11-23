@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Codex as a background run's agent, and as the fallback of a Claude Code profile out of
@@ -33,7 +33,7 @@ func (f *fakePlanner) codexPlan(t *testing.T, run testutil.FakeRun) *launcher.Ba
 
 	path, env := testutil.FakeTool(t, "codex", run)
 	name, value, _ := strings.Cut(env, "=")
-	sid := uuid.NewString()
+	sid := textutil.NewUUID()
 
 	return &launcher.BackgroundPlan{
 		Plan:   launcher.Plan{Agent: agent.Codex, Binary: path, Env: map[string]string{name: value}},

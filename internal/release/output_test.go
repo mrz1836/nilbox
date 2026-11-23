@@ -159,7 +159,7 @@ const (
 func released(version string, warnings ...string) Output {
 	return Output{
 		Step: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom, Version: version,
-		Tag: version, TagPushed: true, Notes: scriptrun.Notes{Warnings: warnings},
+		Tag: version, TagPushed: true, Warnings: warnings,
 	}
 }
 
@@ -175,7 +175,7 @@ func recordedOutputs() map[string]Output {
 
 	signing := Output{
 		Step: StepUpdated, Branch: recBranch, Bump: recBump, From: recFrom, Version: recVersion,
-		Notes:   scriptrun.Notes{Warnings: []string{notOnHead}, Unrecognized: []string{"(no gpg output)"}},
+		Warnings: []string{notOnHead}, Unrecognized: []string{"(no gpg output)"},
 		Signing: "error: gpg failed to sign the data:",
 		Errors:  []string{"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"},
 	}
@@ -193,9 +193,7 @@ func recordedOutputs() map[string]Output {
 		Step: StepTagCreated, Working: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom,
 		Version: recVersion, Tag: recVersion, PushFailed: true, PushRefsFailed: true,
 		HookLine: "pre-push: blocked by policy",
-		Notes: scriptrun.Notes{
-			Warnings: []string{notOnHead, sendByHand}, Unrecognized: []string{"pre-push: blocked by policy"},
-		},
+		Warnings: []string{notOnHead, sendByHand}, Unrecognized: []string{"pre-push: blocked by policy"},
 		Errors:       []string{"failed to push tag: command failed [git push origin v1.4.3]: exit status 1"},
 		LoggedErrors: []string{notSent},
 	}
@@ -207,7 +205,7 @@ func recordedOutputs() map[string]Output {
 		return Output{
 			Step: StepTagCreated, Working: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom,
 			Version: recVersion, Tag: recVersion, PushFailed: true, SwitchBackFailed: true, Canceled: true,
-			Notes: scriptrun.Notes{Warnings: []string{notOnHead, sendByHand}},
+			Warnings: []string{notOnHead, sendByHand},
 			Errors: []string{"failed to push tag: command 'git' was canceled after 30s: context canceled " +
 				"(command failed [git push origin v1.4.3]: signal: " + signal + ")"},
 			LoggedErrors: []string{notSent, switchBackCut},

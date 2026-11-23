@@ -28,10 +28,11 @@ func TestLoadRecordingReadsWhatTheRecorderWrote(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(dir, "patch.json"), recorded)
 
 	rec := testutil.LoadRecording[noted](t, dir, "patch")
-	assert.Equal(t, noted{Recording: testutil.Recording{
+	assert.Equal(t, noted{
 		Name: "patch", Argv: []string{"magex", "version:bump"}, Stdout: "bumped\n", Stderr: "warned\n", Exit: 2,
 		Lines: []testutil.RecordedLine{{Stream: "out", Text: "bumped"}, {Stream: "err", Text: "warned"}},
-	}, Note: "on master"}, rec)
+		Note:  "on master",
+	}, rec)
 
 	assert.Equal(t, "bumped\nwarned\n", rec.Log("\n"))
 	assert.Equal(t, "bumped\r\nwarned\r\n", rec.Log("\r\n"))

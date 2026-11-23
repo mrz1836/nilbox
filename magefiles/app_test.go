@@ -62,7 +62,7 @@ func fakeLint(g *rig) {
 	g.setenv(lintVersionKey, "v2.15.0")
 	g.tool("golangci-lint", func(args []string) testutil.FakeRun {
 		if slices.Equal(args, []string{"version"}) {
-			return testutil.FakeRun{Stdout: "golangci-lint has version 2.15.0 built with go1.26.0\n"}
+			return testutil.FakeRun{Stdout: "golangci-lint has version 2.15.0 built with go1.27.0\n"}
 		}
 
 		return testutil.FakeRun{}
@@ -2183,7 +2183,7 @@ func TestAppTargetsStopAtAFailingStep(t *testing.T) {
 		{name: "check, at the lint", tool: "golangci-lint", answer: func(answer) answer {
 			return func(args []string) testutil.FakeRun {
 				if slices.Equal(args, []string{"version"}) {
-					return testutil.FakeRun{Stdout: "golangci-lint has version 2.15.0 built with go1.26.0\n"}
+					return testutil.FakeRun{Stdout: "golangci-lint has version 2.15.0 built with go1.27.0\n"}
 				}
 
 				return testutil.FakeRun{Exit: 1}

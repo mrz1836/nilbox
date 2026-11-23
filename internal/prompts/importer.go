@@ -149,7 +149,7 @@ func newPlanner(lib []Prompt, usage map[int64]Usage) *planner {
 // plan says what importing in does, and records it.
 func (pl *planner) plan(in BundlePrompt) planned {
 	p, notes := cleanImport(in)
-	e := planned{ImportEntry: ImportEntry{Prompt: p, Notes: textutil.NonNil(notes)}}
+	e := planned{Prompt: p, Notes: textutil.NonNil(notes)}
 
 	if !pl.faithful {
 		if held, ok := pl.holding(p); ok {

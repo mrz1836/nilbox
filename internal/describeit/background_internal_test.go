@@ -8,13 +8,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // crashedTurn keeps a conversation whose one turn its record says runs, as a crash left
@@ -22,7 +22,7 @@ import (
 func (r *rig) crashedTurn(stream string) string {
 	r.t.Helper()
 
-	rec := newRecord(uuid.NewString(), AgentChoice{}, Start{}, testNow.Add(-time.Hour))
+	rec := newRecord(textutil.NewUUID(), AgentChoice{}, Start{}, testNow.Add(-time.Hour))
 	rec.Turns = []turnRecord{{N: 1, Text: pinText, State: TurnRunning, StartedAt: testNow.Add(-time.Hour), Proposals: []string{}}}
 	require.NoError(r.t, r.svc.saveRecord(rec))
 	require.NoError(r.t, os.WriteFile(r.svc.turnLog(rec.ID, 1), []byte(stream), 0o600))
@@ -114,14 +114,14 @@ func TestStartPrunesWhatIsOlderThanThirtyDays(t *testing.T) {
 	// from testNow, the recent one would read as older than 30 days a day after testNow.
 	now := time.Now()
 
-	old := newRecord(uuid.NewString(), AgentChoice{}, Start{}, now.Add(-31*24*time.Hour))
+	old := newRecord(textutil.NewUUID(), AgentChoice{}, Start{}, now.Add(-31*24*time.Hour))
 	require.NoError(t, r.svc.saveRecord(old))
 	r.writeProposal(old.ID, now.Add(-31*24*time.Hour), 0, pinProposal())
 
-	recent := newRecord(uuid.NewString(), AgentChoice{}, Start{}, now.Add(-29*24*time.Hour))
+	recent := newRecord(textutil.NewUUID(), AgentChoice{}, Start{}, now.Add(-29*24*time.Hour))
 	require.NoError(t, r.svc.saveRecord(recent))
 
-	orphan, fresh := uuid.NewString(), uuid.NewString()
+	orphan, fresh := textutil.NewUUID(), textutil.NewUUID()
 	require.NoError(t, os.MkdirAll(r.path("proposals", orphan), 0o700))
 	require.NoError(t, os.MkdirAll(r.path("proposals", fresh), 0o700))
 

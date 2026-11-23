@@ -255,7 +255,7 @@ func TestAnOrphanWhoseOutputSaysItIsDoneIsStoppedWithoutCountingItStopped(t *tes
 	out := &collector{}
 
 	h.e.RegisterVerifier(KindAgent, verifierFunc(func(Record) Verification {
-		return Verification{Callbacks: Callbacks{Output: out, Over: func() bool { return strings.Contains(out.String(), "result") }}}
+		return Verification{Output: out, Over: func() bool { return strings.Contains(out.String(), "result") }}
 	}))
 
 	started := time.Now().Add(-time.Minute)

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -24,7 +24,7 @@ import (
 func (r *rig) conversationWith(ps ...kit.Proposal) (string, []string) {
 	r.t.Helper()
 
-	rec := newRecord(uuid.NewString(), AgentChoice{}, Start{}, testNow)
+	rec := newRecord(textutil.NewUUID(), AgentChoice{}, Start{}, testNow)
 	ids := make([]string, 0, len(ps))
 
 	for i, p := range ps {
@@ -227,7 +227,7 @@ func TestACardIsReadOnlyAsTheToolModeWritesIt(t *testing.T) {
 	good := filepath.Join(dir, ids[0]+".json")
 
 	at := testNow.Add(time.Minute)
-	other := uuid.NewString()
+	other := textutil.NewUUID()
 
 	write := func(n byte, data []byte) string {
 		pid := proposalID(t, at, n)

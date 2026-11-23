@@ -255,7 +255,7 @@ type replaceStep struct {
 
 // stored returns the step's prompt as Replace stores it.
 func (r replaceStep) stored() Prompt {
-	p := planned{ImportEntry: ImportEntry{Prompt: r.in, Nickname: r.nickname}, keepStarter: r.keepStarter}
+	p := planned{Prompt: r.in, Nickname: r.nickname, keepStarter: r.keepStarter}
 
 	return p.stored()
 }

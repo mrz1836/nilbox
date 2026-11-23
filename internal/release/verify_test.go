@@ -176,9 +176,9 @@ func TestJudgeAndOutcome(t *testing.T) {
 func TestTheResultLeavesOutTheWarningEveryReleaseHas(t *testing.T) {
 	t.Parallel()
 
-	said := Output{Notes: scriptrun.Notes{Warnings: []string{
+	said := Output{Warnings: []string{
 		notOnHead, sendByHand, "Current version tag is not on HEAD – there are 12 commits since v0.9.1",
-	}}}
+	}}
 	out := outcomeOf(Result{Kind: ResultNotPushed, Tag: recVersion}, said, scriptrun.Outcome{})
 
 	assert.Equal(t, []string{sendByHand}, out.Warnings, "a version tag not on HEAD is why a release is made")
@@ -406,7 +406,7 @@ func TestAMajorWithoutMagexIsNotReadyRatherThanABug(t *testing.T) {
 	t.Parallel()
 
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
-	r.tool = ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}}
+	r.tool = ToolFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}
 
 	_, err := r.svc.Start(t.Context(), StartRequest{Repo: sdkRepo, Bump: BumpMajor, Version: majorVersion, Typed: majorVersion})
 	require.ErrorIs(t, err, ErrNotReady)

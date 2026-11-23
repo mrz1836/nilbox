@@ -90,7 +90,7 @@ func recorded1302Outputs() map[string]Output {
 		"origin-without-head": pushWhenUnreachable(ff(Output{
 			Step: StepTagCreated, Branch: recBranch, Bump: recBump, From: recFrom, Version: recVersion, Tag: recVersion,
 			PushSkipped: true, PushSkipWarning: unreachableWarning + "2",
-			Notes: scriptrun.Notes{Warnings: []string{notOnHead, unreachableWarning + "2"}},
+			Warnings: []string{notOnHead, unreachableWarning + "2"},
 		}), "2"),
 		// magex 1.30.2 reads origin's annotated v1.4.3, at the clone's own HEAD, as at
 		// another commit: its ls-remote leaves out the peeled ^{} line it compares.

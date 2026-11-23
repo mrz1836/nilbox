@@ -222,12 +222,12 @@ func keyMatches(pattern, key string) bool {
 func keyParts(key string) (section, sub, name string) {
 	section, rest, _ := strings.Cut(key, ".")
 
-	cut := strings.LastIndexByte(rest, '.')
-	if cut < 0 {
+	before, after, ok := strings.CutLast(rest, ".")
+	if !ok {
 		return section, "", rest
 	}
 
-	return section, rest[:cut], rest[cut+1:]
+	return section, before, after
 }
 
 // cloneConfig refuses, with a CloneConfigError, every setting of the clone's own config

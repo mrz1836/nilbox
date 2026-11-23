@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -573,7 +573,7 @@ func (f *fakePlanner) plan(t *testing.T, run testutil.FakeRun) launcher.Backgrou
 
 	path, env := testutil.FakeTool(t, "claude", run)
 	name, value, _ := strings.Cut(env, "=")
-	sid := uuid.NewString()
+	sid := textutil.NewUUID()
 
 	return launcher.BackgroundPlan{
 		Plan:   launcher.Plan{Agent: agent.Claude, Binary: path, Env: map[string]string{name: value}},

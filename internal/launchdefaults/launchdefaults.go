@@ -447,7 +447,7 @@ func (s *Service) withClones(ctx context.Context, all []listed) ([]listed, error
 		}
 
 		at[n.Key()] = len(all)
-		all = append(all, listed{Target: Target{Owner: n.Owner, Name: n.Repo, Cloned: true}})
+		all = append(all, listed{Owner: n.Owner, Name: n.Repo, Cloned: true})
 	}
 
 	return all, nil

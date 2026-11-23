@@ -64,12 +64,9 @@ func recordMatch(t *testing.T, e *Engine, routine, item int64, fire string, b Bl
 
 	now := e.clock.Now()
 	m := &match{
-		AutopilotMatch: queries.AutopilotMatch{
-			RoutineID: routine, ItemID: new(item), AccountLogin: "octo-user", RepoOwner: "acme-org",
-			RepoName: "example-repo", Kind: "pr", Number: item, FireKey: fire, CreatedAt: now, UpdatedAt: now,
-			DecidedAt: now,
-		},
-		steps: []stepRun{}, trace: []eval.Trace{},
+		RoutineID: routine, ItemID: new(item), AccountLogin: "octo-user", RepoOwner: "acme-org",
+		RepoName: "example-repo", Kind: "pr", Number: item, FireKey: fire, CreatedAt: now, UpdatedAt: now,
+		DecidedAt: now, steps: []stepRun{}, trace: []eval.Trace{},
 	}
 	m.wait(b, "")
 

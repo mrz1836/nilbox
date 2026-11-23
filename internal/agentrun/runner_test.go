@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // The conformance suite: every agent that claims background runs passes it, a fake binary
@@ -122,7 +122,7 @@ func (r *rig) planFor(id agent.ID, run testutil.FakeRun) Plan {
 	r.t.Helper()
 
 	path, env := testutil.FakeTool(r.t, string(id), run)
-	sid := uuid.NewString()
+	sid := textutil.NewUUID()
 
 	return Plan{
 		RunID: r.nextID.Add(1), MatchID: 1, RoutineID: 1, Title: "Review · acme-org/sdk #12", Source: "autopilot:1",

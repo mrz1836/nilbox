@@ -18,7 +18,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
@@ -349,12 +348,10 @@ func seed(ctx context.Context, c *core.Core, root string) (int64, error) {
 	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{
 		Viewer: fixtureViewer,
 		Items: []inbox.FixtureItem{{
-			Item: github.Item{
-				IsPR: true, Number: fixtureNumber, Title: fixtureTitle,
-				URL:       fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber),
-				CreatedAt: now, UpdatedAt: now, HeadRef: fixtureBranch, AuthorLogin: fixtureAuthor,
-				AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true, RepoOwner: fixtureOwner, RepoName: fixtureName,
-			},
+			IsPR: true, Number: fixtureNumber, Title: fixtureTitle,
+			URL:       fmt.Sprintf("https://github.com/%s/%s/pull/%d", fixtureOwner, fixtureName, fixtureNumber),
+			CreatedAt: now, UpdatedAt: now, HeadRef: fixtureBranch, AuthorLogin: fixtureAuthor,
+			AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true, RepoOwner: fixtureOwner, RepoName: fixtureName,
 			ReviewRequested: true,
 		}},
 		At: now,
