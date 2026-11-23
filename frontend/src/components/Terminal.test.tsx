@@ -147,7 +147,8 @@ describe('Terminal', () => {
 
     expect(figure).toHaveTextContent(/^~\/example-repo\$ example statusok$/)
     expect(screen.getByText('example status')).toHaveStyle({ '--n': '14' })
-    expect(figure).toHaveStyle({ animationDelay: '200ms' })
+    // A computed time reads in seconds, as a browser gives it.
+    expect(figure).toHaveStyle({ animationDelay: '0.2s' })
   })
 
   it('places itself as told, and nowhere in particular by default', () => {
