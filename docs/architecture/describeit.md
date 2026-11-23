@@ -118,12 +118,12 @@ describe/
   author, labels, and a pull request's failed checks' names at its head), under a line saying
   its names are data and nothing else of the item is shared.
 - **The agent.** Core's `describeAgents` finds Claude Code as a background run's start does:
-  readiness's own checks of its program, its version, and the profile's sign-in, asked again at
-  once when one holds the turn back, so a fix shows at once; the launch defaults' Claude Code
-  profile for Inherit; and the environment `agentEnv` builds, with no API key unless the user's
-  setting lets one through. A profile on this Mac that is only signed out still gets its
-  program and environment, not ready: a turn is held back, while the plugin's commands, which
-  need no sign-in, run.
+  readiness's own checks of its program, its version, and the profile's sign-in, asked again at once
+  when one holds the turn back, so a fix shows at once; Settings' default Claude Code profile for
+  Inherit, else the first stored (`claudeDefault`); and the environment `agentEnv` builds, with no
+  API key unless the user's setting lets one through. A profile on this Mac that is only signed out
+  still gets its program and environment, not ready: a turn is held back, while the plugin's
+  commands, which need no sign-in, run.
 - **The plugin.** `Plugin(command, args)` is the plugin (`agent.PluginSpec`: `brand.Slug` in the
   marketplace `<slug>-app`, version 1.0.0, which changes only with the tool mode's protocol; its
   skill `autopilot`, `kit.SkillText(kit.Outside)`; its server `autopilot`), which `WritePlugin`

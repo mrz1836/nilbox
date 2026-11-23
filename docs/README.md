@@ -163,6 +163,7 @@ before changing it.
 | [`internal/brand`](architecture/brand.md)            | Product identity, design tokens, and the logo; `brandgen` generates the theme, `Info.plist`, and the icon artwork in `build/` |
 | [`internal/core`](architecture/core.md)              | Assembles the app and builds every service the window binds                                   |
 | [`internal/event` and `internal/desktop`](architecture/event-and-desktop.md) | The app's events; the shell's logic (menu bar, window close, quit guard, workers, shutdown) |
+| [`internal/menubar`](architecture/menubar.md)        | What the menu bar icon and its menu show, worked out from the inbox, the runs, the update, and Autopilot |
 | [`internal/appinfo`](architecture/appinfo.md)        | App info, Report a bug, and Send feedback                                                     |
 | [`internal/devtools`](architecture/devtools.md)      | The inspector a build from source carries (the `devtools` tag, never a release's), which `magex inspect:*` talks to |
 | [`internal/store`](architecture/store.md)            | Opens the database, self-heals, backs up and restores; what outlives the database            |
@@ -181,6 +182,8 @@ before changing it.
 | [`internal/statusprefs`](architecture/statusprefs.md) | The service status catalog and what the user watches                                         |
 | [`internal/svcstatus`](architecture/svcstatus.md)    | Follows GitHub's, Claude's, and OpenAI's status pages                                         |
 | [`internal/milestones`](architecture/milestones.md)  | The log of the inbox at nil: the streak, the achievements, and confetti at most once a day    |
+| [`internal/notify`](architecture/notify.md)          | The app's own notifications: the history, gathering, and the native banners           |
+| [`internal/notifyprefs`](architecture/notifyprefs.md) | The notification kinds, and their banner switches                                        |
 
 ### The sheets
 
@@ -200,6 +203,11 @@ before changing it.
 |------------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | [`internal/launcher`](architecture/launcher.md)      | Resolves, plans, and opens a launch in the user's terminal; holds, trust, and `workspacetrust` |
 | [`internal/sessions`](architecture/sessions.md)      | Follows the agent sessions launches start                                                     |
+| [`internal/prompts`](architecture/prompts.md)        | The prompt library and review replies: starters, templates and their checks, defaults, and the copy beside the database |
+| [`internal/launchdefaults`](architecture/launchdefaults.md) | The org and repository launch defaults, how they resolve, and the copy beside the database |
+| [`internal/profiles`](architecture/profiles.md)      | The coding agents' profiles: discovery, pruning, and sign-in                             |
+| [`internal/trust`](architecture/trust.md)            | Which items are trusted, the trusted bots, and the auto-merge bots                        |
+| [`internal/sensitive`](architecture/sensitive.md)    | Which changed files are sensitive, and how a pull request's files are checked              |
 
 ### Clones and worktrees
 
@@ -209,6 +217,7 @@ before changing it.
 | [`internal/pushwatch`](architecture/pushwatch.md)    | Notices a push made on this Mac to an inbox pull request, and has it read again               |
 | [`internal/worktrees`](architecture/worktrees.md)    | Makes the app's worktrees, records them, and removes them and their branches safely           |
 | [`internal/gitread`](architecture/gitread.md)        | The allowlisted read-only git, and the guarded setups for the git commands that change a clone |
+| [`internal/clonelock`](architecture/clonelock.md)    | The one lock per clone that every job changing it holds, and the sentence that refuses another |
 
 ### Integrations and runs
 
@@ -287,18 +296,16 @@ before changing it.
 | `internal/autopilot/sim`                             | [Local actions](architecture/autopilot/local-actions.md) and [The GitHub step](architecture/autopilot/github-step.md) |
 | `internal/autopilotprefs`                            | [The routines, kept](architecture/autopilot/routines-kept.md)                                 |
 | `internal/brandgen`                                  | [`internal/brand`](architecture/brand.md)                                                     |
-| `internal/branchrules`, `internal/clonelock`, `internal/worklog` | [`internal/worktrees`](architecture/worktrees.md)                                 |
+| `internal/branchrules`, `internal/worklog` | [`internal/worktrees`](architecture/worktrees.md)                                 |
 | `internal/integrationprefs`, `internal/toolinstall`  | [`internal/integrations`](architecture/integrations.md)                                       |
 | `internal/launcher/terminal`, `internal/workspacetrust` | [`internal/launcher`](architecture/launcher.md)                                            |
-| `internal/menubar`, `internal/notify`, `internal/notifyprefs` | [`internal/event` and `internal/desktop`](architecture/event-and-desktop.md) and [Notices](architecture/autopilot/notices.md) |
 | `internal/sessions/observe/...`                      | [`internal/sessions`](architecture/sessions.md)                                               |
 | `internal/store/migrate`                             | [`internal/store`](architecture/store.md)                                                     |
 | `internal/measure`                                   | [Performance](performance.md)                                                                 |
 | `internal/prefs`, `internal/prefs/prefval`, `internal/settings` | `CLAUDE.md`'s [Data layer](../CLAUDE.md#data-layer), and the package docs          |
 | `internal/uierr`                                     | `CLAUDE.md`'s [Logging and errors](../CLAUDE.md#logging-and-errors), and the package doc      |
 | `internal/repoguard`                                 | `CLAUDE.md`'s [Rules every change keeps](../CLAUDE.md#rules-every-change-keeps), and the package doc |
-| `internal/prompts`, `internal/launchdefaults`        | Their copies beside the database in [`internal/store`](architecture/store.md); what they do in [Prompts](guide/prompts.md) and [Launch defaults](guide/launch-defaults.md) |
-| `internal/profiles`, `internal/trust`, `internal/sensitive`, `internal/snooze` | The package docs; what they do in [Coding agents and profiles](guide/agents-and-profiles.md), [Outside contributors](guide/outside-contributors.md), [Sensitive files](guide/sensitive-files.md), and [Snooze, dismiss, and pin](guide/snooze-dismiss-pin.md) |
+| `internal/snooze` | The package doc; what it does in [Snooze, dismiss, and pin](guide/snooze-dismiss-pin.md) |
 | `internal/appdata`, `internal/logging`, `internal/timing` | The package docs; where the app keeps its files in [Data location](guide/data-location.md) |
 
 <br>

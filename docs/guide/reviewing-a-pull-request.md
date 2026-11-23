@@ -54,8 +54,9 @@ Every card gets it, in any list.
   (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the card's sensitive-file
   chip; **Closes**, the issues it closes once it merges (one already closed says how, as in
   **closed as not planned**), each opening in the [issue sheet](reading-an-issue.md) when it is in
-  your inbox; each reviewer's latest review; who it is assigned to (see [Assignees](#assignees)
-  below); and the checks, listed open with the failing ones first, then those running, then those
+  your inbox; each reviewer's latest review, and who it still asks (see [Reviewers](#reviewers)
+  below); who it is assigned to (see [Assignees](#assignees) below); and the checks, listed open
+  with the failing ones first, then those running, then those
   passed, the required ones marked, and the skipped ones folded away below them under their count
   (click a count to open or fold it). A check that is queued
   or in progress has a ring swelling slowly out of its amber dot, as a working session's dot
@@ -289,6 +290,39 @@ merge-commit**), and the confirmation's button follows the method you pick there
 default) makes the button **Squash-merge past the rules** (or your method) on a pull request of
 yours that only an approval from someone else holds back, where GitHub lets you merge past the
 rules; see **Merge past the rules, only on purpose** below.
+
+## Reviewers
+
+The summary lists the pull request's **Reviewers**: who reviewed it, each with their latest review
+(as in **approved · asked again** for someone it asks again), then the people and teams it asks who
+haven't reviewed (**awaiting review**). With triage access or more to an open pull request the sheet
+has read, **Edit** opens the reviewer picker: who it asks now under **Requested**, then **Suggested
+for this pull request** (whom GitHub suggests, as the sheet last read them, with **Changed these
+files** or **Reviewed these files**), the people who work on the repository (**Works on
+acme-org/api**, each with a word on why, as in **Reviewed 12 here · 3d ago**), and its **Teams** (as
+**acme-org/platform**). Past who it asks now, it never offers the author, you, or a bot, and lists
+at most 100 people. Typing in **Filter people and teams** filters them at once on this Mac, by
+login, name, or slug, those that start with what you typed first. A note under the list says where
+the people come from, as in **Contributors to acme-org/api · from 50 pull requests, 2d ago**, or **·
+from the pull requests you've viewed** before Nilbox has read the repository.
+
+The picker opens on what Nilbox kept, with no request. When the repository is due a read (it was
+never read, or last read a week or more ago, and no read of it failed in the last 30 minutes), the
+picker reads it once as it opens (**Learning who works on acme-org/api…**): 1 GraphQL point for its
+50 most recently updated pull requests, and, for an organization's repository, 1 REST point for its
+teams. The list then fills in place, keeping what you checked. **Apply** (named for what it does, as
+in **Request 2 · Remove 1**), or **⌘↩**, asks everyone you added in one REST request, people and
+teams together, then takes everyone you unchecked off in one more, and the card and the sheet show
+GitHub's answer at once, without reading the pull request again. What GitHub made stands when the
+second request fails, and the picker stays open and says why, as it does when GitHub refuses a
+request (for someone without access to the repository, say). In the summary, hover a request for
+**×** to take it off, or someone who reviewed and isn't asked now for **↻** to ask them again
+(never you, the author, a bot, or a team); while no one has reviewed it or is asked to, it says
+**No one is asked to review yet.** and offers up to three of the picker's people, each asked in one
+click, and **More…** for the picker. Your own request stays checked in the picker, and has no **×**:
+ask for your review again with [Re-request my review](#re-request-my-review), and take yourself off
+with **Remove me as reviewer**, in the card's menu. The people you ask rank higher among those who
+work on the repository from then on ([People](#people)).
 
 ## Assignees
 

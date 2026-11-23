@@ -1,6 +1,6 @@
 # Prompts
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md), [`internal/store`](../architecture/store.md) · See also: [Prompt files](../prompt-files.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/prompts`](../architecture/prompts.md), [`internal/launcher`](../architecture/launcher.md), [`internal/store`](../architecture/store.md) · See also: [Prompt files](../prompt-files.md)
 
 The **Prompts** tab is the prompt library: every prompt a launch can fill in. Each prompt has a
 **title** (its full name, such as "Review a pull request"), a **nickname** of up to 20
@@ -11,20 +11,21 @@ and optional **launch settings**.
 
 ## Starter prompts
 
-The app adds twelve starters, each once: **Review** (review a pull request), **Work on it** (work on
-an issue), **Quick look** (a fast read of a pull request's diff for blockers only, set to Sonnet at
-low effort without a worktree), **Fix checks** (find and fix a pull request's failing checks, then
-push the fix), and **Fix dep security** (fix the failing security checks on a bot's dependency
-update: move the vulnerable dependency to a version that fixes it, never silence a scanner, and push
-with one exact `git push` to the pull request's own branch, named by its full ref and quoted, never
-forced; for a fork's pull request, or another outside contributor's, and for a branch or remote
-whose name isn't plain, it commits the fix but pushes nothing), and **Re-review** (review a pull
-request again, only what changed since the commit your last verdict was on, or the whole of it when
-that commit is no longer in its branch's history, as after a force-push). Four more are the starters
-Autopilot's [templates](autopilot/templates-and-quick-setup.md) run: **Heal Dependabot PR** (adapt
-the code to what a dependency update broke, never pinning it back or silencing a check, and push as
-Fix dep security does), **Address review** (work through the changes a review asked for, acting only
-on members' and collaborators' requests), **Resolve conflicts** (merge the base branch in, never a
+The app adds twelve starter prompts, each once, besides six [starter replies](#starter-replies):
+**Review** (review a pull request), **Work on it** (work on an issue), **Quick look** (a fast read
+of a pull request's diff for blockers only, set to Sonnet at low effort without a worktree), **Fix
+checks** (find and fix a pull request's failing checks, then push the fix), and **Fix dep security**
+(fix the failing security checks on a bot's dependency update: move the vulnerable dependency to a
+version that fixes it, never silence a scanner, and push with one exact `git push` to the pull
+request's own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
+another outside contributor's, and for a branch or remote whose name isn't plain, it commits the fix
+but pushes nothing), and **Re-review** (review a pull request again, only what changed since the
+commit your last verdict was on, or the whole of it when that commit is no longer in its branch's
+history, as after a force-push). Four more are the starters Autopilot's
+[templates](autopilot/templates-and-quick-setup.md) run: **Heal Dependabot PR** (adapt the code to
+what a dependency update broke, never pinning it back or silencing a check, and push as Fix dep
+security does), **Address review** (work through the changes a review asked for, acting only on
+members' and collaborators' requests), **Resolve conflicts** (merge the base branch in, never a
 rebase, and push as Fix dep security does), and **Re-run failed jobs** (re-run a pull request's
 failed jobs once with `gh run rerun --failed`, changing nothing else, set to Haiku at low effort).
 Two more are for repositories, the ones [Deps](deps.md)' upgrade sheet offers as **Minor and patch**
@@ -85,6 +86,7 @@ inserts it at the caret.
 | `.SensitiveFiles` | A checked pull request's [sensitive files](sensitive-files.md), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
 | `.Dependency`, `.FromVersion`, `.ToVersion`, `.UpdateType` | For a bot's dependency update, what its title says: the dependency (as in `golang.org/x/net`), the versions it moves between, and how big the jump is (`patch`, `minor`, `major`); empty when the title doesn't say, for a person's pull request, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
+| `.Routine`, `.Trigger`, `.Attempt`, `.Unattended` | For a routine's launch: the routine that started it, what made it run (as in *Checks fail*), which of its tries on the item this is (1 for the first), and whether nobody is there to answer (a run in the background); empty, or 0, for your own launch |
 
 An item's description and comments are deliberately not variables: the agent reads them with
 `gh`, so their text stays information rather than instructions. Every value is a single line
@@ -95,12 +97,12 @@ prompt for repositories has no item, so only the repository's variables (`.Repo`
 cheat sheet dims it, marked **Item only** (or **PR only**), and the editor warns where one is
 used.
 
-A prompt can use `{{if}}`, `{{else}}`, `{{with}}`, comments, trim markers (`{{- -}}`), and
-the functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `print`,
-`printf` (widths up to 999, and no value longer than a whole prompt may be), and
-`shellquote`. `{{range}}`, `{{define}}`, `{{block}}`, and `{{template}}` are refused, so
-filling in a prompt always finishes quickly. When a prompt is sent, trailing spaces are
-trimmed and runs of blank lines collapse to one.
+A prompt can use `{{if}}`, `{{else}}`, `{{with}}`, comments, trim markers (`{{- -}}`), and the
+functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `print`, `println`,
+`printf` (widths up to 999, and no value longer than a whole prompt may be), and `shellquote`.
+`{{range}}`, `{{define}}`, `{{block}}`, and `{{template}}` are refused, so filling in a prompt
+always finishes quickly. When a prompt is sent, trailing spaces are trimmed and runs of blank lines
+collapse to one.
 
 ## Values in commands
 
@@ -133,14 +135,15 @@ prompt that starts with a variable, don't block saving; errors do.
 
 The preview fills the prompt in for a real inbox item (or a sample), exactly as a launch would, in
 the text's own frame and at its size, with the item to fill it in for and switches for **In a
-worktree** and **At the PR's head** above it. For an outside contributor's item it also shows the
-line every such prompt ends with. Below it are its length and **Copy**, which copies the text as a
-launch sends it, that line included. The text and its undo history are kept while previewing, so
-Edit picks up where it was. A review reply previews as the review sheet fills it in, with no session
-switches. No inbox item is a repository, so a prompt for repositories previews with **A sample
-repository** alone, acme-org/example-repo (its default branch `main`, its remote `origin`), in the
-clone, or, with **In a worktree**, in `deps-20260115`, as an upgrade names its worktree, and the
-cheat sheet's values are the sample repository's.
+worktree** and **At the PR's head** above it. For an outside contributor's or a bot's item, and for
+a pull request that changes sensitive files, it also shows the lines such a prompt ends with. Below
+it are its length and **Copy**, which copies the text as a launch sends it, those lines included.
+The text and its undo history are kept while previewing, so Edit picks up where it was. A review
+reply previews as the review sheet fills it in, with no session switches. No inbox item is a
+repository, so a prompt for repositories previews with **A sample repository** alone,
+acme-org/example-repo (its default branch `main`, its remote `origin`), in the clone, or, with **In
+a worktree**, in `deps-20260115`, as an upgrade names its worktree, and the cheat sheet's values are
+the sample repository's.
 
 ## Launch settings
 

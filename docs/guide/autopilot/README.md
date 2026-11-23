@@ -240,7 +240,9 @@ Asked rebase**, **⚡ Updated branch**, **⚡ Commented**, **⚡ Labeled**, **�
 checks on its agent's push came to (**⚡ Fixed**, **⚡ Still failing**, **⚡ Overtaken**, and the rest
 of [the verdicts](wait-for-the-checks.md)); what a step after the run sent (**⚡ Merged**, **⚡
 Auto-merge on**, **⚡ Approved**, **⚡ Changes requested**, **⚡ Reviewed**, from [Merge it and Post
-the agent's review](merge-and-post-review.md)); one that waits or works says so (**⚡ Needs you**,
+the agent's review](merge-and-post-review.md)); **⚡ Notes ready** once an agent [in the
+background](agents-in-the-background.md) in **Read only** finished, leaving its notes, and no step
+posted them or did anything else; one that waits or works says so (**⚡ Needs you**,
 **⚡ Working**, **⚡ Checking**), and one that ended without acting says why, each reason in words of
 its own (**⚡ Gave up**, **⚡ You skipped it**, **⚡ Skipped: an outside contributor's**, **⚡ Left
 alone**). Click it for the item's history with the routines: each match, newest first, with its

@@ -31,7 +31,7 @@
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh [searches=5]` | Five live, read-only inbox refreshes and the API budget they imply; with `searches`, each also reads that many routine searches over your account, and the report adds the watch passes |
-| `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
+| `magex measure:launch [agent=codex]` | One real launch in iTerm2, timed until the agent runs in the clone; `agent` picks the coding agent, `claude` (the default) or `codex`, and any other name fails before anything launches |
 | `magex measure:size` | The size of the app binary and the bundle, `bin/Nilbox Dev.app` |
 | `magex measure:all` | Every measurement: size, startup, refresh, and launch, in that order |
 | `magex autopilot:evals [runs=<n>] [case=<glob>] [model=<model>] [budget=<dollars>]` | Runs the eval suite (`internal/describeit/evals`) of the plugin [Describe it](../guide/autopilot/your-own-claude-code.md) installs in your own Claude Code, against this build's plugin: Claude Code's `claude plugin eval` in a temporary folder, the plugin's tools answering from the suite's mocks, so nothing reaches your data, its spend capped at $5 unless `budget` says; run it by hand after the catalog or the skill's words change, since the gate never does |

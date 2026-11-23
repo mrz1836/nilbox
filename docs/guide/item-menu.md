@@ -15,6 +15,15 @@ you hover the card or move focus into it. It gathers everything you can do with 
   and **Dismiss**; on a card in the **Snoozed** or **Dismissed** tab, **Unsnooze** or
   **Restore** instead, and in the **Muted** tab, **Unmute**. The hover buttons stay, so the
   everyday ones are still one click away.
+- **Autopilot**, a submenu, while [Autopilot (beta)](autopilot/README.md#autopilot-beta) is on:
+  **Run a routine**, with a submenu of your routines that are on and act on the item's kind,
+  which runs the one you choose on the item now (greyed while there is none, saying why on
+  hover); **Make a routine from this…**, which opens the builder filled in from the item
+  ([Templates and quick setup](autopilot/templates-and-quick-setup.md#quick-setup));
+  **Describe a routine for this…**, which opens [Describe it](autopilot/describe-it.md#ways-in)
+  with the item attached; and **Why didn't a routine run?**, which shows what a routine decides
+  about the item now, condition by condition, asking GitHub nothing. Running one and asking
+  why are in [Run a routine](autopilot/needs-you.md#run-a-routine).
 - **On GitHub**, when they apply: **Nudge @author…** on a pull request waiting on its author
   (see [Nudge](inbox-cards.md)), **Unassign me** on an item assigned to you, and **Remove me as
   reviewer** on a pull request that asks for your review.
@@ -54,6 +63,7 @@ done, or read, when the work behind it is finished.
 | Comment on an issue | The issue sheet | 1 REST point |
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
 | Add or remove labels | The issue sheet's **Labels**, with triage access | 1 GraphQL point to list the repository's labels (kept 10 minutes), then 1 REST point for all you add, and 1 for each you remove |
+| Ask someone else or a team to review, or take their request off | **Reviewers** on the review sheet, with triage access | 1 REST point for everyone you ask, then 1 for everyone you take off; the picker reads who works on the repository for 1 GraphQL point at most weekly per repository, and 1 REST point more for an organization's teams |
 | Assign or unassign someone else | **Assignees** on the review sheet or the issue sheet, with triage access | 1 REST point for everyone you unassign, then 1 for everyone you assign; the picker reads who can be assigned for 1 GraphQL point at most weekly per repository, and 1 a search only when nothing kept answers it |
 | Mark a GitHub notification done, or read | On its own, once you turn on **Clear them automatically** in Settings → GitHub notifications | 1 REST point each, at most 50 a minute and 300 an hour, and 1 more for one that changed after the work was done, to read who commented last |
 

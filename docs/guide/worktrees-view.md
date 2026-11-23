@@ -98,8 +98,9 @@ list` each time it lists or sweeps:
 - a record whose worktree is gone, removed outside the app or pruned, or whose clone is gone from a
   folder that is still there (a clone on a drive that isn't plugged in keeps its records), is
   forgotten, so neither the inbox nor a launch preview ever claims a worktree that isn't there;
-- a worktree on an item's own `worktree-pr-<n>` or `worktree-issue-<n>` branch with no record is
-  recorded once GitHub links it to its item.
+- a worktree with no record that the app or Claude Code made for an item, or that is on an item's
+  own `worktree-pr-<n>` or `worktree-issue-<n>` branch, is recorded once GitHub links it to its
+  item.
 
 ## In use
 
@@ -171,12 +172,12 @@ until you dismiss it, click **Check again**, or make the next change.
   session did (the ID was reused, after a restart for instance). Anything in doubt counts as a
   running session. A lock you set yourself with `git worktree lock` is never released: the
   drawer shows the `git worktree unlock` command to copy and run instead.
-- **Remove…** checks the worktree again and runs `git worktree remove` without `--force`. Git
-  refuses a dirty or locked worktree, and the row says why. This works for an item still open,
-  such as a session that only answered a question; a branch kept with commits that aren't on
-  GitHub is picked up again by the item's next launch. **Remove N clean worktrees…** removes
-  every clean, unlocked worktree no session runs in, listed in its dialog the same way as
-  **Clean up N finished**.
+- **Remove…** checks the worktree again and runs `git worktree remove` without `--force`. The app
+  refuses a locked worktree before git runs, and git refuses a dirty one; the row says why. This
+  works for an item still open, such as a session that only answered a question; a branch kept with
+  commits that aren't on GitHub is picked up again by the item's next launch. **Remove N clean
+  worktrees…** removes every clean, unlocked worktree no session runs in, listed in its dialog the
+  same way as **Clean up N finished**.
 - **Force remove…** is offered only on dirty, unlocked worktrees no session runs in, and only
   while the running processes can be listed. It runs `git worktree remove --force` after a
   confirmation that lists the uncommitted files it discards (as the drawer lists them, read
@@ -220,8 +221,8 @@ automatic cleanup removed it, which branch went with it, the commit it was at, w
 and when. Pointing at a line shows its actions: **Copy restore command** copies the `git worktree
 add` that brings the worktree back at that commit, on the branch that went with it when one did (for
 a pull request whose head git has pruned since, `git fetch origin pull/<n>/head` fetches it first),
-and the item opens on GitHub. The list survives restarts and keeps the newest 100; **Clear** empties
-it and removes nothing else.
+and the item opens on GitHub. The history survives restarts and keeps the newest 100, of which the
+view lists the newest 50; **Clear** empties it and removes nothing else.
 
 ## Copied work
 
@@ -313,10 +314,10 @@ ticked as those settings say, and you can change any before you confirm.
   pull request, when it merged, and its commit. **Tick merged branches** (on by default) sets
   whether they start ticked.
 
-**Protected branches** are never deleted, by any cleanup: `main` and `master` by default, and
-any you add, as a name or a pattern such as `release/*` (`*` matches any run of characters but
-`/`, and `?` any one). Each repository's default branch (its remote's `HEAD`) and any branch
-checked out in a worktree are always kept too.
+**Protected branches** are never deleted, by any cleanup: `main` and `master` by default, and any
+you add, as a name or a pattern such as `release/*` (`*` matches any run of characters but `/`, and
+`?` any one but `/`). Each repository's default branch (its remote's `HEAD`) and any branch checked
+out in a worktree are always kept too.
 
 A branch is deleted only when nothing is lost: every commit on it is on GitHub (on a
 remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is

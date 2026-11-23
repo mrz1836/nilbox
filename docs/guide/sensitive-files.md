@@ -1,6 +1,6 @@
 # Sensitive files
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/sensitive`](../architecture/sensitive.md), [`internal/launcher`](../architecture/launcher.md)
 
 Reviewing a pull request from outside the project starts with its list of changed files: a
 change to a workflow, a build script, or an agent's settings can do harm long before anyone
@@ -10,11 +10,11 @@ reads the code. The app does that first look for you. It checks the pull request
 - collaborators (people with access to the repository who are not its owner or members of its
   org), unless you choose **Outside contributors** under **Settings → Sensitive files**.
 
-The repository's owner and members, the trusted bots, and you are never checked, so
-Dependabot's `go.mod` updates stay quiet. Whoever opened it, a pull request that one of
-Autopilot's agents committed to is checked for the files the agent's commits changed, at the
-heads it had and left, and holds the next launch there when they include agent configuration
-([Fences](autopilot/fences.md)).
+The repository's owner and members, the trusted bots, and you are never checked on the cards or for
+your own launches, so Dependabot's `go.mod` updates stay quiet; a routine's start checks every pull
+request you didn't open. Whoever opened it, a pull request that one of Autopilot's agents committed
+to is checked for the files the agent's commits changed, at the heads it had and left, and holds the
+next launch there when they include agent configuration ([Fences](autopilot/fences.md)).
 
 ## What counts
 
@@ -58,10 +58,10 @@ between two readings of the head commit, so the list belongs to one commit. A re
 20 pull requests, 4 at a time, within 30 seconds; the rest show **Files not checked yet** until the
 next one. A check that fails never fails the refresh: its card says so, and the next refresh tries
 again. GitHub lists at most 3,000 files, so a larger pull request is marked as not fully checked. A
-check stores only paths, never content, and is removed when its item leaves the inbox. (The [review
-sheet](reviewing-a-pull-request.md) keeps the diffs of the pull requests you open in it, in its own
-bounded cache on this Mac; when it reads a pull request's files, that list serves as the check too,
-so one request does both.)
+check stores only paths, never content, and is removed when its item leaves the inbox, unless a
+routine's search still watches it. (The [review sheet](reviewing-a-pull-request.md) keeps the diffs
+of the pull requests you open in it, in its own bounded cache on this Mac; when it reads a pull
+request's files, that list serves as the check too, so one request does both.)
 
 ## Opening a session
 

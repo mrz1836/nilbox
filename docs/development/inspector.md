@@ -45,14 +45,14 @@ refused, and the connection can't write besides.
 | `magex inspect:status` | The build, the process and its Go runtime, the data's paths, the window, the page, and how much each feed keeps |
 | `magex inspect:logs [n=] [level=] [grep=] [follow=true]` | The log, the last `n` (100) records at `level` and up holding `grep`; `follow=true` keeps printing until interrupted |
 | `magex inspect:events`, `inspect:console`, `inspect:trail` | The services' events, the page's console, and your trail, read the same way |
-| `magex inspect:watch [level=] [grep=]` | The log, the events, the console, and the trail together, live, until interrupted |
+| `magex inspect:watch [n=] [level=] [grep=]` | The log, the events, the console, and the trail together, live, until interrupted, after the last `n` of each (none unless asked) |
 | `magex inspect:point [on=false]` | Turns pointing on in the window, as ⌥⌘P does (not while it is turned off in Settings); `on=false` turns it off |
 | `magex inspect:notes [n=] [all=true] [follow=true] [wait=true]` | The open notes you left by pointing, each picture saved as `bin/inspect/note-<n>.png` with the element boxed; `all=true` shows the done ones too, `follow=true` keeps printing each new note until interrupted, and `wait=true` waits for the next note, prints it, and returns |
 | `magex inspect:notes done=2,3` or `done=all`, `clear=true` | Marks notes done, or empties the list |
-| `magex inspect:sql q="SELECT …" [max=]` | One statement that reads, against the live database, at most `max` (200) rows; a long value is cut short (`json=true` prints it whole) |
+| `magex inspect:sql q="SELECT …" [max=]` | One statement that reads, against the live database, at most `max` (200) rows, and never more than 10,000 whatever `max` asks; a long value is cut short (`json=true` prints it whole) |
 | `magex inspect:tables` | The database's tables and their row counts |
-| `magex inspect:js code="…"` or `file=probe.js` | Runs JavaScript in the window's page and prints what it returns, once a promise settles: an expression, or statements that `return`. `nb` holds helpers: `nb.$`, `nb.$$`, `nb.find`, `nb.describe`, `nb.dom`, `nb.text`, `nb.cards`, `nb.click`, `nb.type`, `nb.press`, `nb.scroll`, `nb.wait`, and `nb.waitFor`, each taking a selector or the name a control shows |
-| `magex inspect:dom sel="…" [styles=true] [html=true]` | The elements a selector matches as the web view lays them out: where each is, whether it is on screen and drawn, and its computed styles and HTML when asked |
+| `magex inspect:js code="…"` or `file=probe.js`, `[timeout=]` | Runs JavaScript in the window's page and prints what it returns, once a promise settles, waiting `timeout` seconds (15) at most: an expression, or statements that `return`. `nb` holds helpers: `nb.$`, `nb.$$`, `nb.find`, `nb.describe`, `nb.dom`, `nb.text`, `nb.cards`, `nb.click`, `nb.type`, `nb.press`, `nb.scroll`, `nb.wait`, and `nb.waitFor`, each taking a selector or the name a control shows |
+| `magex inspect:dom sel="…" [styles=true] [html=true] [limit=]` | The first `limit` (50) elements a selector matches as the web view lays them out: where each is, whether it is on screen and drawn, and its computed styles and HTML when asked |
 | `magex inspect:cards` | The inbox's cards: each one's list, rule, and place, and whether the web view draws it and what is inside it |
 | `magex inspect:click target="…"` | Clicks a control, by selector or by the name it shows |
 | `magex inspect:shot [out=]` | Saves a picture of the window as its web view draws it, to `out` or `bin/inspect/shot-<time>.png` |

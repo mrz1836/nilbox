@@ -1,6 +1,6 @@
 # The Notifications page
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md), [`internal/ghthreads`](../architecture/ghthreads.md), [`internal/threadrules`](../architecture/threadrules.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/notify`](../architecture/notify.md), [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md), [`internal/ghthreads`](../architecture/ghthreads.md), [`internal/threadrules`](../architecture/threadrules.md)
 
 The **Notifications** tab, beside **Inbox**, holds everything the bell and the GitHub button
 are quick views of, on two tabs: **Nilbox**, the app's own notifications, and **GitHub**, your

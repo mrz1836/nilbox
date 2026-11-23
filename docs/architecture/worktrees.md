@@ -101,6 +101,38 @@ only counted, so a worktree with tens of thousands of untracked files costs litt
 than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
 read. Keeping them runs no git of its own.
 
+## The launch records (`internal/worklog`, `reconcile.go`)
+
+`internal/worklog` owns `worktree_records` (migration `0102_runs_and_caches`), one row per clone
+and item worktree name (`pr-<n>`, `issue-<n>`), read as a `worklog.Record`: its folder (`Path`,
+or `""` for a record kept before the app made worktrees itself, whose `Dir` is
+`<clone>/.claude/worktrees/<name>`, `worklog.LegacyDir`), branch, item, the latest session's agent
+and start (`Agent`, `LastAgentAt`), `Launches`, `CreatedAt`, and `FetchedHead`. `Store.Record`
+refuses an incomplete or malformed record (`ErrInvalidRecord`) and upserts on the clone and the
+name, keeping `created_at`, the agent, and the launches, and the stored `fetched_head` unless the
+new record names one. `Touch` counts a launch with its agent and time (`ErrNotRecorded` without a
+row); the launcher calls it for each session it starts in an item's worktree, and core's
+`backgroundAgents` for a routine's run in the background.
+
+The service writes a record in `recordWorktree`, once Ensure has made or found an item's worktree
+(never a task's); in `adopt`, for an unrecorded worktree linked by `name` that the app or Claude
+Code made or that is on an item's own `worktree-pr-<n>` or `worktree-issue-<n>` branch, unless the
+clone already has a recorded worktree of that name; and in `rerecord`, for one that moved. A
+record links its worktree to the item exactly (`LinkedItem.Launched` when `Launches` is over 0),
+finds it for the item's next launch (`Maker.record`), and brings its clone into the sweep; whether
+a worktree may be removed is still decided from git and GitHub each time.
+
+`reconcile` checks the records, read before git lists anything, against each listing's rows. A
+record matches the row at its `Dir`, else the one on its branch, never the main worktree or one
+whose folder is gone, so a worktree moved with `git worktree move` is rerecorded, and marks it
+(`markRecorded`: `Managed`, `Agent`, `Launches`, `LastLaunchedAt`, `OwnBranch`). One whose clone
+wasn't listed is forgotten only when the clone's folder is gone and its parent folder is there
+(`cloneGone`); one whose clone git couldn't read is kept. One no row matches is forgotten
+(`forgetStale`) only once git, asked again under the clone's lock, still lists nothing for it: a
+launch holds that lock from finding the item's worktree to recording it, and the lock is only
+tried (`tryClone`), so a busy clone keeps the record for the next listing. A failed write is only
+logged.
+
 ## Linking a worktree to its item
 
 A worktree is linked to its pull request or issue by its record, by the name of the folder the app
@@ -346,3 +378,163 @@ Core builds the worktree service before the terminal, which needs the launcher, 
 the worktrees, so the service's `FolderOpener` is a core adapter (`worktreeTerminal`) filled
 in once the terminal is built, before any work starts, which opens the folder as
 `scriptrun.FolderScript`.
+
+## In use: the running processes (`sessions.go`)
+
+A worktree is in use while a process works in it (`Worktree.InUse`, each a `Session`: PID,
+program, followed agent, and `By` for a run). A listing or sweep reads the processes once, before
+git lists anything (`processes`, over core's `procs.System`; see
+[Shared building blocks](shared-building-blocks.md)), and resolves their folders once
+(`markSessions`, `procs.Locate`): one counts when its folder is the worktree or inside it,
+symbolic links resolved. Left out are the app and its children (`procs.Others`), and an agent's
+background service with everything under it (`procs.WithoutServices`, over each `agent.All()`
+spec's `Command`): a process of an agent's command whose parent is PID 1 or a process named
+`launchd`, `init`, or `systemd`, as Codex's app-server daemon is. A process another listed one
+started is folded into its furthest listed ancestor (`sessionsOf`, `rootOf`), and a followed agent
+(by PID, from `AgentProcesses`, the sessions ledger) folded into an unfollowed one stands for it.
+The app's own runs, which the process list leaves out, count too (`RunFolders`, from core's
+`backgroundAgents`).
+
+When the processes can't be listed, the listing sets `Snapshot.SessionsUnknown`: no process is
+found in any worktree (runs still are), no row is `CanForceRemove`, and the sweep removes nothing.
+With no `Procs` lister, the processes count as listed, and none runs. A removal reads them again
+for its folder (`checkSessions`) and refuses a worktree something works in with an `InUseError`
+(`ErrInUse`, naming each, as in `codex (pid 4242)`). Called `strict`, as a force removal and the
+automatic cleanup call it, it also refuses with `ErrSessionsUnknown` when they can't be listed,
+while a plain removal or a cleanup the user asks for goes ahead, since git refuses a worktree with
+changes and the locks still guard it.
+
+## Agent locks (`lock.go`)
+
+Claude Code locks a worktree for a session with a reason `parseAgentLock` reads
+(`claudeLockPattern`, mirroring the agent's own): `claude session <name> (pid <pid>)` or
+`claude agent` likewise, with an optional `start <time>` in `time.ANSIC` form, no zone. From each
+lock's reason in `git worktree list --porcelain -z`, `judgeLock` sets `AgentLock`, `StaleLock`
+(`endedAgentLock`), and `CanUnlock`. `sessionEnded` probes the PID (`procs.Probe`): gone, the
+session ended; running, it ended only when that process started (`procs.StartedAt`) more than
+`startSlack` (2 seconds) after the latest moment the recorded start can name (`latestStart`: the
+start read as UTC and in the machine's zone, the later kept), so the PID was reused. Anything else
+keeps it running: an unknown answer, a PID `procs.ValidPID` refuses, a missing or unreadable
+start. Off macOS `processStart` reads no start, so a live PID always counts as the session.
+
+A live agent lock makes its worktree `StageInUse`, and a lock set by hand leaves it no stage
+(`lockedStage`); a stale lock leaves the stage to the rest, so a finished worktree is still
+`CanCleanUp`, though never `CanRemove`, which needs it unlocked. `Unlock` holds `act` and the
+clone's lock, lists the worktrees again, and runs `git worktree unlock <path>` only for an ended
+agent lock, else refusing with `ErrNotLocked`, `ErrHandLock` (a reason the pattern doesn't match,
+the user's to release), or `ErrSessionRunning`. A cleanup releases a stale lock the same way
+(`unlockEntry`), after checking no process works there, and only while the reason is the one
+assessed (`ErrChanged`).
+
+## Removing a worktree (`service.go`, `cleanup.go`)
+
+Each removal holds `act` for the whole call, and the clone's lock (`holdClone`) from its last
+checks to its last change; `Remove`, `ForceRemove`, and `CleanUp` refuse a clone a run holds
+before assessing it, which would cost git and GitHub requests (`checkNoRun`).
+
+`Remove(repoPath, path, branches)` assesses the clone alone again, GitHub included (`assessClone`;
+`ErrOutsideCloneRoot`, `ErrNotAWorktree`, `ErrMainWorktree`). Then `removable` lists the worktrees
+again and refuses a locked one (`ErrLocked`), one whose HEAD moved since (`ErrChanged`), and, unless
+its folder is gone, one a process works in, and `git worktree remove <path>` runs without `--force`
+(`allowedRemove` takes a path and at most one `--force`); git's refusal is a `RefusedError`
+(`ErrRemovalRefused`), its `Reason` `has uncommitted changes`, `is locked`, git's line, or `git
+exited with an error`; a failure git didn't refuse (`gitRefused`) is a plain error. `ForceRemove`
+adds `--force` and `strict`, and `discardable` refuses a folder that's gone (`ErrPrunable`) or
+nothing to discard (`ErrNotDirty`). `RemoveAllClean(picks)` takes one fresh listing and removes each
+`Pick` still `CanRemove` as `Remove` does. `Prune` runs `git worktree prune` under the same locks.
+`Maker.Discard` is `Remove` with the task's branch. After a removal, `forgetRecord` drops its launch
+records and its copy record, by the path as `paths.Resolved` resolved it beforehand; the branches
+named go next (`deleteChosen`), and the `RemoveResult` says why any was kept.
+
+`CleanUp(repoPath, path, branches)` takes only a worktree assessed again as `CanCleanUp`
+(`StageFinished`), refusing a path that isn't one of its linked worktrees (`ErrNotAWorktree`) and
+the main worktree (`ErrMainWorktree`), and any other with `ErrGitHubUnavailable` or `ErrNotFinished`
+and `notFinishedReason`, and wraps a later refused step, a busy clone aside, in `ErrCleanUpFailed`.
+Each step checks git again (`cleanUpRow`, `removeFinished`): a locked worktree has its ended agent
+lock released (above), then `removable` runs with the commit assessed, and `git worktree remove`
+without `--force`. Last it records the cleanup (`recordCleanup`), which no other removal does.
+`CleanUpFinished(picks)` takes one fresh listing, fails whole when that couldn't ask GitHub, and
+cleans up each pick still `CanCleanUp`. The sweep runs `cleanUpRow` with `automatic`, which makes
+its process checks `strict`.
+
+## Deleting a branch (`branches.go`)
+
+A removal offers the worktree's own `worktree-<name>` branch (`BranchOwn`), checked out there or
+left beside it, and, for a worktree linked by `name` to a pull request, that pull request's head
+branch when the worktree has it checked out (`BranchPullRequest`), both judged from the listing's
+one read of the refs (`markRepo`), and for an own branch left beside the worktree, not at its pull
+request's head, one `rev-list --count` (`branchOnGitHub`). `judge` gives the first `Reason` that
+holds: a remote's default branch, a protected pattern (`branchrules.Matches`), checked out in the
+clone or another worktree, or commits not on GitHub (`headSafety` at the worktree's HEAD,
+`branchOnGitHub` elsewhere); otherwise the branch is `Deletable`. `deleteChosen` deletes only names
+offered and `Deletable`, through `deleteBranchAt`, under the removal's clone lock: a full commit ID
+(`ErrChanged`), no worktree on the branch now (`ErrBranchInUse`), then `git update-ref -d
+refs/heads/<branch> <oid>`. The sweep picks the deletable branches whose kind `Rules.Own` or
+`Rules.PullRequest` takes (`defaultBranches`).
+
+`MergedBranches` changes nothing: per clone with a GitHub remote, `listConcurrency` (8) at a time,
+it takes the local branches but the remotes' defaults, the protected ones, and invalid names
+(`branchCandidates`), and asks GitHub `MergedPullRequests` by name (50 names a request,
+`mergedBatch`) and `ItemStates` for a `worktree-pr-<n>` branch's pull request. A branch nothing has
+checked out is `Deletable` when it is at or behind a merged head (`inMerged`, `merge-base
+--is-ancestor`) or has no commit missing from the remote-tracking branches; otherwise it holds
+`Unpushed` (-1 when the count failed; [the opening notes](#internalworktrees) give the exception). A
+checked-out branch holds only its `Reason`. `DeleteBranches(picks)` holds `act` and each clone's
+lock, reads each clone once (`readCloneBranches`, refusing a clone the locations don't hold with
+`ErrOutsideCloneRoot`), and checks each `BranchPick` again: `ErrInvalidRequest`,
+`ErrBranchProtected`, `ErrBranchGone`, `ErrBranchMoved`, `ErrBranchInUse`, then `update-ref -d`.
+
+## Branch rules (`internal/branchrules`)
+
+`branchrules.Rules` are four `prefs` keys settings writes together (`SetBranchRules`,
+`Rules.Encode`) and the service reads (`SweepSettings.Branches`): `branches.own` (`Own`),
+`branches.pullRequest` (`PullRequest`), `branches.merged` (`Merged`, which the worktrees package
+never reads; the merged branches dialog starts from it), and `branches.protected` (`Protected`, a
+JSON list). `Defaults` turns each switch on and protects `main` and `master` (`DefaultProtected`).
+The switches only set which boxes start ticked and what the sweep takes; `Protected` refuses: no
+removal, sweep, or merged-branch cleanup deletes a branch it matches (only `verifyHead` in
+`create.go` deletes, unchecked, the branch its own fetch just made). `Normalize` trims, drops empty
+patterns and repeats, and refuses over `maxPatterns` (100, `ErrTooManyPatterns`) and, with
+`ErrInvalidPattern`, a pattern over `maxPatternLen` (200) bytes, holding a space or a control
+character, or one `path.Match` refuses. `Decode` keeps a switch's default when it is unstored or
+unreadable, keeps an empty list empty, and falls back to `DefaultProtected` for a list it can't read
+or normalize. `Matches` runs `path.Match` on the whole name: `*` matches any run of characters but
+`/` (`release/*` protects `release/1.2`, not `release/1.2/fix`), `?` any one but `/`, `[a-z]` one of
+a set; a plain name protects that branch.
+
+## The cleanup history (`history.go`, `worktree_cleanups`)
+
+`recordCleanup` stores each worktree `cleanUpRow` removed, by hand or by the sweep, as a
+`worklog.Cleanup` (in `worktree_cleanups`, migration `0102_runs_and_caches`): `CleanedAt`,
+`Automatic`, the clone's and the worktree's folder names, `DisplayPath`, the branches deleted
+joined with `, ` (`DeletedBranch`), `Head`, and the item. A failure is only logged.
+`Store.RecordCleanup` refuses one without a repository or worktree name (`ErrInvalidCleanup`), and
+in one transaction inserts it and keeps the newest `KeepCleanups` (100) by `cleaned_at`, then `id`
+(`TrimCleanups`). The service's `RecentCleanups` returns the newest `recentLimit` (50) for the
+window, and `ClearCleanups` deletes every row and nothing else.
+
+## The sweep (`sweep.go`)
+
+`Sweeper` runs `Sweep` on a `periodic.Job`: now, then from the end of each sweep as often as the
+`refresh.worktrees` setting says (300 seconds by default; `DefaultSweepInterval`, 5 minutes, when
+`NewSweeper` gets no `Every`); `Wake` reads the setting again. A sweep holds `act` throughout and
+lists only `sweepClones`: the locations' clones with an entry in their managed root or
+`.claude/worktrees`, found without git (`managedCloneDirs`, skipping one reached through a symlink
+unless it is a clone location), and those of the records the locations hold. With none, it only
+drops the records whose clone is gone; else it assesses them as a listing does (`assessClones`),
+and its report's `Error` is the listing's `LinkError`, or why the sweep couldn't run.
+
+With automatic cleanup on (`Enabled`, `worktrees.autoCleanup`) and the processes listed, it skips
+the clones a run is using (`skippedClones`) and cleans up each worktree `autoCleanable` takes,
+with the branches `defaultBranches` names, into `Cleaned` or `Failed`; a run that took the clone
+meanwhile (`clonelock.BusyError`) leaves it for the next sweep. `autoCleanable` takes a finished
+worktree with an item (`sweepMayTake`: one linked by its pushed branch or copies only when
+`Managed`, one on GitHub only as copies only once `copyState.merged`, see
+[Copied work counts as on GitHub](#copied-work-counts-as-on-github-copyjudgego)):
+a merged pull request's when the app launched a session there (`LinkedItem.Launched`) or HEAD is
+its head, a closed issue's when the app launched one there, and, linked by copies, the merged pull
+request its copy record names. Each worktree left `CanCleanUp` or `StageNeedsReview` counts in
+`Leftover`. `WorktreeCount`, counted last without git (`countWorktrees`: each common git folder's
+`worktrees/` entries with a non-empty `gitdir`), leaves out what it removed. The report is kept
+for `LastSweep`, and `event.WorktreesUpdated` goes out when the sweep removed a worktree or
+`Leftover`, `WorktreeCount`, or `Error` changed.

@@ -26,6 +26,17 @@ the edits, with counts of its own (50 a minute, 300 an hour, a second apart), th
 the same hold, so a wait GitHub asks of either lane stops both;
 `internal/repoguard/githubwrites_test.go` keeps it so.
 
+The edits' own lane (`AllowWrite`) sends at most `budget.WritesPerMinute` (60) a minute and
+`WritesPerHour` (400) an hour, Autopilot's included: under GitHub's own limits on requests that
+create content (80 a minute and 500 an hour), with room left for the user's other tools, which share
+them. The reserve every lane keeps is `budget.Reserve(limit)`, a hundredth of the budget's limit
+and never under 10 points (50 of a 5,000-point budget): an edit or a chore is refused while the
+budget it spends from (the REST budget for `edit` and `chore`, the GraphQL budget for `mutate`), as
+last read, is down to its reserve, until the budget refills, so that much is left for everything
+else signed in as the user (`gh`, coding agents). Every change a lane allows is counted, sent or
+not, so the pace errs on the side of fewer, and a refusal says when the next may go, in words and
+as `budget.RetryIn`: the longest wait when several limits refuse at once.
+
 A bulk mark (Mark all done) sends the same `DELETE` (`MarkThreadDoneInBulk`), through `chore` with
 its lane named last, which asks the gate's `AllowBulkChore`: a third lane, the bulk lane
 (`budget.BulkPerMinute` 40, `BulkPerHour` 1,200, `BulkGap` 1.5 seconds apart), so a long job never
@@ -51,6 +62,61 @@ Every request carries what it was sent for (`github.WithPurpose`: the inbox's re
 searches, the checks follower, or Autopilot's own reads), and the `Tracker` splits each budget's
 spend by it (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in
 one line, only once it spent something.
+
+## The token and the account it belongs to
+
+The token is the GitHub CLI's, borrowed and kept in memory only. `github.TokenSource` runs
+`gh auth token --hostname github.com` and hands what it prints to every caller for
+`github.TokenTTL` (10 minutes), and callers that ask while `gh` runs share that one run. It asks
+`gh` again sooner once the token is dropped:
+
+- `WithToken` runs a call with the token, and when GitHub refuses it as bad credentials
+  (`IsBadCredentials`: a 401, or a `Bad credentials` message) it calls `Forget` and runs the call
+  once more with a fresh token. `Forget` drops the token only when it is the one held, so callers
+  refused with the same old token never throw away one borrowed since.
+- A token borrowed before `gh`'s hosts file changed is never handed out again: core hands the
+  source the file `GHHostsFile` finds (`WithHostsFile`: `hosts.yml` in `GH_CONFIG_DIR`, else in
+  `XDG_CONFIG_HOME/gh`, else in `~/.config/gh`), whose size and modification time each `Token`
+  compares with what they were as the borrow began, and `gh auth switch`, `login`, and `logout`
+  rewrite it.
+- `Core.Close` calls `Clear`, which drops the token, whatever it is, as the app quits.
+
+A missing `gh` is `ErrGHNotFound` and a `gh` with no token `ErrNotLoggedIn`, each with a sentence
+for the user, and neither carries the command's output. A `Token` prints as `[redacted]` in every
+format, and every error that leaves the package is scrubbed of the token's text (`Redact`).
+
+`github.ViewerCache` (`internal/github/viewercache.go`) remembers the account the last token it was
+told of belongs to, so its holder asks GitHub who a token is (`FetchViewer`, one GraphQL point)
+only for a token it hasn't seen. It keeps the token in memory alone, as the `TokenSource` does, and
+only compares it (`Token.Same`, in constant time); the zero value is ready. The inbox holds one
+(`Service.viewers`), which each refresh tells of the inbox query's viewer and which an edit checks
+against the account whose inbox the user sees (`checkViewer`), so an edit never acts for another
+account after `gh auth switch`; the GitHub notifications' service (`internal/ghthreads`) holds
+another.
+
+## The budget the window shows
+
+`budget.Service` is the `Tracker`'s bound face. `Gauge` returns every budget (`GraphQL`, the REST
+budget as `Core`, and `Search`) as the app's latest responses left it, with what the app spent from
+each since it last refilled (`Reading.Spent` and `Requests`; `Complete` is false when the app opened
+after the budget last refilled, so it missed what was spent before); what the last whole inbox
+refresh cost (`Gauge.Refresh`: its GraphQL points and how many items it tracked, which the inbox
+records with `Tracker.Refreshed`); `RefreshesPerHour`, an hour divided by the inbox's refresh
+interval as Settings → Refreshing sets it now, from which the window works out the app's hourly
+pace; and the three lanes (`Writes`, `Chores`, `Bulk`, each with the REST budget's reserve as
+`Writes.Reserve`). `Check` reads every budget from GitHub's `GET /rate_limit` (`FetchRateLimits`,
+which costs no budget, through `WithToken`) unless all three were read within `budget.FreshFor` (10
+seconds), and calls that come while one runs share it; the readings reach the `Tracker` through the
+client's `RateObserver`, as every response's do, and a failed read returns the gauge as it was, with
+the error. The window reads `Gauge` again on each `event.BudgetUpdated`, which the `Tracker` emits
+on every change (`lib/useBudget`), and its budget menu calls `Check` as its panel opens and every 30
+seconds while it stays open (`checkEveryMs`).
+
+At startup core starts the `Tracker` from the state the `Saver` kept (`Restore`, from the prefs key
+`budget.state`). Without one it can read, as on the first run of a build that keeps it, it seeds it
+from the readings the last refresh stored (`Tracker.Seed`), each for a budget it has no reading of
+yet, so the window shows them until the first response; a seeded budget counts nothing the app
+spent, which was spent in another run.
 
 ## Held workflow runs
 

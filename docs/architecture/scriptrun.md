@@ -6,10 +6,11 @@
 scripts, a clone's pull, and a tool's own update), and a routine's agent in the background
 (`KindAgent`: its own retention and log age, its stdin and folder, never on the Runs page or told as
 a failure), and follows them, in the app or in the user's terminal, and owns `script_runs`. The
-`Engine` is never bound, since a `Spec` holds functions: `Start` takes the clone's lock first and
-fails at once when the clone is busy, runs the program through `execpath.Start` in its own process
-group, writing straight into its log in `<data>/script-runs` (four runs at a time in the app; a
-release never waits for a slot), and ends it with a per-kind timeout or the stop ladder.
+`Engine` is never bound, since a `Spec` holds functions: `Start` takes a slot for a run in the app,
+then the clone's lock, failing at once when the clone is busy, runs the program through
+`execpath.Start` in its own process group, writing straight into its log in `<data>/script-runs`
+(four runs at a time in the app; a release never waits for a slot), and ends it with a per-kind
+timeout or the stop ladder.
 
 A spec's `Before`, run under the lock and a slot, may work the command out there, and its `Progress`
 says how far the run has got and whether Stop is let through now: the bound `Run` carries it, `Stop`

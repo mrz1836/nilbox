@@ -19,7 +19,8 @@ notifications](menu-bar.md)).
   counts as a check even when the manifest is refused; one that never got an answer doesn't.
   The menu bar's **Check for Updates…** checks at once, whatever **When a new version is out**
   says, and shows how it went for a minute: **Up to date (0.2.0)**, **Check failed** (hover for
-  why), or the version it found.
+  why), or the version it found, with **Download failed** under it (hover for why) when its
+  download then failed.
 - **Trusting it.** The manifest is taken only when its Ed25519 signature verifies with the key
   the app pins (`update.ReleaseKey`), it is for this Mac's build (`darwin-universal`), and its
   version is a release, not a prerelease. Anything else is an error the app keeps, and nothing is

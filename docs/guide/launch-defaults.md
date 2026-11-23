@@ -1,6 +1,6 @@
 # Launch defaults
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launchdefaults`](../architecture/launchdefaults.md), [`internal/launcher`](../architecture/launcher.md)
 
 **Settings → Repositories → Launch defaults** sets what launches use for an org's repositories,
 or for one repository: the coding agent; a profile, a model, and extra flags for each agent; the

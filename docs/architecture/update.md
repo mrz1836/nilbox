@@ -150,6 +150,24 @@ already past), stops the shell in order (closing the database, waited for at mos
 `FinishStopWithin`, 3 s) and exits (`desktop.Config.Exit`, `os.Exit` but in tests), before the
 helper's 30-second wait ends, logging each step.
 
+Three of the bound `Download`'s and `Restart`'s refusals are ones the window answers on its own, so
+each comes as an `update.RefusalError`: its message and chain are the refusal's (`errors.Is` still
+sees `ErrSettling`, say), and its `Detail` (`RefusalDetail`, `{"code": "..."}`, through
+`desktop.MarshalError`, as a `RunsGoingError`'s runs are) names it with a `RefusalCode`, which the
+window tells them apart by, never by the words:
+
+- `settling` (`RefusalSettling`, with `ErrSettling`): either call while the start isn't settled.
+  The same click works in a moment, so the window says so quietly and offers the update again.
+- `finishing` (`RefusalFinishing`, with `ErrFinishing`): a restart while an earlier one finishes.
+  The app is quitting on its own so the update installs, so the window offers nothing to click. A
+  move's `ErrFinishing` (under `ErrUpdating`) carries no code.
+- `uninstallable` (`RefusalUninstallable`, with `ErrUninstallable`, from `uninstallableError`):
+  either call for an update that failed to install for good. Trying again fails the same way, so
+  the window offers only its release page, never Try again.
+
+The window reads the code in `refusedOf` (`frontend/src/platform/index.ts`), and takes a code it
+doesn't know as any other failure.
+
 `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner` lifts it,
 `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in Finder. It writes only
 the `update.*` state keys (`update.lastCheck`, `update.notified`, `update.bannerHiddenUntil`,

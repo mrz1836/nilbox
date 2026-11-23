@@ -1,6 +1,6 @@
 # Coding agents and profiles
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [Shared building blocks](../architecture/shared-building-blocks.md), [`internal/launcher`](../architecture/launcher.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/profiles`](../architecture/profiles.md), [Shared building blocks](../architecture/shared-building-blocks.md), [`internal/launcher`](../architecture/launcher.md)
 
 Nilbox launches two coding agents, **Claude Code** (`claude`) and **OpenAI Codex** (`codex`),
 and treats them the same way: each has its own profiles, its own model and effort lists, and

@@ -60,6 +60,23 @@ all go through one runner, which keeps a record of each run and its whole output
   result is read from the hook files against the hooks it started from, and a checks run, whose
   result names the files the checks changed, from git's status of the clone against the one
   taken as they started.
+- **The Runs page.** Scripts → **Runs** lists every run the history keeps, newest first, and lists
+  them again as a run starts, changes, or ends. Each row shows the run's status (**Running**,
+  **Done**, **Failed**, **Stopped**, **Interrupted**, or **Orphaned**), its title, and when it
+  started (hover for the exact time); on the line below, its repository, or its folder when that
+  isn't one, **In Nilbox** or in the terminal chosen in Settings → Launching, how long it took once
+  it ended; under that, its result. Click a row to open the run in its panel beside the list. The
+  buttons above the list pick the kind of run it shows: **All**, **Release**, **Hooks** (hooks
+  actions and checks), **Scripts** (scripts and pulls), or **Updates** (a tool updating itself).
+  **Search repositories…** keeps the runs whose `owner/name` holds what you type, in any case, so it
+  never finds a run in a folder that isn't a repository. Both filter what the page has listed,
+  asking nothing again. A routine's agents in the background are never listed here ([Agents in the
+  background](autopilot/agents-in-the-background.md)).
+- **Clear history**, beside the page's title, is off until a run has ended. It asks first,
+  **Clear the run history?**: *This forgets every run that has ended, with its log. Runs still
+  going stay.* Its **Clear history** forgets every ended run, whatever the filter shows, and
+  closes the panel unless the run in it is still going. The agents' runs stay: **Clear
+  history…** in [Settings → Autopilot](autopilot/settings.md) forgets those.
 - **The run panel.** A run's panel shows its status, its result, and its log as it comes
   (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
   your terminal in the run's folder and runs nothing there; **Show the log file** shows the log

@@ -1,6 +1,6 @@
 # Menu bar and notifications
 
-[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md)
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/menubar`](../architecture/menubar.md), [`internal/notify`](../architecture/notify.md), [`internal/notifyprefs`](../architecture/notifyprefs.md), [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md)
 
 ## The menu bar icon
 
@@ -18,6 +18,9 @@ menu:
   or **Yours** (a native section heading on macOS 14 and later), and **N more…** for the rest. Hover an item for its full title. Click it to bring the window forward with the
   item in view: its list opens at the tab that holds it, and its row scrolls into view,
   highlighted for a moment.
+- While Autopilot (beta) is on and you have a routine, an **Autopilot** group: the routines'
+  agents working, what waits for your OK, and **Pause Autopilot** (see [Autopilot's
+  notifications and the menu bar](autopilot/notifications-and-menu-bar.md)).
 - In a build that updates itself (see [Updates](updates.md)): **Check for Updates…** (**Checking
   for Updates…** while a check runs), then **Restart to Update (0.3.0)** once a new version is
   ready, or **Update to 0.3.0…** while one is found but not downloaded, which bring the window
@@ -27,8 +30,9 @@ menu:
 - **Quit Nilbox** (⌘Q).
 
 The menu is redrawn whenever the inbox changes, after a refresh or a snooze, dismissal, or pin
-in the window, when a snooze ends, when a session changes what it is doing, and when the
-update's rows change, so the count is right without waiting for a refresh.
+in the window, when a snooze ends, when a session changes what it is doing, when Autopilot's
+group changes, and when the update's rows change, so the count is right without waiting for a
+refresh.
 
 ## Closing the window
 
@@ -100,7 +104,7 @@ brings the window forward with its item in view. A release is about no item: its
 repository and the version, and clicking it opens the tag on GitHub, the release once it is
 published, or the failed run once its workflow failed. So is a failed run: its banner gives the
 repository (none for a folder that isn't one), what failed, and how it ended, and clicking it opens
-the run in Scripts → Runs. Failed runs that come within 2 seconds of each other show their banners
+the run in Scripts → Runs. Failed runs that come within 2 seconds of the first show their banners
 together, and more than three as one, such as **5 new notifications: 5 failed runs**. A service
 status change is about no item too, and clicking its banner opens the incident, or the service's
 status page. Clicking a banner marks its entry read; a banner that sums several up marks none.

@@ -14,25 +14,35 @@ and readable only by you:
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
 database, a copy of it is saved next to it, and the three newest copies are kept. A
 [reset](starting-over.md) sets the database aside as `nilbox.db.reset-<UTC time>`, and keeps the
-three newest of those too. Beside it,
-`prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
-defaults in plain JSON, each rewritten after every change (see
-[Keeping your prompts](prompts.md#keeping-your-prompts)), and `autopilot.json` the same kind of copy of
-your [Autopilot](autopilot/README.md) routines ([its format](../backup-files.md#autopilot)). Agent
-profiles need no copy: they are found in
-your home directory on every start. `backups/` holds the copies of your setup an import of a
-[backup](backing-up.md) saves before it changes anything, the five newest, and the
-copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.
-A reset asked for and not yet carried out waits in `reset-request.json`, and `autopilot.lock`,
-which holds nothing, lets one copy of the app on this data folder run Autopilot. `describe/`
-holds [Describe it](autopilot/describe-it.md)'s conversations, the proposals waiting for you, the snapshot
-of your setup its tools read, and the plugin for your own Claude Code. A build from
-source also keeps [its inspector](../development/inspector.md)'s socket there, `devtools.sock`, and in
-`devtools/` the notes you leave by pointing and whether pointing is on; a release writes
-neither. GitHub tokens are never
-stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
-memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
-refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
+three newest of those too. Beside it, `prompts.json` and `launch-defaults.json` hold copies of your
+prompt library and your launch defaults in plain JSON, each rewritten after every change (see
+[Keeping your prompts](prompts.md#keeping-your-prompts)), and `autopilot.json` the same kind of copy
+of your [Autopilot](autopilot/README.md) routines ([its format](../backup-files.md#autopilot)).
+Agent profiles need no copy: they are found in your home directory on every start. `backups/` holds
+the copies of your setup an import of a [backup](backing-up.md) saves before it changes anything,
+the five newest, and the copies a reset saves first (`nilbox before reset <UTC time>.json`), the
+five newest of those. A reset asked for and not yet carried out waits in `reset-request.json`, and
+`autopilot.lock`, which holds nothing, lets one copy of the app on this data folder run Autopilot.
+`describe/` holds [Describe it](autopilot/describe-it.md)'s conversations, the proposals waiting for
+you, the snapshot of your setup its tools read, and the plugin for your own Claude Code.
+`agent-runs/` holds a folder for each run of an [agent in the
+background](autopilot/agents-in-the-background.md), named for its session, with its prompt and its
+[fence](autopilot/fences.md)'s files; the run's log is in `script-runs/`, with the other
+[runs](runs.md)' logs. The folder goes with the run's log: once **Run logs kept** (30 days to start
+with) in Settings → Autopilot has passed, once more than 200 agent runs or 1 GB of their logs are
+kept (the oldest go first), or when that page's **Clear history…** clears the runs that ended. As
+the app starts, it also removes a folder there that no run names, as after the database was set
+aside, once the folder is an hour old. `updates/` holds the update of the app that is downloaded and
+checked, waiting for a restart, in a folder named for its version with its zip and its manifest. It
+holds that one alone: a newer release replaces it, and it goes once installed, once it failed to
+install for good, or when a check finds no release newer than the one running ([where the update's
+files live](updates.md#where-things-live)); a build that doesn't update itself leaves the folder
+empty. A build from source also keeps [its inspector](../development/inspector.md)'s socket there,
+`devtools.sock`, and in `devtools/` the notes you leave by pointing and whether pointing is on; a
+release writes neither. GitHub tokens are never stored there, nor anywhere else: the app borrows the
+token from `gh auth token` and keeps it in memory only. It reuses the token for up to ten minutes,
+and asks `gh` again sooner when GitHub refuses it or `gh`'s account changes (`gh auth switch`,
+`login`, or `logout`).
 
 ## Logs
 

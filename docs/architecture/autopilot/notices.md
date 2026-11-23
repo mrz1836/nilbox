@@ -25,10 +25,10 @@ with gather, `GatherWindow`), so more than three at once show as one banner (*4 
 *4 routines need you*); a lone one shows at once. A Dry run tells nothing. Problems go through
 `NewProblemNotices` over the same sink: a `NoticeProblem` about no item, its line the routine's name
 ("A routine" when it can't be read) and its body the problem, opening the routine, with when the
-routine was made; several untold at once are a burst. The other kinds (`NoticeNeedsYou`,
-`NoticeFinished`, `NoticeChecks`) are declared for the parts that make their moments. Core maps each
-kind to the notifications' own (`noticeKinds`; a test holds the map to
-`notifyprefs.AutopilotKinds`).
+routine was made; several untold at once are a burst. The other kinds are told where their moments
+happen: `NoticeNeedsYou` as a match waits (`start.go`), `NoticeFinished` as a background run ends
+(`runs.go`), and `NoticeChecks` at a fix's verdict (`verify.go`). Core maps each kind to the
+notifications' own (`noticeKinds`; a test holds the map to `notifyprefs.AutopilotKinds`).
 
 ## The notifications' side (`internal/notify`, `internal/notifyprefs`)
 

@@ -1,6 +1,6 @@
 # Autopilot's notifications and the menu bar
 
-[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Notices, the menu bar, and the window's close](../../architecture/autopilot/notices.md)
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Notices, the menu bar, and the window's close](../../architecture/autopilot/notices.md), [`internal/notifyprefs`](../../architecture/notifyprefs.md), [`internal/menubar`](../../architecture/menubar.md)
 
 Autopilot has five kinds of notification, each with a banner switch of its own in **Settings →
 Notifications**, all on by default, and the **Autopilot** type on the
