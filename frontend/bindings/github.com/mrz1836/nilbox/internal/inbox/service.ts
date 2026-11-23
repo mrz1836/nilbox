@@ -127,10 +127,12 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
  * as a pull request they just merged, shows without refreshing the whole inbox.
  *
  * An item still open gets its card and details rewritten and stays in the lists it is
- * in; only the searches of a whole refresh can tell which lists those are, with one
- * exception: a pull request in Review requested that GitHub no longer asks the user to
+ * in; only the searches of a whole refresh can tell which lists those are, with two
+ * exceptions: a pull request in Review requested that GitHub no longer asks the user to
  * review, by name or through a team, leaves that list (see leaveAnsweredReview), as once
- * the user, or an agent they launched, reviewed it, and it tells no outcome for that. An
+ * the user, or an agent they launched, reviewed it, and an item no longer assigned to the
+ * user leaves the assigned list (see leaveUnassigned), as once they took themselves off it
+ * on GitHub; it tells no outcome for either. An
  * issue's projects are read when the last whole refresh could read them; only a whole
  * refresh changes what the snapshot says about that. A pull request
  * whose files are checked has them checked again when its head moved. An item

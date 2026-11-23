@@ -116,6 +116,24 @@ func TestEditUnassignsEveryoneInOneRequest(t *testing.T) {
 		"one request takes everyone off, then one assigns")
 }
 
+func TestEditThatAssignsTheUserTellsTheInbox(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.github.views[0].Assignees = github.People{Logins: []string{octoOther}, Total: 1}
+	h.refreshed(t)
+
+	_, err := h.svc.Edit(t.Context(), EditRequest{ItemID: issueID, AddAssignees: []string{"Octo-User", octoThird}})
+	require.NoError(t, err)
+	assert.Equal(t, []Acted{{SelfAssigned: true, SelfAssignedAt: testNow}}, h.inbox.acted,
+		"the inbox lists it as assigned at once, at GitHub's time of the edit")
+
+	// The user is assigned now, and assigns someone else besides.
+	_, err = h.svc.Edit(t.Context(), EditRequest{ItemID: issueID, AddAssignees: []string{"octo-fourth"}})
+	require.NoError(t, err)
+	assert.Equal(t, Acted{}, h.inbox.acted[1], "assigning only others records nothing")
+}
+
 func TestEditRefusesMoreThanTenAssignees(t *testing.T) {
 	t.Parallel()
 

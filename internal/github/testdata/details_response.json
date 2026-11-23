@@ -35,6 +35,17 @@
                         null
                     ]
                 },
+                "assignees": {
+                    "totalCount": 2,
+                    "nodes": [
+                        {
+                            "login": "octo-user"
+                        },
+                        {
+                            "login": "octo-second"
+                        }
+                    ]
+                },
                 "reviewRequests": {
                     "nodes": [
                         {
@@ -220,6 +231,15 @@
                         }
                     ]
                 },
+                "assignees": {
+                    "totalCount": 3,
+                    "nodes": [
+                        {
+                            "login": "octo-user"
+                        },
+                        null
+                    ]
+                },
                 "reviewRequests": {
                     "nodes": []
                 },
@@ -301,6 +321,10 @@
                 "labels": {
                     "nodes": []
                 },
+                "assignees": {
+                    "totalCount": 0,
+                    "nodes": []
+                },
                 "reviewRequests": {
                     "nodes": []
                 },
@@ -321,6 +345,15 @@
                             "name": "bug",
                             "color": "d73a4a"
                         }
+                    ]
+                },
+                "assignees": {
+                    "totalCount": 1,
+                    "nodes": [
+                        {
+                            "login": "Octo-User"
+                        },
+                        null
                     ]
                 }
             },

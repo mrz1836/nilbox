@@ -175,7 +175,8 @@ type Target struct {
 // github.ReviewRequestChanges, or github.ReviewComment). Rerequested reports the user's
 // review requested again, with who the pull request asks now (ReviewRequests), as of
 // GitHub's time of the edit (RerequestedAt). RequestsEdited reports a reviewer edit GitHub
-// made, with who the pull request asks after it (ReviewRequests).
+// made, with who the pull request asks after it (ReviewRequests). SelfAssigned reports an
+// assignee edit that assigned the user, as of GitHub's time of the edit (SelfAssignedAt).
 type Acted struct {
 	Reviewed       bool
 	ReviewedAt     time.Time
@@ -186,6 +187,8 @@ type Acted struct {
 	ReviewRequests github.ReviewRequests
 	RerequestedAt  time.Time
 	RequestsEdited bool
+	SelfAssigned   bool
+	SelfAssignedAt time.Time
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.

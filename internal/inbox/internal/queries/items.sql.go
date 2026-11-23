@@ -485,6 +485,26 @@ func (q *Queries) HasItems(ctx context.Context, accountID int64) (bool, error) {
 	return has_items, err
 }
 
+const joinAssigned = `-- name: JoinAssigned :exec
+UPDATE items SET reason_assigned = 1, assign_left_at = NULL,
+    assigned_at = COALESCE(assigned_at, ?1)
+WHERE id = ?2
+`
+
+type JoinAssignedParams struct {
+	AssignedAt *time.Time
+	ID         int64
+}
+
+// JoinAssigned puts the item with id in the assigned list after the user assigned
+// themselves from a sheet, as an assignment that arrived at assigned_at unless it was
+// listed already, and clears the stamp of their leaving it, so the next search is believed.
+// Listed before the next whole refresh, it tells no arrival there.
+func (q *Queries) JoinAssigned(ctx context.Context, arg JoinAssignedParams) error {
+	_, err := q.db.ExecContext(ctx, joinAssigned, arg.AssignedAt, arg.ID)
+	return err
+}
+
 const leaveAnsweredReview = `-- name: LeaveAnsweredReview :exec
 UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ? AND reason_review_requested = 1
@@ -553,6 +573,27 @@ type LeaveReviewParams struct {
 // edit (see UpsertItem).
 func (q *Queries) LeaveReview(ctx context.Context, arg LeaveReviewParams) error {
 	_, err := q.db.ExecContext(ctx, leaveReview, arg.ReviewLeftAt, arg.ID)
+	return err
+}
+
+const leaveUnassigned = `-- name: LeaveUnassigned :exec
+UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL
+WHERE id = ? AND reason_assigned = 1
+`
+
+type LeaveUnassignedParams struct {
+	AssignLeftAt *time.Time
+	ID           int64
+}
+
+// LeaveUnassigned takes the item with id out of the assigned list after a read of the item
+// alone found it no longer assigned to the user, as once they took themselves off it on
+// GitHub, stamped with the item's updated_at on GitHub as read (see UpsertItem), so the
+// whole refreshes whose search still lists it keep it out until it moves. Like
+// LeaveAnsweredReview, it changes only an item in that list: a read of one that isn't
+// writes no stamp, so an assignment made later still arrives.
+func (q *Queries) LeaveUnassigned(ctx context.Context, arg LeaveUnassignedParams) error {
+	_, err := q.db.ExecContext(ctx, leaveUnassigned, arg.AssignLeftAt, arg.ID)
 	return err
 }
 

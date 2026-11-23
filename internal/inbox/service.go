@@ -7,7 +7,10 @@
 // in one transaction: the account, the repositories, the items with their reason flags,
 // trust fields, and details, and rate-limit snapshots. A snapshot reads it back as three
 // plain lists, the signed-in account, and a rate gauge. The details are read on every
-// refresh, because check results change without the item's own update time moving.
+// refresh, because check results change without the item's own update time moving, and
+// they are read live where the searches trail GitHub's index: an item closed, unassigned,
+// or no longer asking the user's review since GitHub indexed it leaves those lists (see
+// dropClosed and dropLeft).
 //
 // One refresh runs at a time: a refresh asked for while one runs, such as Refresh Now
 // during a scheduled refresh, joins it and gets its result. A refresh fetches without
@@ -49,9 +52,10 @@
 // The review sheet reads and acts on a pull request through an Actor (see actor.go), which
 // runs the sheet's own requests under the item's lock and, for an action, only with a token
 // of the account whose inbox is shown, then records what GitHub did: a review takes the pull
-// request out of the Review requested list, and a merge out of every list, at once and with
-// no request of its own. A read rewrites the card, and the files it listed serve as the pull
-// request's sensitive-file check, so one read serves both.
+// request out of the Review requested list, a merge out of every list, and the user's own
+// assignment puts it in the assigned list, at once and with no request of its own. A read
+// rewrites the card, and the files it listed serve as the pull request's sensitive-file
+// check, so one read serves both.
 //
 // An issue's details include the GitHub projects it is in, with its status in each, when
 // the token has the optional read:project scope. Without it the details are read without
@@ -469,9 +473,11 @@ func (s *Service) refresh(ctx context.Context, tracker *refreshProgress) (refres
 // fetchAll reads everything one refresh stores, with tok. The details of the items
 // already listed are read alongside the inbox query, which takes as long, with the
 // projects the last refresh could read (last); only items new since the last refresh wait
-// for a second details request after it (see readMoreDetails). The file checks and the
-// avatar download then run side by side. It tells tracker each phase: the search, which a
-// retry with a fresh token starts again, the new items' details, and the file checks.
+// for a second details request after it (see readMoreDetails). With every listed item's
+// details in hand, the items the user left since GitHub indexed them leave those lists
+// (see dropLeft). The file checks and the avatar download then run side by side. It tells
+// tracker each phase: the search, which a retry with a fresh token starts again, the new
+// items' details, and the file checks.
 func (s *Service) fetchAll(
 	ctx context.Context, tok github.Token, listed []string, last ProjectAccess, tracker *refreshProgress,
 ) (refreshed, error) {
@@ -493,6 +499,8 @@ func (s *Service) fetchAll(
 	if err = s.readMoreDetails(ctx, tok, &got, listed, asked, last, tracker); err != nil {
 		return refreshed{}, err
 	}
+
+	dropLeft(got.inbox, got.details)
 
 	var (
 		g      errgroup.Group
@@ -709,6 +717,41 @@ func dropClosed(inbox *github.Inbox) []github.Item {
 	}
 
 	return dropped
+}
+
+// dropLeft takes out of the assigned list the items details says are no longer assigned to
+// the viewer (see unassigned), and out of Review requested the pull requests it says no
+// longer ask the viewer to review (see answeredReview), as once the user took themselves
+// off, or reviewed, on GitHub. The searches match through GitHub's index, which trails such
+// an edit for a while, and return the item all the same, with its new activity, while the
+// details read it live, as dropClosed reads the state. Each list's total counts them out
+// too (countOut).
+//
+// An item without details keeps the searches' word, as does one whose details can't tell
+// (a pull request that still asks a team, say), and the other lists and the pushed flag are
+// left as they are. An item left in no list drops out of the inbox as it would once the
+// index caught up, with no arrival; nothing is stamped, so an assignment or a request
+// GitHub makes again between the details read and the search is believed at the next
+// refresh.
+func dropLeft(inbox *github.Inbox, details *github.Details) {
+	if details == nil || len(details.Items) == 0 {
+		return
+	}
+
+	login := inbox.Viewer.Login
+
+	left := func(list *github.SearchResult, gone func(github.Item, github.ItemDetails) bool) {
+		listed := len(list.Items)
+		list.Items = slices.DeleteFunc(list.Items, func(it github.Item) bool {
+			d, ok := details.Items[it.NodeID]
+
+			return ok && gone(it, d)
+		})
+		countOut(list, listed)
+	}
+
+	left(&inbox.Assigned, func(_ github.Item, d github.ItemDetails) bool { return unassigned(d, login) })
+	left(&inbox.ReviewRequested, func(it github.Item, d github.ItemDetails) bool { return answeredReview(it, d, login) })
 }
 
 // countOut takes the items list returned but no longer holds, of the listed it did, out

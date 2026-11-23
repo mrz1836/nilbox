@@ -740,6 +740,22 @@ as the snapshot is built (`Details.Comments`), so `comments` stays GitHub's own 
 one a snooze's wake on comments compares. It counts one review per reviewer, the latest, so a
 reviewer's earlier reviews with text count only in the sheet. The text itself is never kept.
 
+**Who an item is assigned to.** The inbox query's searches match through GitHub's search
+index, which trails an edit, while a node's fields are read live, so the details are what can
+tell an item the user left on GitHub from one the search still returns. The fragment reads a
+pull request's review requests already, and each pull request's and issue's assignees too:
+`assignees(first: 10) { totalCount nodes { login } }`, every assignee GitHub allows
+(`MaxAssignees`), the selection the issue sheet's and the review sheet's own queries ask for,
+so GraphQL merges the two where they spread the fragment. `ItemDetails.Assignees` lists the
+logins in GitHub's order, never nil when GitHub brought them all, and nil when the read can't
+tell: the field absent or null, or fewer logins than `totalCount` (`allLogins`). It is never
+stored; the inbox only decides which lists an item is in with it (see
+[internal/inbox](#internalinbox)). Measured with `rateLimit(dryRun: true)` in November 2026,
+it costs no point: a batch of 25 costs 1 point with it and without, and a read of 100 items 5
+either way, where in the inbox query's assigned search it would double that search's price, 1
+point to 2. The dry run gave GitHub's documented price for a batch of 50 issues with their
+projects, 4 points, so it counts nested lists as a real read does.
+
 **Reviewers.** The review sheet's reviewer edit asks everyone it adds with one REST request
 and takes every request it drops off with one more (`RequestReviewers`, `POST
 .../requested_reviewers`, and `RemoveReviewRequests`, `DELETE` at the same path), each through
@@ -893,6 +909,39 @@ list (`settings.ListKey`); `settings.AdoptSections` carried the former Authored 
 lists' window keys over to Yours once, and an older backup's inbox order is read the same way
 (`adoptFormerOrder`). Autopilot's sources and conditions keep the three reasons
 (`catalog.ListSource`), worded as reasons rather than lists.
+
+**Lists left or joined on GitHub.** The searches match through GitHub's index, which trails an
+edit, while each item's fields are read live, so for a while after the user leaves an item on
+github.com the search still returns it, with its new activity, and a refresh that believed it
+would list it again as just moved. `dropClosed` already reads the live state for a close or a
+merge, and the inbox's own Unassign me and Remove me as reviewer stamp `assign_left_at` and
+`review_left_at` (see `UpsertItem`), but those stamps cover only what the user does from the
+inbox. A whole refresh reads each listed item's assignees with its details, at no point more
+(`ItemDetails.Assignees`, see [internal/budget and internal/github](#internalbudget-and-internalgithub)),
+and once every listed item's details are in hand (after `readMoreDetails`, before the file
+checks), `dropLeft` takes out of the assigned search's results the items no longer assigned to
+the viewer (`unassigned`, ignoring case) and out of Review requested's the pull requests that
+no longer ask the viewer (`answeredReview`), each counted out of its list's total (`countOut`),
+as `dropClosed` does. An item without details keeps the search's word, and so does one whose
+read can't tell: assignees the read didn't bring in full, or a pull request that asks a team,
+lists no requests, or lists `MaxReviewRequests`. The other lists and the pushed flag are left
+alone, and an item in no list leaves the inbox as it would once the index caught up, with no
+arrival and no stamp, so an assignment or a request made again between the details read and the
+search is believed at the next refresh. A single-item read that knows the account (`RefreshItem`,
+the checks follower, the review sheet's `ReadPull`, and the issue sheet's `ReadIssue`) does the
+same for the assigned list as `leaveAnsweredReview` does for Review requested: `leaveUnassigned`
+runs `LeaveUnassigned`, which clears `reason_assigned` and `assigned_at` of an item in the list
+and stamps `assign_left_at` with its `updatedAt` as read, so a lagging search keeps it out until
+it moves, and tells no outcome. The other way round, a sheet's assignee picker offers the user
+themselves, and an edit that assigns them (the issue sheet's `Edit`, the review sheet's
+`EditAssignees`: the user among those added, and in GitHub's answer) reports
+`Acted.SelfAssigned` with GitHub's time of the edit, which `recordSelfAssigned` records at once
+(`JoinAssigned`, one transaction): it sets `reason_assigned`, clears `assign_left_at`, and stamps
+`assigned_at` with that time (now without one) unless it holds one. The card says Assigned to you
+at once, and the next refresh, finding it listed before, tells no `ArrivalAssigned` of the user's
+own assignment. As with Re-request my review, a refresh that lands inside the index's lag leaves
+it out once, and the one after it, which lists it, tells it as an arrival. Assigning only others
+records nothing, so someone else's assignment of the user still arrives.
 
 **Nudges.** `Nudge` (`edits.go`), on the user's click alone, posts a comment on the
 conversation of an open pull request someone else opened (`(*github.Client).AddComment`, one
@@ -2155,8 +2204,10 @@ since its own read covers it. A background run's session is its run's to report
 (`Ledger.RunState`), never an observer's, so it gets only the read as it stops working. A
 single-item read (`RefreshItem`, the checks follower, the review sheet's `ReadPull`) takes a
 pull request out of Review requested once GitHub no longer asks the user, by name or
-through a team, stamped like the inbox's own edits (`review_left_at`), so a lagging search
-keeps it out until it moves, and `RefreshItem` and `ReadPull` read the user's own verdict with
+through a team, and an item out of the assigned list once it is no longer assigned to them,
+as the issue sheet's `ReadIssue` does too, stamped like the inbox's own edits
+(`review_left_at`, `assign_left_at`), so a lagging search keeps it out until it moves, and
+`RefreshItem` and `ReadPull` read the user's own verdict with
 it at no extra point, so an approval or a request for changes the agent left with gh reaches
 the card at once and is told once as the user's review (see
 [internal/inbox](#internalinbox)). `LastWords` reads a session's whole last message from the

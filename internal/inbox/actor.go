@@ -84,6 +84,12 @@ type Acted struct {
 	// pull request asks after it as GitHub answered (ReviewRequests), which the card shows
 	// at once.
 	RequestsEdited bool
+
+	// SelfAssigned reports the user's own assignment, made from a sheet's assignee picker,
+	// at GitHub's time of the edit (SelfAssignedAt, zero when it did not say): the item is
+	// assigned to the user, so it is in the assigned list.
+	SelfAssigned   bool
+	SelfAssignedAt time.Time
 }
 
 // with returns what a and b made happen together, as two tries of one action do.
@@ -101,6 +107,8 @@ func (a Acted) with(b Acted) Acted {
 	a.Rerequested = a.Rerequested || b.Rerequested
 	a.RequestsEdited = a.RequestsEdited || b.RequestsEdited
 	a.RerequestedAt = later(a.RerequestedAt, b.RerequestedAt)
+	a.SelfAssigned = a.SelfAssigned || b.SelfAssigned
+	a.SelfAssignedAt = later(a.SelfAssignedAt, b.SelfAssignedAt)
 
 	return a
 }
@@ -117,7 +125,7 @@ func strongerEvent(a, b string) string {
 
 // any reports whether the action changed anything the inbox records.
 func (a Acted) any() bool {
-	return a.Reviewed || a.Merged || a.Closed || a.Rerequested || a.RequestsEdited
+	return a.Reviewed || a.Merged || a.Closed || a.Rerequested || a.RequestsEdited || a.SelfAssigned
 }
 
 // PullRead is what a caller's read of a pull request found: the item as GitHub answered,
@@ -165,6 +173,12 @@ type IssueActed struct {
 	// Own reports that the close was the user's own and went through, not one someone
 	// made first that the action found.
 	Own bool
+
+	// SelfAssigned reports the user's own assignment, made from the sheet's assignee picker,
+	// at GitHub's time of the edit (SelfAssignedAt, zero when it did not say), as
+	// Acted.SelfAssigned does for a pull request.
+	SelfAssigned   bool
+	SelfAssignedAt time.Time
 }
 
 // Actor reads and acts on pull requests for the review sheet, and on issues for the issue
@@ -211,7 +225,8 @@ func (a *Actor) Act(
 // action on a pull request: under the item's lock, with a token of the account whose inbox
 // is shown, which a token GitHub refuses is borrowed again for, once, so act must not
 // repeat a step it made. A close act reports is recorded even when act also returns an
-// error, and takes the issue out of every list at once, with no request. Once it has let
+// error, and takes the issue out of every list at once, with no request; the user's own
+// assignment likewise puts it in the assigned list (see recordSelfAssigned). Once it has let
 // go of the item, it tells the outcome sink of the close: as the user's own when act says
 // so (IssueActed.Own), and otherwise as one it found made.
 func (a *Actor) ActIssue(
@@ -224,7 +239,7 @@ func (a *Actor) ActIssue(
 		got, err := act(ctx, tok, issueTargetOfRow(row, false))
 		own = own || (got.Closed && got.Own)
 
-		return Acted{Closed: got.Closed}, err
+		return Acted{Closed: got.Closed, SelfAssigned: got.SelfAssigned, SelfAssignedAt: got.SelfAssignedAt}, err
 	})
 
 	s.settle(ctx, issueOutcomes(done.row, done.acted.Closed, own, s.now()))
@@ -404,7 +419,8 @@ func (s *Service) storeRead(ctx context.Context, row editRow, w itemWrite) (Snap
 
 // ReadIssue runs read on the issue with id, with a token, and stores what it found, as
 // ReadPull does: the card is rewritten from the answer, its projects included when the
-// target asked for them, or the issue leaves the lists when it was closed or deleted since.
+// target asked for them, leaving the assigned list once the answer says it is no longer
+// assigned to the user, or the issue leaves the lists when it was closed or deleted since.
 // It holds the item's lock throughout, so read may store what it keeps of the answer, such
 // as the sheet's own cache, knowing no action on the issue runs meanwhile. It returns the
 // new snapshot. An issue in no list is read too: its sheet may still be open on it. Once
@@ -468,9 +484,11 @@ func (s *Service) readIssue(
 		return Snapshot{}, nil, err
 	}
 
-	return s.storeRead(ctx, row, itemWrite{
-		id: id, seq: seq, update: &itemUpdate{accountID: row.AccountID, update: got.Update, files: map[string]fileCheck{}},
-	})
+	// The login takes an issue no longer assigned to the user out of the assigned list (see
+	// leaveUnassigned), as the sheet then shows it.
+	return s.storeRead(ctx, row, itemWrite{id: id, seq: seq, update: &itemUpdate{
+		accountID: row.AccountID, login: row.AccountLogin, update: got.Update, files: map[string]fileCheck{},
+	}})
 }
 
 // PeekIssue runs peek on the issue with id, with a token, and stores nothing: a read the
@@ -616,7 +634,8 @@ func pullTargetOfRow(row editRow) PullTarget {
 // asked or was pushed to since the user requested changes, and one that approves or
 // requests changes is the user's verdict at the head they saw (see recordReview); the
 // user's review requested again puts it back in Review requested (see recordRerequest); a
-// reviewer edit rewrites who it asks to review (see recordRequests); a merge or a close
+// reviewer edit rewrites who it asks to review (see recordRequests); the user's own
+// assignment puts it in the assigned list (see recordSelfAssigned); a merge or a close
 // takes it out of every list, as an item write numbered now, after
 // GitHub's answer, so a refresh that was fetching applies it again. A merge has the
 // repository's other open pull requests on its base read again (see noteMerged).
@@ -640,7 +659,34 @@ func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) err
 		}
 	}
 
+	if err := s.recordSelfAssigned(ctx, row, acted); err != nil {
+		return fmt.Errorf("record the assignment: %w", err)
+	}
+
 	return s.recordEnded(ctx, row, acted)
+}
+
+// recordSelfAssigned records the user's assignment of themselves to the item row is, made
+// from a sheet, when acted says they made one: the item is in the assigned list at once, as
+// an assignment that arrived at GitHub's time of the edit (now, when it did not say) unless
+// it was listed already, its left stamp cleared (JoinAssigned), before the next whole
+// refresh's search catches up. Listed before that refresh, it tells no arrival there. As
+// with the user's review requested again (see recordRerequest), a refresh whose search
+// hasn't caught up yet leaves it out once, and the one after it, which lists it, tells it
+// as an arrival.
+func (s *Service) recordSelfAssigned(ctx context.Context, row editRow, acted Acted) error {
+	if !acted.SelfAssigned {
+		return nil
+	}
+
+	stamp := acted.SelfAssignedAt.UTC()
+	if stamp.IsZero() {
+		stamp = s.now()
+	}
+
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		return s.q.WithTx(tx).JoinAssigned(ctx, queries.JoinAssignedParams{AssignedAt: &stamp, ID: row.ID})
+	})
 }
 
 // recordRerequest records the user's review requested again on target, in one

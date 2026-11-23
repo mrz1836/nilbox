@@ -305,8 +305,11 @@ type fakeGitHub struct {
 
 	// editErr fails the edit whose name it is keyed by, as "+label", "-label:bug",
 	// "+assignee", or "-assignee:octo-other", once; edits records each edit made.
-	editErr map[string]error
-	edits   []string
+	// assigned is who GitHub says the issue is assigned to after each assignment, everyone
+	// it assigned so far, stamped testNow.
+	editErr  map[string]error
+	edits    []string
+	assigned []string
 
 	// calls counts every request by name, in the order they came.
 	calls githubtest.Calls
@@ -346,7 +349,16 @@ func (g *fakeGitHub) RemoveLabel(_ context.Context, _ github.Token, _ item.Ref, 
 }
 
 func (g *fakeGitHub) AddAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {
-	return &github.Edited{}, g.made("+assignee:" + strings.Join(logins, ","))
+	if err := g.made("+assignee:" + strings.Join(logins, ",")); err != nil {
+		return nil, err
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.assigned = append(g.assigned, logins...)
+
+	return &github.Edited{UpdatedAt: testNow, Assignees: slices.Clone(g.assigned)}, nil
 }
 
 func (g *fakeGitHub) RemoveAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {

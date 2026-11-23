@@ -347,6 +347,20 @@ the same details inside the inbox query's three searches would cost 12 points a 
 the items returned; that dry-run cost is why the details are a separate query. Before the
 cards read details, a refresh cost 1 point (0.24%).
 
+The details read each item's assignees too, live, so a refresh can tell an item you left on
+GitHub from one GitHub's search index still returns:
+`assignees(first: 10) { totalCount nodes { login } }`. GitHub's dry run
+(`rateLimit(dryRun: true)`, which costs nothing and agreed with GitHub's documented 4 points for
+a batch of 50 issues with their projects) priced them in November 2026:
+
+| Where the assignees are read | Without | With |
+| --- | --- | --- |
+| The inbox query's assigned search | 1 point | 2 points |
+| A details request of 25 items | 1 point | 1 point |
+| A read of 100 items | 5 points | 5 points |
+
+So they go in the details, at no point more a refresh, rather than in the search.
+
 A single item's read (a card's refresh, the read after an agent session stops working, and
 Autopilot's fresh read) is 1 point, its verdicts included: asked beside one node, your own
 latest approval or request for changes adds no point, with or without an issue's projects

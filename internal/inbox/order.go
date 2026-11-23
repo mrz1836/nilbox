@@ -165,7 +165,8 @@ type itemWrite struct {
 // itemUpdate is what an item's own refresh read: the account the item is stored for, by
 // id and login, GitHub's answer, and the outcome of the file check it ran, if one was due.
 // The login tells whether GitHub still asks that account to review a pull request (see
-// answeredReview); with none, the item stays in the lists it is in. viewer is the account
+// answeredReview) and whether the item is still assigned to it (see unassigned); with none,
+// the item stays in the lists it is in. viewer is the account
 // the token it was read with belongs to, as the inbox last learned it ("" when it doesn't
 // know), which says whether the verdict the answer calls the viewer's is the login's (see
 // readsVerdict).

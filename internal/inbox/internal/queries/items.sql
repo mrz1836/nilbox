@@ -391,6 +391,25 @@ WHERE account_id = sqlc.arg(account_id) AND viewer_review_seen_at IS NOT NULL
 UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ? AND reason_review_requested = 1;
 
+-- name: LeaveUnassigned :exec
+-- LeaveUnassigned takes the item with id out of the assigned list after a read of the item
+-- alone found it no longer assigned to the user, as once they took themselves off it on
+-- GitHub, stamped with the item's updated_at on GitHub as read (see UpsertItem), so the
+-- whole refreshes whose search still lists it keep it out until it moves. Like
+-- LeaveAnsweredReview, it changes only an item in that list: a read of one that isn't
+-- writes no stamp, so an assignment made later still arrives.
+UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL
+WHERE id = ? AND reason_assigned = 1;
+
+-- name: JoinAssigned :exec
+-- JoinAssigned puts the item with id in the assigned list after the user assigned
+-- themselves from a sheet, as an assignment that arrived at assigned_at unless it was
+-- listed already, and clears the stamp of their leaving it, so the next search is believed.
+-- Listed before the next whole refresh, it tells no arrival there.
+UPDATE items SET reason_assigned = 1, assign_left_at = NULL,
+    assigned_at = COALESCE(assigned_at, sqlc.arg(assigned_at))
+WHERE id = sqlc.arg(id);
+
 -- name: ListRunningChecks :many
 -- ListRunningChecks returns the open pull requests of the account with login whose checks
 -- were running (PENDING or EXPECTED) when their details were last read, before

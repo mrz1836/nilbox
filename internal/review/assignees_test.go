@@ -144,6 +144,25 @@ func TestEditAssigneesUnassignsThenAssignsAndRebuildsWithNoRead(t *testing.T) {
 		"the read's, then those the user assigned")
 }
 
+func TestEditAssigneesThatAssignsTheUserTellsTheInbox(t *testing.T) {
+	t.Parallel()
+
+	h := assignedTo(t, octoOther)
+	h.github.assignBadToken = true
+
+	_, err := h.svc.EditAssignees(t.Context(), AssigneesRequest{ItemID: pullID, Add: []string{"Octo-User"}})
+	require.NoError(t, err)
+	require.Len(t, h.inbox.acted, 1)
+	assert.Equal(t, Acted{SelfAssigned: true, SelfAssignedAt: testNow}, h.inbox.acted[0],
+		"the inbox lists it as assigned at once, at GitHub's time of the edit, made on the second try")
+
+	// The user is assigned now, and assigns someone else in another's place.
+	_, err = h.svc.EditAssignees(t.Context(), AssigneesRequest{ItemID: pullID, Add: []string{octoA}, Remove: []string{octoOther}})
+	require.NoError(t, err)
+	require.Len(t, h.inbox.acted, 2)
+	assert.Equal(t, Acted{}, h.inbox.acted[1], "assigning only others records nothing")
+}
+
 func TestEditAssigneesSendsOnlyWhatChanges(t *testing.T) {
 	t.Parallel()
 

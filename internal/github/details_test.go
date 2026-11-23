@@ -91,7 +91,9 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Reviews: Reviews{Decision: "APPROVED", Reviewers: 5, Reviewed: 2, Approvals: 2},
 			// Who is asked, in GitHub's order; the null requests are skipped.
 			ReviewRequests: ReviewRequests{Users: []string{"octo-user", "Octo-Approver"}, Teams: []string{"reviewers"}},
-			ApprovingBots:  []string{},
+			// Who it is assigned to, in GitHub's order.
+			Assignees:     []string{octoUser, "octo-second"},
+			ApprovingBots: []string{},
 		},
 		"PR_fakeNodeIdFailing": {
 			Labels:         []Label{{Name: "needs-work", Color: "#ffd700"}},
@@ -105,7 +107,8 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Checks:         Checks{State: "FAILURE", Passed: 18, Failed: 5, Pending: 4},
 			Reviews:        Reviews{Decision: "CHANGES_REQUESTED", Reviewers: 1, Reviewed: 1, ChangesRequested: 1},
 			ReviewRequests: noRequests(),
-			ApprovingBots:  []string{},
+			// GitHub counts three assignees but returned one, so who they all are is unknown.
+			ApprovingBots: []string{},
 		},
 		"PR_fakeNodeIdNoChecks": {
 			Labels:         []Label{},
@@ -116,11 +119,13 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			HeadOID:        "3333333333333333333333333333333333333333",
 			Mergeable:      "UNKNOWN",
 			ReviewRequests: noRequests(),
+			Assignees:      []string{},
 			ApprovingBots:  []string{},
 		},
 		"I_fakeNodeIdIssue": {
-			Labels:   []Label{{Name: "bug", Color: "#d73a4a"}},
-			Comments: 7,
+			Labels:    []Label{{Name: "bug", Color: "#d73a4a"}},
+			Comments:  7,
+			Assignees: []string{"Octo-User"},
 		},
 	}, details.Items, "the unresolvable item is left out, not a failure")
 }
@@ -481,4 +486,51 @@ func TestMaxReviewRequestsIsWhatTheDetailsAskFor(t *testing.T) {
 
 	assert.Contains(t, detailFieldsFragment, "reviewRequests(first: "+strconv.Itoa(MaxReviewRequests)+")")
 	assert.Equal(t, 1, strings.Count(detailFieldsFragment, "reviewRequests("), "the fragment reads them once")
+}
+
+func TestTheDetailsReadTheAssigneesAsTheSheetsDo(t *testing.T) {
+	t.Parallel()
+
+	// The sheets' queries spread DetailFields beside their own assignees, which GraphQL
+	// merges only when the two ask alike, for every assignee GitHub allows.
+	assignees := "assignees(first: " + strconv.Itoa(MaxAssignees) + ") { totalCount nodes { login } }"
+
+	assert.Equal(t, 2, strings.Count(detailFieldsFragment, assignees), "a pull request's and an issue's")
+	assert.Equal(t, 2, strings.Count(detailFieldsFragment, "assignees("), "and no other")
+	assert.Contains(t, issueViewFragments, assignees)
+	assert.Contains(t, reviewFieldsFragment, assignees)
+}
+
+func TestAssigneesReadCompletely(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		node string
+		want []string
+	}{
+		{name: "not read", node: `{}`, want: nil},
+		{name: "null", node: `{"assignees": null}`, want: nil},
+		{name: "no one", node: `{"assignees": {"totalCount": 0, "nodes": []}}`, want: []string{}},
+		{
+			name: "everyone",
+			node: `{"assignees": {"totalCount": 2, "nodes": [{"login": "octo-user"}, {"login": "octo-other"}]}}`,
+			want: []string{octoUser, "octo-other"},
+		},
+		{
+			name: "fewer than GitHub counts",
+			node: `{"assignees": {"totalCount": 2, "nodes": [{"login": "octo-user"}, null]}}`,
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var n detailsNode
+			require.NoError(t, json.Unmarshal([]byte(tt.node), &n))
+			assert.Equal(t, tt.want, allLogins(n.Assignees))
+		})
+	}
 }

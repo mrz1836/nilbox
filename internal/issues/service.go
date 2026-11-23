@@ -105,6 +105,12 @@ type Acted struct {
 	// Own reports that the close was the user's own and went through, not one someone
 	// made first that the action found.
 	Own bool
+
+	// SelfAssigned reports that an edit assigned the user, at GitHub's time of the edit
+	// (SelfAssignedAt, zero when it did not say): the issue is in the inbox's assigned list
+	// at once.
+	SelfAssigned   bool
+	SelfAssignedAt time.Time
 }
 
 // Inbox is what the sheet needs of the inbox: a stored issue, and reads and actions run with

@@ -28,8 +28,10 @@ type writer struct {
 	repos     map[string]int64
 
 	// login is the account's login for an item's own write, which takes a pull request
-	// GitHub no longer asks it to review out of that list (see answeredReview); '' for a
-	// whole refresh, whose searches say which lists each item is in.
+	// GitHub no longer asks it to review out of that list (see answeredReview), and an item
+	// no longer assigned to it out of the assigned list (see unassigned); '' for a whole
+	// refresh, whose searches say which lists each item is in, as its details correct them
+	// before it stores them (see dropLeft).
 	login string
 
 	// firstLoad is set for a whole refresh that found no item stored for the account

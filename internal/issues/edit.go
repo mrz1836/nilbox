@@ -34,7 +34,9 @@ const (
 // counts them and says why the next failed, while a failure before any is the error. A name
 // given twice is sent once, and one both added and taken off not at all. The sheet's copy of
 // the issue is marked out of date, for the read the sheet makes next, and each person
-// assigned is kept in the People directory as assigned in the repository.
+// assigned is kept in the People directory as assigned in the repository. An edit that
+// assigns the user tells the inbox so (Acted.SelfAssigned), so the card reads as assigned
+// to them at once, and the next refresh tells no arrival of their own assignment.
 func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error) {
 	card, c, err := s.load(ctx, req.ItemID)
 	if err != nil {
@@ -73,7 +75,7 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error)
 		editErr := e.run(ctx, s.github, tok, t)
 		s.settle(ctx, req.ItemID, false)
 
-		return Acted{}, editErr
+		return e.acted(t.Login), editErr
 	})
 
 	if e.done[stepAssign] {
@@ -94,10 +96,26 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error)
 
 // edit is an edit of an issue's labels and assignees as it will be sent, and the steps
 // GitHub has made of it, by key, which a retry with a fresh token never sends again.
+// assigned is GitHub's answer to the step that assigns people, once it made it.
 type edit struct {
 	label, unlabel, assign, unassign []string
 
-	done map[string]bool
+	done     map[string]bool
+	assigned *github.Edited
+}
+
+// acted is what the edit made happen that the inbox records, over every try: the user
+// (login) assigned, when they were among those the edit assigns and GitHub's answer has
+// them, so the issue is in the inbox's assigned list at once. Assigning only others, while
+// the user is assigned or not, records nothing: an assignment of the user someone else
+// made still arrives.
+func (e *edit) acted(login string) Acted {
+	if e.assigned == nil || login == "" || !textutil.ContainsFold(e.assign, login) ||
+		!textutil.ContainsFold(e.assigned.Assignees, login) {
+		return Acted{}
+	}
+
+	return Acted{SelfAssigned: true, SelfAssignedAt: e.assigned.UpdatedAt}
 }
 
 // editStep is one request of an edit: its key, and how to send it.
@@ -187,7 +205,10 @@ func (e *edit) steps(gh GitHub, t Target) []editStep {
 
 	if len(e.assign) > 0 {
 		out = append(out, editStep{key: stepAssign, send: func(ctx context.Context, tok github.Token) error {
-			_, err := gh.AddAssignees(ctx, tok, t.Ref, e.assign)
+			edited, err := gh.AddAssignees(ctx, tok, t.Ref, e.assign)
+			if err == nil {
+				e.assigned = edited
+			}
 
 			return err
 		}})
