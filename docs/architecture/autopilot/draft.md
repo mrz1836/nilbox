@@ -36,6 +36,14 @@ build runs through `Offers` (nil is the catalog's own, `CatalogOffers`; a test h
 - **The rest it shares** with the root: `ActsOn` (the kinds a routine acts on: those both its
   watch and its trigger take), `Offers.Needs` and `NeedsWords` (what a template needs that this
   build doesn't run), `Offers.PreferredPlace`, `RenamedWords`, and `Series`.
+- **What a routine names.** `FindPrompt` and `PromptIndex` find the library prompt a step names,
+  its UUID first, then its starter's key or its nickname, ignoring case; `FindScript` finds a
+  script step's script, its UUID first, then its ID, reporting one found by its ID alone under
+  another name as renamed, waiting to be picked again. `Stamp` writes into a spec what each
+  reference resolves to now: the record's UUID and its fallback brought up to date, never `""`,
+  leaving what resolves to nothing as it is; `Stamped` does it on a copy and returns it only when
+  it still loads within `spec.MaxBytes`. Save, the imports, and `Follower.Follow` all stamp
+  through it, and the engine and core resolve through the same finders.
 - **The root's side.** The autopilot package keeps its bound types (`Described`, `MyScript`)
   and aliases the leaf's unbound ones (`LibraryPrompt`, `ReplyFor`, `Offers`, the caps, and
   the errors), so no generated binding moved; `serviceSetup` is its live `Setup` (the prompt

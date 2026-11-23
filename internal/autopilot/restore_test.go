@@ -149,7 +149,7 @@ func TestRestoreWithNothingToBringBack(t *testing.T) {
 func TestRestoreKeepsANewerBuildsRoutineAsItWas(t *testing.T) {
 	t.Parallel()
 
-	const newer = `{"version":2,"somethingNew":true}`
+	const newer = `{"version":3,"somethingNew":true}`
 
 	path := filepath.Join(t.TempDir(), "autopilot.json")
 	testutil.WriteFile(t, path, `{

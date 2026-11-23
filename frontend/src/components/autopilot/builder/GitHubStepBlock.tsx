@@ -1,7 +1,7 @@
 import { useId } from 'react'
 
 import { actionLabels } from '../../../lib/autopilot'
-import { moved, problemsAt, problemsExactly } from '../../../lib/routineBuilder'
+import { findPrompt, moved, problemsAt, problemsExactly, promptRefOf } from '../../../lib/routineBuilder'
 import type {
   AutopilotGitHubAction,
   AutopilotGitHubActionKind,
@@ -47,17 +47,17 @@ function replyValue(ref: AutopilotPromptRef): string {
   return (ref.starter ?? '') !== '' ? `starter:${ref.starter ?? ''}` : `nickname:${ref.nickname ?? ''}`
 }
 
-// replyRef is the reply a menu value names.
-function replyRef(value: string): AutopilotPromptRef {
+// replyRef is the reply a menu value names: a library reply by its UUID too (promptRefOf).
+function replyRef(value: string, prompts: readonly Prompt[]): AutopilotPromptRef {
+  const picked = prompts.find((p) => replyValue(promptRefOf(p)) === value)
+  if (picked !== undefined) {
+    return promptRefOf(picked)
+  }
+
   const at = value.indexOf(':')
   const name = value.slice(at + 1)
 
   return value.startsWith('starter:') ? { starter: name } : { nickname: name }
-}
-
-// promptRefOf is how a step names a library prompt: by its starter, else its nickname.
-function promptRefOf(p: Prompt): AutopilotPromptRef {
-  return p.starterKey !== '' ? { starter: p.starterKey } : { nickname: p.nickname }
 }
 
 // newAction is an action of kind as + Add an action adds it: a reply the first comment
@@ -207,12 +207,11 @@ interface ReplyPickerProps {
 // ReplyPicker picks the comment reply an action posts. A reply the menu doesn't offer (one
 // the library lost, or made an approval's since) is kept as itself, so its problem shows.
 function ReplyPicker({ id, n, value, replies, prompts, invalid, onChange }: ReplyPickerProps) {
-  const current = replyValue(value)
+  // The reply the action names is found as Go finds it, its UUID first, whatever it is called now.
+  const found = findPrompt(prompts, value)
+  const current = replyValue(found === undefined ? value : promptRefOf(found))
   const known = replies.some((p) => replyValue(promptRefOf(p)) === current)
-  const unlisted =
-    (value.starter ?? '') !== ''
-      ? (prompts.find((p) => p.starterKey === value.starter)?.nickname ?? value.starter ?? '')
-      : (value.nickname ?? '')
+  const unlisted = found?.nickname ?? ((value.starter ?? '') !== '' ? (value.starter ?? '') : (value.nickname ?? ''))
 
   return (
     <>
@@ -224,7 +223,7 @@ function ReplyPicker({ id, n, value, replies, prompts, invalid, onChange }: Repl
         value={current}
         aria-invalid={invalid}
         onChange={(e) => {
-          onChange(replyRef(e.target.value))
+          onChange(replyRef(e.target.value, prompts))
         }}
         className={`${fieldClass} py-0.5 text-xs`}
       >

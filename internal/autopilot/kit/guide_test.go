@@ -195,12 +195,14 @@ func wordsNamesOf[E any](list []E, name func(E) string) []string {
 	return out
 }
 
-// wordsJSONKeys are a struct's JSON keys.
+// wordsJSONKeys are a struct's JSON keys, but those Describe it never reads nor writes
+// (kit.HiddenKeys).
 func wordsJSONKeys(t reflect.Type) []string {
 	var out []string
 
 	for field := range t.Fields() {
-		if name, _, _ := strings.Cut(field.Tag.Get("json"), ","); name != "" && name != "-" {
+		if name, _, _ := strings.Cut(field.Tag.Get("json"), ","); name != "" && name != "-" &&
+			!slices.Contains(kit.HiddenKeys()[t], name) {
 			out = append(out, name)
 		}
 	}

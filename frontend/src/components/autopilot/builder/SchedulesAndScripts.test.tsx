@@ -7,6 +7,7 @@ import type { AutopilotDraft, AutopilotSpec } from '../../../platform'
 import {
   agents,
   autopilotCatalog,
+  fixtureUUID,
   myScript,
   profile,
   prompts,
@@ -128,13 +129,13 @@ describe('Run one of my scripts', () => {
     const picker = await then.findByRole('combobox', { name: 'Step 3: the script it runs' })
 
     await user.selectOptions(picker, '8')
-    expect(spec().steps[2]).toEqual({ script: { id: 8, name: 'Tidy' } })
+    expect(spec().steps[2]).toEqual({ script: { uuid: fixtureUUID(708), id: 8, name: 'Tidy' } })
     expect(then.getByText('go mod tidy')).toBeInTheDocument()
     expect(then.getByText(/where it shows in Go repositories/)).toBeInTheDocument()
     expect(then.getByText(/asks before each run: it waits for your OK every time/)).toBeInTheDocument()
 
     await user.selectOptions(picker, '7')
-    expect(spec().steps[2]).toEqual({ script: { id: 7, name: 'Lint' } })
+    expect(spec().steps[2]).toEqual({ script: { uuid: fixtureUUID(707), id: 7, name: 'Lint' } })
     expect(then.queryByText(/asks before each run/)).not.toBeInTheDocument()
   })
 
@@ -182,7 +183,24 @@ describe('a script saved under another name', () => {
     expect(screen.queryByText('magex lint')).not.toBeInTheDocument()
 
     await user.selectOptions(picker, '7')
-    expect(spec().steps[1]).toEqual({ script: { id: 7, name: 'Lint' } })
+    expect(spec().steps[1]).toEqual({ script: { uuid: fixtureUUID(707), id: 7, name: 'Lint' } })
+    expect(screen.getByText('magex lint')).toBeInTheDocument()
+  })
+
+  it('is the routine’s under its UUID, whatever it is called now and whatever its ID', async () => {
+    // Lint was renamed, and a restore gave it another ID; the step names it by its UUID.
+    platform.autopilotMyScripts.mockResolvedValue([myScript()])
+
+    const renamed = nudge()
+    renamed.steps = [{ notify: {} }, { script: { uuid: fixtureUUID(707), id: 3, name: 'Old lint' } }]
+
+    render(<Harness spec={renamed} />)
+
+    const picker = await screen.findByRole('combobox', { name: 'Step 2: the script it runs' })
+
+    expect(await within(picker).findByRole('option', { name: 'Lint' })).toHaveProperty('selected', true)
+    expect(within(picker).queryByRole('option', { name: /pick it again/ })).not.toBeInTheDocument()
+    expect(within(picker).queryByRole('option', { name: /no longer one of your scripts/ })).not.toBeInTheDocument()
     expect(screen.getByText('magex lint')).toBeInTheDocument()
   })
 })

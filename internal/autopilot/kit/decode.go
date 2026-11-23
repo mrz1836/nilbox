@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -74,8 +75,14 @@ func readProposal(p Proposal) (Proposal, error) {
 }
 
 // canonical returns p as it encodes and reads back: an empty list that encoding leaves
-// out read as none, as a file stores it, and its summary trimmed.
+// out read as none, as a file stores it, its summary trimmed, and no UUID in a routine's
+// spec (HiddenKeys), which Save stamps again from the names.
 func canonical(p Proposal) (Proposal, error) {
+	p.Routines = slices.Clone(p.Routines)
+	for i := range p.Routines {
+		p.Routines[i].Spec = spec.WithoutUUIDs(p.Routines[i].Spec)
+	}
+
 	data, err := storedJSON(p)
 	if err != nil {
 		return Proposal{}, err

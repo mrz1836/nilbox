@@ -359,6 +359,12 @@ func (l promptLibrary) Prompts(ctx context.Context) ([]autopilot.LibraryPrompt, 
 		return nil, err
 	}
 
+	return libraryPromptsOf(all), nil
+}
+
+// libraryPromptsOf returns the library's prompts all, in their order, as a routine names
+// them: by UUID, starter, or nickname, with what each is for.
+func libraryPromptsOf(all []prompts.Prompt) []autopilot.LibraryPrompt {
 	out := make([]autopilot.LibraryPrompt, 0, len(all))
 
 	for _, p := range all {
@@ -370,12 +376,12 @@ func (l promptLibrary) Prompts(ctx context.Context) ([]autopilot.LibraryPrompt, 
 		}
 
 		out = append(out, autopilot.LibraryPrompt{
-			Starter: p.StarterKey, Nickname: p.Nickname, Reply: p.Purpose == prompts.PurposeReply,
+			UUID: p.UUID, Starter: p.StarterKey, Nickname: p.Nickname, Reply: p.Purpose == prompts.PurposeReply,
 			ReplyFor: autopilot.ReplyFor(p.ReplyAction), Kinds: kinds,
 		})
 	}
 
-	return out, nil
+	return out
 }
 
 // autopilotEngine is what Autopilot's engine is built over beside its service: the inbox's

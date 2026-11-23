@@ -18,6 +18,7 @@ import {
   autopilotCatalog,
   codexGitHubTasksWhy,
   described,
+  fixtureUUID,
   pastRulesSpec,
   profile,
   prompts,
@@ -859,14 +860,25 @@ describe('the agent step', () => {
     ).toEqual(['The item’s own default prompt', 'Fix checks', 'Quick look', 'Review', 'Explain'])
 
     await user.selectOptions(prompt, 'starter:fix-checks')
-    expect(spec().steps[0]?.agent?.prompt).toEqual({ starter: 'fix-checks' })
+    expect(spec().steps[0]?.agent?.prompt).toEqual({ uuid: fixtureUUID(3), starter: 'fix-checks' })
     await user.selectOptions(prompt, 'nickname:Explain')
-    expect(spec().steps[0]?.agent?.prompt).toEqual({ nickname: 'Explain' })
+    expect(spec().steps[0]?.agent?.prompt).toEqual({ uuid: fixtureUUID(5), nickname: 'Explain' })
     await user.selectOptions(prompt, 'item')
     expect(spec().steps[0]?.agent?.prompt).toEqual({ itemDefault: true })
 
     await user.click(then.getByRole('button', { name: 'Edit in Prompts' }))
     expect(onEditPrompts).toHaveBeenCalledOnce()
+  })
+
+  it('finds the prompt a step names by its UUID, whatever its nickname says', () => {
+    // Explain was renamed since the routine last followed it, as before the next save.
+    renderBuilder({ spec: agentOnly({ agent: 'inherit', prompt: { uuid: fixtureUUID(5), nickname: 'Old name' } }) })
+
+    const prompt = block('Then').getByRole('combobox', { name: 'Prompt' })
+
+    expect(prompt).toHaveValue('nickname:Explain')
+    expect(prompt).toHaveDisplayValue('Explain')
+    expect(within(prompt).queryByRole('option', { name: 'Old name' })).not.toBeInTheDocument()
   })
 
   it('keeps a prompt the library no longer offers, by its name', () => {

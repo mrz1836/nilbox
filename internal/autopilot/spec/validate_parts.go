@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 var (
@@ -215,13 +216,15 @@ func dollars(cents int) string {
 	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }
 
-// prompt checks a prompt's name. A reply takes no item default, since it is no prompt.
+// prompt checks a prompt's name. A reply takes no item default, since it is no prompt, and
+// a UUID goes only with a starter or a nickname, its fallback, never the item's default.
 func (v *validator) prompt(field string, p PromptRef, reply bool) {
 	switch {
 	case promptNames(p) != 1:
 		v.add(PartSteps, field, "name a prompt: a starter, a nickname, or the item's own default")
 	case p.ItemDefault && reply:
 		v.add(PartSteps, field, "name the reply by its nickname or its starter")
+	case !v.promptUUID(field, p):
 	case p.Starter != "" && (!starterKey.MatchString(p.Starter) || len(p.Starter) > maxStarterRunes):
 		v.add(PartSteps, field+".starter", "%q isn't a starter's key", p.Starter)
 	case p.Nickname != "":
@@ -229,6 +232,31 @@ func (v *validator) prompt(field string, p PromptRef, reply bool) {
 			v.add(PartSteps, field+".nickname", "%s", msg)
 		}
 	}
+}
+
+// promptUUID checks a prompt's UUID, if it has one, and reports whether it is good: never
+// the item's own default's, and canonical.
+func (v *validator) promptUUID(field string, p PromptRef) bool {
+	switch {
+	case p.UUID == "":
+		return true
+	case p.ItemDefault:
+		v.add(PartSteps, field+".uuid", "the item's own default prompt has no UUID")
+	case !canonicalUUID(p.UUID):
+		v.add(PartSteps, field+".uuid", "%q isn't a prompt's UUID", p.UUID)
+	default:
+		return true
+	}
+
+	return false
+}
+
+// canonicalUUID reports a UUID in its canonical form, 36 lowercase characters, and not the
+// Nil UUID.
+func canonicalUUID(u string) bool {
+	c, ok := textutil.CanonicalUUID(u)
+
+	return ok && c == u
 }
 
 // promptNames counts the ways a prompt is named: exactly one for a valid one.

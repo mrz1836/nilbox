@@ -197,3 +197,43 @@ func FuzzDecodeProposal(f *testing.F) {
 		require.LessOrEqual(t, len(read.Prompts), kit.MaxPrompts)
 	})
 }
+
+func TestAProposalNeverHoldsTheUUIDsARoutineNamesItsPromptsAndScriptsBy(t *testing.T) {
+	t.Parallel()
+
+	const promptUUID, scriptUUID = "6f9619ff-8b86-4d01-b42d-00cf4fc964ff", "5d2e8f41-7a63-4c90-9b18-e4f6a2c3d5b7"
+
+	data := strings.Replace(proposalJSON, `"prompt": {"nickname": "Fix it"}`,
+		`"prompt": {"uuid": "`+promptUUID+`", "nickname": "Fix it"}`, 1)
+	require.Contains(t, data, promptUUID)
+
+	p, err := kit.DecodeProposal([]byte(data))
+	require.NoError(t, err)
+	require.Len(t, p.Routines, 1)
+	assert.Equal(t, spec.PromptRef{Nickname: "Fix it"}, p.Routines[0].Spec.Steps[0].Agent.Prompt,
+		"the app keeps the UUIDs for itself: a proposal names a prompt by its name, and Save stamps the UUID")
+
+	withScript := kit.Proposal{Summary: "Lint", Routines: []kit.RoutineChange{{Name: "Lint", Spec: spec.Spec{
+		Version: spec.Version, Steps: []spec.Step{{Script: &spec.ScriptStep{UUID: scriptUUID, ID: 7, Name: "Lint"}}},
+	}}}}
+
+	encoded, err := json.Marshal(withScript)
+	require.NoError(t, err)
+
+	read, err := kit.DecodeProposal(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, spec.ScriptStep{ID: 7, Name: "Lint"}, *read.Routines[0].Spec.Steps[0].Script)
+	assert.Equal(t, scriptUUID, withScript.Routines[0].Spec.Steps[0].Script.UUID, "the proposal it read is left as it was")
+}
+
+func TestTheSchemaAndTheGuideNeverNameAUUID(t *testing.T) {
+	t.Parallel()
+
+	assert.NotContains(t, string(kit.Schema()), `"uuid"`)
+
+	for _, topic := range []string{"routine", "steps", "agent"} {
+		text, ok := kit.Topic(topic, wordsVocabulary())
+		require.True(t, ok, topic)
+		assert.NotContains(t, text, "uuid", topic)
+	}
+}

@@ -1016,6 +1016,11 @@ export interface MissingRef {
  */
 export interface MyScript {
     /**
+     * UUID names it for good, and a script step names it by it first.
+     */
+    "uuid": string;
+
+    /**
      * ID names it on this Mac; Name and Command are as the user saved them.
      */
     "id": number;

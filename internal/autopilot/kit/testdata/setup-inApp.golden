@@ -9,15 +9,15 @@ Each with its id, switch, mode, and `updatedAt`, which a change gives as its `ba
 - id `12`, "Fix failing checks on my PRs": on, `ask` (Ask first), updatedAt `2026-11-19T12:04:05.123456789Z`
   sentence: When checks fail on pull requests opened by you, once every check has settled, if it isn't a draft, run "Fix checks" in the background; if it pushed, wait for the checks, then tell me how it went. Once per commit, at most 2 tries per pull request.
   description: "When the checks on your pull request fail, an agent finds the cause and pushes a fix in the background."
-  spec: {"version":1,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"checks_failed","waitForChecks":true},"conditions":{"match":"all","of":[{"field":"pr.draft","op":"isNo"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"fix-checks"},"where":"background","fence":{"tools":"editTestPush"}}},{"waitForChecks":{},"onlyIf":"pushed"},{"tellMe":{"when":"verdict"}}],"limits":{"oncePer":"headCommit","triesPerItem":2}}
+  spec: {"version":2,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"checks_failed","waitForChecks":true},"conditions":{"match":"all","of":[{"field":"pr.draft","op":"isNo"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"fix-checks"},"where":"background","fence":{"tools":"editTestPush"}}},{"waitForChecks":{},"onlyIf":"pushed"},{"tellMe":{"when":"verdict"}}],"limits":{"oncePer":"headCommit","triesPerItem":2}}
 - id `15`, "Snooze passing bot PRs": on, `auto` (Autopilot), updatedAt `2026-11-19T15:04:05.123456789Z`
   sentence: When checks pass on pull requests asking for your review or assigned to you, if the author is a trusted bot and the update type is minor or patch, snooze it for 3 days.
   description: "A trusted bot's patch or minor update whose checks pass leaves your inbox for three days."
-  spec: {"version":1,"watch":{"sources":[{"lists":["reviewRequested","assigned"]}]},"trigger":{"event":"checks_passed"},"conditions":{"match":"all","of":[{"field":"item.trust","op":"oneOf","values":["bot"]},{"field":"dep.updateType","op":"oneOf","values":["minor","patch"]}]},"steps":[{"snooze":{"days":3}}],"limits":{}}
+  spec: {"version":2,"watch":{"sources":[{"lists":["reviewRequested","assigned"]}]},"trigger":{"event":"checks_passed"},"conditions":{"match":"all","of":[{"field":"item.trust","op":"oneOf","values":["bot"]},{"field":"dep.updateType","op":"oneOf","values":["minor","patch"]}]},"steps":[{"snooze":{"days":3}}],"limits":{}}
 - id `21`, "Rebase \"conflicting\" updates": off, `dryRun` (Dry run), updatedAt `2026-11-19T21:04:05.123456789Z`
   broken: steps[0]: the routine isn't valid
   description: "When a Dependabot update has merge conflicts, comment @dependabot rebase on it, once a commit. No agent, nothing spent."
-  spec: {"version":1,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"merge_conflicts"},"conditions":{"match":"all","of":[]},"steps":[{"github":[{"rebase":{}}]}],"limits":{"oncePer":"headCommit"}}
+  spec: {"version":2,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"merge_conflicts"},"conditions":{"match":"all","of":[]},"steps":[{"github":[{"rebase":{}}]}],"limits":{"oncePer":"headCommit"}}
 
 ## Prompts (3)
 

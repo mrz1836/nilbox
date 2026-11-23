@@ -2,7 +2,7 @@
 # go test ./internal/autopilot/spec -run TestFlagshipGolden -update
 
 {
-  "version": 1,
+  "version": 2,
   "watch": {
     "sources": [
       {

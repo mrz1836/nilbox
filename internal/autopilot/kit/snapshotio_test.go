@@ -93,7 +93,7 @@ func TestASnapshotReadsBackAsItself(t *testing.T) {
 func TestADecodedSnapshotHasEveryList(t *testing.T) {
 	t.Parallel()
 
-	got, err := kit.DecodeSnapshot([]byte(`{"version": 1, "writtenAt": "2026-11-20T05:31:03Z",
+	got, err := kit.DecodeSnapshot([]byte(`{"version": 2, "writtenAt": "2026-11-20T05:31:03Z",
 		"setup": {"routines": null, "prompts": null, "scripts": null, "profiles": null,
 			"settings": {"enabled": false, "paused": false, "defaultMode": "ask", "agentsAtOnce": 2, "runsPerDay": 20,
 				"actionsPerDay": 50, "dailyCap": {"amount": 0, "unit": "usd"}, "keepAwake": false, "holdOnOutage": true,
@@ -128,9 +128,9 @@ func TestADecodedSnapshotHasEveryList(t *testing.T) {
 func TestASnapshotOfAnotherVersionIsWrittenAgainAsTheAppStarts(t *testing.T) {
 	t.Parallel()
 
-	_, err := kit.DecodeSnapshot([]byte(`{"version": 2, "somethingNew": true}`))
+	_, err := kit.DecodeSnapshot([]byte(`{"version": 3, "somethingNew": true}`))
 	require.ErrorIs(t, err, kit.ErrSnapshotVersion, "a newer one says so, not that its keys are unknown")
-	require.EqualError(t, err, "the snapshot is of another version: it is version 2, and this build reads version 1; "+
+	require.EqualError(t, err, "the snapshot is of another version: it is version 3, and this build reads version 2; "+
 		"the app writes it again as it starts")
 
 	_, err = kit.DecodeSnapshot([]byte(`{"version": "1"}`))
@@ -144,11 +144,11 @@ func TestASnapshotIsReadStrictly(t *testing.T) {
 		`{"setup": {}}`:                 "it has no version",
 		`{"version": null}`:             "it has no version",
 		`[1]`:                           "cannot unmarshal",
-		`{"version": 1, "Setup": {}}`:   `a key isn't one the format has, spelled exactly: "Setup"`,
-		`{"version": 1, "version": 1}`:  `a key is given twice: "version"`,
-		`{"version": 1} {}`:             "more after the document",
-		`{"version": 1, "inbox": "no"}`: "cannot unmarshal",
-		`{"version": 1, "setup": {"routines": [{"spec": {"watch": {"sources": [{"search": {"where": ` +
+		`{"version": 2, "Setup": {}}`:   `a key isn't one the format has, spelled exactly: "Setup"`,
+		`{"version": 2, "version": 2}`:  `a key is given twice: "version"`,
+		`{"version": 2} {}`:             "more after the document",
+		`{"version": 2, "inbox": "no"}`: "cannot unmarshal",
+		`{"version": 2, "setup": {"routines": [{"spec": {"watch": {"sources": [{"search": {"where": ` +
 			strings.Repeat("[", 20) + strings.Repeat("]", 20) + `}}]}}}]}}`: "it nests too deep",
 	} {
 		_, err := kit.DecodeSnapshot([]byte(data))
@@ -156,7 +156,7 @@ func TestASnapshotIsReadStrictly(t *testing.T) {
 		require.ErrorContains(t, err, want, data)
 	}
 
-	_, err := kit.DecodeSnapshot([]byte(`{"version": 1, "x": "` + strings.Repeat("a", kit.MaxSnapshotBytes) + `"}`))
+	_, err := kit.DecodeSnapshot([]byte(`{"version": 2, "x": "` + strings.Repeat("a", kit.MaxSnapshotBytes) + `"}`))
 	require.ErrorIs(t, err, kit.ErrUnreadableSnapshot)
 	require.ErrorContains(t, err, "it is larger than")
 }

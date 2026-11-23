@@ -12,13 +12,16 @@
 //
 // The spec holds only the definition: a routine's name, mode (Dry run, Ask first,
 // Autopilot), on or off switch, and account are its row's, so switching a routine on
-// never touches its definition. Prompts are named by nickname or by starter and profiles
-// by agent and name, never by ID, so a spec works on another Mac.
+// never touches its definition. A prompt is named by its UUID beside its nickname or its
+// starter, one of the user's scripts by its UUID beside its ID and name, and profiles by
+// agent and name, never by a database ID alone, so a spec works on another Mac: a UUID
+// that names nothing there falls back to the name.
 //
 // Format version 1 holds every kind of step, including those whose dispatchers come
-// later, so a later build adds the code that runs a step, never a format change. A newer
-// build migrates an older version in Go; an older build refuses a newer one rather than
-// guess at it.
+// later, so a later build adds the code that runs a step, never a format change. Version 2
+// adds the UUIDs, which an older build's strict decode would refuse as keys it doesn't
+// know. A newer build migrates an older version in Go (Normalize, through migrate); an
+// older build refuses a newer one rather than guess at it.
 //
 // ClosedSets lists every closed set of values the format holds, from the catalog's lists
 // and watch's and item's, never a copy of them: Validate checks each value against its
@@ -38,8 +41,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 )
 
-// Version is the format version this build writes and reads.
-const Version = 1
+// Version is the format version this build writes and reads: 2, which names prompts and
+// scripts by UUID too. A version 1 spec reads as one of version 2 (migrate).
+const Version = 2
 
 // Spec is a routine's definition.
 type Spec struct {
@@ -242,8 +246,13 @@ type LabelsAction struct {
 }
 
 // PromptRef names a library prompt by its starter's key or its nickname, or the item's
-// own default prompt. Exactly one is set.
+// own default prompt. Exactly one of the three is set. A library prompt is named by its
+// UUID too, which is looked at first: the starter or the nickname is the fallback, for a
+// library where no prompt has the UUID.
 type PromptRef struct {
+	// UUID is the library prompt's UUID, canonical, never with ItemDefault.
+	UUID string `json:"uuid,omitempty"`
+
 	// Starter is a starter prompt's key, such as "fix-checks": the user's copy of it,
 	// whatever they renamed it.
 	Starter string `json:"starter,omitempty"`
@@ -383,11 +392,16 @@ type ReviewStep struct {
 // ScriptStep is Run one of my scripts: one of the user's own Repo scripts, run in the
 // item's clone, in the app, as Repo scripts runs it, honoring its Ask before running.
 type ScriptStep struct {
-	// ID is the script's, as Repo scripts keeps it on this Mac: what runs.
+	// UUID is the script's UUID, canonical: the script with it is the one that runs, under
+	// whatever ID and name it has now. "" for a step picked before UUIDs.
+	UUID string `json:"uuid,omitempty"`
+
+	// ID is the script's, as Repo scripts keeps it on this Mac: what runs when no script
+	// has UUID.
 	ID int64 `json:"id"`
 
 	// Name is the script's name as it was picked, which the sentence and an export show;
-	// the script that runs is the one with ID, under whatever name it has now.
+	// found by its ID alone, the script runs only while it still has this name.
 	Name string `json:"name"`
 }
 

@@ -34,7 +34,7 @@ func TestTheWordsOfACheckAreWhatTheAgentReads(t *testing.T) {
 			))),
 			{ID: 7, Name: "Nightly", Spec: checksFailSpec(agentStep(spec.PromptRef{Nickname: "Nope"}, "", ""))},
 			changeOf(404, "Gone", checksFailSpec(notifyStep())),
-			{Name: "", Spec: spec.Spec{Version: 2}},
+			{Name: "", Spec: spec.Spec{Version: 3}},
 		},
 		Settings: &kit.SettingsChange{AgentsAtOnce: new(3), HistoryDays: new(5)},
 		Rules:    &kit.RulesChange{Trust: []string{renovateLogin, "no such bot"}, Mute: []string{"acme-org/legacy"}},

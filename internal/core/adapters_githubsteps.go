@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
@@ -385,18 +386,15 @@ func (g githubSteps) fill(ctx context.Context, itemID int64, ref spec.PromptRef)
 	return g.replies.fill(ctx, p.ID, itemID)
 }
 
-// reply returns the library's comment reply ref names: the user's copy of a starter, or
-// the one with the nickname, ignoring case.
+// reply returns the library's comment reply ref names: the one with its UUID, else the
+// user's copy of a starter, or the one with the nickname, ignoring case (draft.PromptIndex).
 func (g githubSteps) reply(ctx context.Context, ref spec.PromptRef) (prompts.Prompt, error) {
 	all, err := g.prompts.All(ctx)
 	if err != nil {
 		return prompts.Prompt{}, err
 	}
 
-	i := slices.IndexFunc(all, func(p prompts.Prompt) bool {
-		return (ref.Starter != "" && p.StarterKey == ref.Starter) ||
-			(ref.Starter == "" && ref.Nickname != "" && strings.EqualFold(p.Nickname, ref.Nickname))
-	})
+	i := draft.PromptIndex(libraryPromptsOf(all), ref)
 
 	switch {
 	case i < 0:

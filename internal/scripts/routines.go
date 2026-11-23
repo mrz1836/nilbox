@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts/internal/queries"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -48,7 +50,7 @@ func (r Routines) Mine(ctx context.Context) ([]RoutineScript, error) {
 
 	out := make([]RoutineScript, 0, len(all))
 	for _, u := range all {
-		out = append(out, RoutineScript{UserScript: u, Look: yoursScript(u).look, Shows: showsWords(u)})
+		out = append(out, routineScript(u))
 	}
 
 	return out, nil
@@ -180,4 +182,26 @@ func (r Routines) sameLook(ctx context.Context, c clone, req RoutineRun) error {
 
 	return uierr.New(fmt.Sprintf("%q changed since you said to run it. Look at it again before it runs.",
 		strings.TrimSpace(sc.entry.Name)), fmt.Errorf("%w: %s", ErrChanged, sc.entry.Ref))
+}
+
+// TxScripts returns the user's own scripts as tx, an import's transaction, holds them, in
+// their order, as Mine returns them, so what the import checks against them sees the
+// scripts the same import brought.
+func TxScripts(ctx context.Context, tx *sql.Tx) ([]RoutineScript, error) {
+	rows, err := queries.New(tx).ListUserScripts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read your scripts: %w", err)
+	}
+
+	out := make([]RoutineScript, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, routineScript(fromRow(r)))
+	}
+
+	return out, nil
+}
+
+// routineScript is u as a routine reads it.
+func routineScript(u UserScript) RoutineScript {
+	return RoutineScript{UserScript: u, Look: yoursScript(u).look, Shows: showsWords(u)}
 }

@@ -1193,7 +1193,7 @@ describe('the builder in the tab', () => {
       id: 0,
       name: 'New routine',
       mode: 'ask',
-      spec: { version: 1 },
+      spec: { version: 2 },
     })
     expect(await screen.findByText(/Made “New routine”, switched off/)).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'New routine' })).toBeInTheDocument()

@@ -154,9 +154,9 @@ type pass struct {
 	ready   readySnapshot
 	outside OutsideIndex
 
-	// scripts are the user's own scripts by ID, read once a cycle when a routine runs one,
-	// and scriptsFailed reports a read that failed (scriptsOf).
-	scripts       map[int64]MyScript
+	// scripts are the user's own scripts, read once a cycle when a routine runs one, and
+	// scriptsFailed reports a read that failed (scriptsOf).
+	scripts       []MyScript
 	scriptsFailed bool
 }
 

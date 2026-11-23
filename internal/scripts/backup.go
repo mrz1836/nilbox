@@ -304,3 +304,9 @@ func (im *scriptImport) dropUnmatched(ctx context.Context) error {
 
 	return nil
 }
+
+// BackupDone tells Config.Changed once an import of the user's scripts committed, as every
+// change to them does.
+func (bp *BackupPart) BackupDone(ctx context.Context) {
+	bp.s.told(ctx)
+}

@@ -121,12 +121,7 @@ func (r serviceSetup) Scripts(ctx context.Context) ([]draft.Script, bool) {
 		return nil, false
 	}
 
-	out := make([]draft.Script, 0, len(mine))
-	for _, m := range mine {
-		out = append(out, draft.Script{ID: m.ID, Name: m.Name})
-	}
-
-	return out, true
+	return draftScripts(mine), true
 }
 
 // StarterNames names the starter prompts as the routines are shown with them (view).

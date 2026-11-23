@@ -51,9 +51,10 @@ The library is on the left, grouped by what each prompt is for (**Pull requests*
 **Both**, and **Repositories**), with search; a star marks the app's defaults, a situation's among
 them, "Default in N places" counts the org and repository defaults that name one, for a kind or a
 situation, and "Used by N routines" the [Autopilot](autopilot/README.md) routines that run it. A
-prompt a routine runs can't be deleted (it says which routine uses it), and renaming one renames it
-in every routine that names it, so a routine never loses its prompt; one that goes anyway, as
-through an import, keeps the routine's runs from starting, saying so. The selected prompt's editor
+prompt a routine runs can't be deleted (it says which routine uses it). A routine knows each
+prompt it runs for good, whatever you call it: renaming a prompt, resetting it, or saving another
+version over it with an import or a backup never breaks a routine, which shows the prompt's
+nickname now. One that goes anyway keeps the routine's runs from starting, saying so. The selected prompt's editor
 is in the middle, and the **Variables** cheat sheet is always on the right, in a window wide enough
 for it. The editor's **Edit | Preview** switch (⇧⌘P, even while typing) shows the prompt filled in,
 live, in place of its text; it stays on as you move between prompts, so previews can be compared,

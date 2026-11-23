@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"errors"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -289,4 +290,31 @@ func TestARoutinesPromptHereUnderItsUUIDIsNeverAddedAgain(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{mineName}, added)
 	assert.NotContains(t, nicknames(t, s), "old-review")
+}
+
+func TestARoutinesUseNamesThePromptWithItsUUIDWhateverItIsCalledNow(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	seeded := NewService(Config{Store: NewStore(db, nil), Usage: launchDefaults{db: db}})
+	require.NoError(t, Seed(t.Context(), seeded.store))
+
+	quick := byNickname(t, seeded, "Quick look")
+
+	// One routine names Quick look by its UUID beside a nickname another prompt has taken
+	// since; another names Review by a UUID nothing has, beside its nickname.
+	s := NewService(Config{Store: seeded.store, Usage: launchDefaults{db: db}, Routines: routineUses{
+		{Routine: "Look first", UUID: quick.UUID, Nickname: reviewNick},
+		{Routine: "Stale", UUID: fileUUID, Nickname: reviewNick},
+	}})
+
+	assert.Equal(t, []string{"Look first"}, byNickname(t, s, "Quick look").Usage.Routines, "the UUID finds it")
+	assert.Equal(t, []string{"Stale"}, byNickname(t, s, reviewNick).Usage.Routines,
+		"a UUID nothing has falls back to the nickname, and never names the prompt that has it as well")
+
+	err := s.Delete(t.Context(), quick.ID)
+
+	inUse, ok := errors.AsType[*InUseError](err)
+	require.True(t, ok, "a prompt a routine runs by its UUID can't be deleted: %v", err)
+	assert.Equal(t, []string{"Look first"}, inUse.Usage.Routines)
 }

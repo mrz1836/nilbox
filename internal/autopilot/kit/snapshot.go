@@ -9,7 +9,9 @@ import (
 
 // SnapshotVersion is the snapshot's format version. The tool mode refuses a snapshot of
 // another version rather than guess at it, and the app writes it again as it starts.
-const SnapshotVersion = 1
+// Version 2 holds routines in version 2 of the spec's format, without its UUIDs, which a
+// tool mode of an older build still running would misread.
+const SnapshotVersion = 2
 
 // Snapshot is what the agent may read of the user's setup and inbox, beside the parts of
 // the app's vocabulary that packages above the leaves hold: the app writes it to its

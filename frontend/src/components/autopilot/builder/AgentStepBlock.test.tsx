@@ -4,7 +4,15 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotAgentStep, AutopilotProblem, ItemKind, Prompt } from '../../../platform'
-import { agents, autopilotCatalog, profile, prompt, prompts, routineSuggestions } from '../../../test/fixtures'
+import {
+  agents,
+  autopilotCatalog,
+  fixtureUUID,
+  profile,
+  prompt,
+  prompts,
+  routineSuggestions,
+} from '../../../test/fixtures'
 import { AgentStepBlock } from './AgentStepBlock'
 import type { BuilderKit } from './parts'
 
@@ -138,7 +146,9 @@ describe('AgentStepBlock', () => {
 
     await user.selectOptions(menu, 'starter:review-pr')
 
-    expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: { starter: 'review-pr' } }))
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: { uuid: fixtureUUID(1), starter: 'review-pr' } }),
+    )
     expect(offered()).not.toContain('Upgrade deps')
   })
 })

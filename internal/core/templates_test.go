@@ -60,7 +60,9 @@ func TestRoutinesTravelWithTheirPromptsThroughTheLibrary(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, routines, 1)
 	assert.False(t, routines[0].Enabled)
-	assert.Equal(t, spec.PromptRef{Nickname: triageNick}, routines[0].Spec.Steps[0].Agent.Prompt)
+	assert.Equal(t, mine.UUID, lib[triageNick].UUID, "the prompt keeps its UUID on the other Mac")
+	assert.Equal(t, spec.PromptRef{UUID: mine.UUID, Nickname: triageNick}, routines[0].Spec.Steps[0].Agent.Prompt,
+		"the routine names it by that UUID")
 
 	// A Mac that has its own Triage keeps it, and says the two differ.
 	other := bootstrap(t, testOptions(t, ".claude"))
@@ -76,7 +78,14 @@ func TestRoutinesTravelWithTheirPromptsThroughTheLibrary(t *testing.T) {
 	imported, err = other.Autopilot.Import(ctx, autopilot.ImportRequest{Path: path, SHA256: preview.SHA256})
 	require.NoError(t, err)
 	assert.Empty(t, imported.Prompts)
-	assert.Equal(t, "My way {{.URL}}", libraryByNickname(t, other)[triageNick].Body, "the copy on this Mac stays")
+	myTriage := libraryByNickname(t, other)[triageNick]
+	assert.Equal(t, "My way {{.URL}}", myTriage.Body, "the copy on this Mac stays")
+
+	mapped, err := other.Autopilot.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, mapped, 1)
+	assert.Equal(t, spec.PromptRef{UUID: myTriage.UUID, Nickname: triageNick}, mapped[0].Spec.Steps[0].Agent.Prompt,
+		"a UUID this Mac doesn't know falls back to the nickname, and the routine names the prompt here by its own")
 }
 
 // filledTemplate returns t's spec with its blanks filled as quick setup fills them: your

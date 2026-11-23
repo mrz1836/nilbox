@@ -72,10 +72,12 @@ you have.
   upgrade the dependencies, which Repo scripts points to Release or Deps, fails its step: a
   routine never runs one anyway. A script that doesn't show in the
   item's clone, or that you deleted, fails its step and says so; with no clone, or Scripts
-  turned off, the match waits. A script you renamed since you picked it waits for you to pick
-  it again (*The script picked as "Lint" is now "Lint all": pick it again in the routine.*),
-  so a routine from another Mac, or from a backup, never runs another script that happens to
-  have the same ID here. **Stop** stops it, as in Scripts → Runs.
+  turned off, the match waits. A routine knows the script it runs for good: renamed, or brought
+  back by a reset or a backup under another ID, it is still the routine's, which shows its name
+  now. Only a routine picked before Nilbox knew scripts for good, or brought from another Mac,
+  finds its script by its ID alone; such a script renamed since it was picked waits for you to
+  pick it again (*The script picked as "Lint" is now "Lint all": pick it again in the routine.*),
+  so a routine never runs another script that happens to have the same ID here. **Stop** stops it, as in Scripts → Runs.
 - **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
   own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In the
   background**, which a new agent step starts with, or **In my terminal**, exactly a click's

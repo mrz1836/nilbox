@@ -502,25 +502,29 @@ type Config struct {
 	Logger *slog.Logger
 
 	// Changed is told after every change to the library, once the library file is
-	// written. What names prompts by nickname outside the database, such as the launch
-	// defaults' copy, rewrites itself there, so a renamed prompt is never lost. Optional.
+	// written, whatever made it: an edit, a reset, an import, a backup, a delete. What names
+	// prompts by nickname outside the database, such as the launch defaults' copy, rewrites
+	// itself there, and the routines, which name each prompt by its UUID, write each one's
+	// nickname now beside it, so a renamed prompt is never lost. Optional.
 	Changed func(context.Context)
 
 	// Routines lists where Autopilot's routines name prompts, so a prompt's usage names
 	// them and a prompt one runs can't be deleted. Optional.
 	Routines RoutineSource
 
-	// Renamed is told of a prompt whose nickname changed, from and to, once the change is
-	// stored and before Changed: what names prompts by nickname in the database, as a
-	// routine's steps do, follows the new nickname, so the rename never breaks it.
-	// Optional.
+	// Renamed is told of a prompt Update renamed, from and to, once the change is stored and
+	// before Changed: a routine that names the prompt by its old nickname alone, as one
+	// stored before UUIDs, follows the new one, so the rename never breaks it. A routine
+	// that names it by its UUID needs no telling. Optional.
 	Renamed func(ctx context.Context, from, to string)
 }
 
-// RoutineUse is one place an Autopilot routine names a prompt: by the key of the starter
-// it came from (the user's copy of it, whatever they renamed it), else by its nickname.
+// RoutineUse is one place an Autopilot routine names a prompt: by its UUID (the prompt
+// that has it, whatever it is called now), else by the key of the starter it came from (the
+// user's copy of it, whatever they renamed it), else by its nickname.
 type RoutineUse struct {
 	Routine  string
+	UUID     string
 	Starter  string
 	Nickname string
 }

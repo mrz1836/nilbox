@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -161,10 +162,11 @@ func agentOf(id string) agent.ID {
 	return agent.ID(id)
 }
 
-// promptIDOf finds the prompt ref names in the library, 0 for the item's own default (the
-// one a click resolves to). One the library doesn't have is an error that says so.
+// promptIDOf finds the prompt ref names in the library, UUID first (draft.PromptIndex), 0 for
+// the item's own default (the one a click resolves to). One the library doesn't have is an
+// error that says so.
 func promptIDOf(ctx context.Context, store *prompts.Store, ref spec.PromptRef) (int64, error) {
-	if ref.ItemDefault || ref.Starter == "" && ref.Nickname == "" {
+	if ref.ItemDefault || ref.UUID == "" && ref.Starter == "" && ref.Nickname == "" {
 		return 0, nil
 	}
 
@@ -173,22 +175,12 @@ func promptIDOf(ctx context.Context, store *prompts.Store, ref spec.PromptRef) (
 		return 0, err
 	}
 
-	if i := slices.IndexFunc(all, func(p prompts.Prompt) bool { return refNames(ref, p) }); i >= 0 {
+	if i := draft.PromptIndex(libraryPromptsOf(all), ref); i >= 0 {
 		return all[i].ID, nil
 	}
 
 	return 0, uierr.New(fmt.Sprintf("Its prompt, “%s”, isn't in your library any more.",
 		firstSet(ref.Nickname, ref.Starter)), prompts.ErrPromptNotFound)
-}
-
-// refNames reports whether ref names p: a starter's key names the user's copy of it, and a
-// nickname the prompt that has it, ignoring case.
-func refNames(ref spec.PromptRef, p prompts.Prompt) bool {
-	if ref.Starter != "" {
-		return p.StarterKey == ref.Starter
-	}
-
-	return strings.EqualFold(p.Nickname, ref.Nickname)
 }
 
 // agentRuns runs a routine's agent steps (autopilot.Runner). A run in the user's terminal is
@@ -986,30 +978,52 @@ func (o outsideIndex) Allowed(full string) (bool, string) {
 // routinePrompts tells the prompt library where the routines name its prompts, and the
 // routines of a prompt renamed (prompts.RoutineSource, prompts.Config.Renamed).
 type routinePrompts struct {
-	follower *autopilot.PromptFollower
-	logger   *slog.Logger
+	follow *routineFollow
 }
 
 // RoutineUses returns where the routines name prompts.
 func (r routinePrompts) RoutineUses(ctx context.Context) ([]prompts.RoutineUse, error) {
-	uses, err := r.follower.Uses(ctx)
+	if r.follow.follower == nil {
+		return []prompts.RoutineUse{}, nil
+	}
+
+	uses, err := r.follow.follower.Uses(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	out := make([]prompts.RoutineUse, 0, len(uses))
 	for _, u := range uses {
-		out = append(out, prompts.RoutineUse{Routine: u.Routine, Starter: u.Starter, Nickname: u.Nickname})
+		out = append(out, prompts.RoutineUse{Routine: u.Routine, UUID: u.UUID, Starter: u.Starter, Nickname: u.Nickname})
 	}
 
 	return out, nil
 }
 
-// Renamed has the routines follow a prompt renamed, logging a failure: the routine then
-// says its prompt isn't in the library, before any start.
+// Renamed has the routines follow a prompt renamed (routineFollow.follow).
 func (r routinePrompts) Renamed(ctx context.Context, from, to string) {
-	if _, err := r.follower.Renamed(ctx, from, to); err != nil {
-		r.logger.WarnContext(ctx, "the routines could not follow a prompt renamed", "error", err)
+	r.follow.follow(ctx, autopilot.PromptRename{From: from, To: to})
+}
+
+// routineFollow has the routines follow their prompts and scripts (autopilot.Follower):
+// after every change to the prompt library or the user's scripts, a prompt renamed
+// replayed, and once at every start. Core fills the follower in once Autopilot's service
+// is built, before anything can change; a follow that fails is logged, and the routines
+// catch up at the next change or start, a prompt or script each names still found by its
+// UUID meanwhile.
+type routineFollow struct {
+	follower *autopilot.Follower
+	logger   *slog.Logger
+}
+
+// follow has the routines follow every change to what they name, renames replayed.
+func (r *routineFollow) follow(ctx context.Context, renames ...autopilot.PromptRename) {
+	if r == nil || r.follower == nil {
+		return
+	}
+
+	if _, err := r.follower.Follow(ctx, renames); err != nil {
+		r.logger.WarnContext(ctx, "the routines could not follow their prompts and scripts", "error", err)
 	}
 }
 

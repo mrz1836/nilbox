@@ -313,7 +313,7 @@ func TestASpecFromANewerBuildLoadsAsBrokenAndIsNeverRewritten(t *testing.T) {
 	r := newRig(t, autopilotprefs.ModeAsk)
 	fine := r.save(t, draft("Fine", notifySpec()))
 
-	const newer = `{"version":2,"watch":{"sources":[]},"somethingNew":{"x":1}}`
+	const newer = `{"version":3,"watch":{"sources":[]},"somethingNew":{"x":1}}`
 
 	id := r.insertRaw(t, "From the future", "neverHeardOf", newer)
 

@@ -152,8 +152,9 @@ func (k *kept) restore(ctx context.Context, reset *store.Reset) restored {
 // as after it was set aside, damaged, or deleted: from the database set aside (setAside,
 // "" for none), or else from their copy, each switched off. It runs after the prompts and
 // the launch defaults, so the prompts a routine names are back first; a routine names
-// them by nickname, which the restored library keeps, so nothing needs matching. What
-// cannot be brought back is logged, never fatal.
+// them by UUID, which the restored library keeps, beside the nickname, so nothing needs
+// matching, and the routines' follow at startup writes what each names now. What cannot
+// be brought back is logged, never fatal.
 func (k *kept) restoreRoutines(ctx context.Context, setAside string) autopilot.Restored {
 	got, err := autopilot.Restore(ctx, k.pool, k.clock, setAside, k.routinesFile)
 	if err != nil {

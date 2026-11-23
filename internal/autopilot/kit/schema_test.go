@@ -96,6 +96,13 @@ func TestTheSchemaEnumeratesEveryClosedSet(t *testing.T) {
 		props, _ := wordsDef(t, schema, typ)["properties"].(map[string]any)
 
 		for field := range typ.Fields() {
+			if key, _, _ := strings.Cut(field.Tag.Get("json"), ","); slices.Contains(kit.HiddenKeys()[typ], key) {
+				_, inSchema := props[key]
+				assert.False(t, inSchema, "%s.%s is the app's own, never in the schema", typ.Name(), key)
+
+				continue
+			}
+
 			if wordsCheckEnum(t, typ, field, props) {
 				enums++
 			}

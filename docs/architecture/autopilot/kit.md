@@ -10,7 +10,7 @@ is a pure leaf, held by `TestLeafImports` to the routines core's `catalog`, `spe
 `textutil`: it reads no file, starts nothing, and keeps no clock, the snapshot and the moment
 coming with each call.
 
-- **The snapshot** (`Snapshot`, version 1, the describe folder's `context.json`) is what the
+- **The snapshot** (`Snapshot`, version 2, the describe folder's `context.json`) is what the
   agent may read: the user's `Setup` (each routine with its definition, sentence, switch, mode,
   and `UpdatedAt`; each prompt's names, purpose, review, and kinds, never its text; each
   script's name and where it shows, never its command; each agent profile's name; Autopilot's
@@ -30,6 +30,13 @@ coming with each call.
   ID, name, sentence, switch, mode, and `UpdatedAt`, each prompt's nickname, purpose, and kinds,
   the settings, and the vocabulary; no definition, description, script, profile, rule, or inbox
   name.
+- **The UUIDs stay the app's.** A routine names its prompts and scripts by UUID beside their
+  names, which Describe it never reads nor writes (`HiddenKeys`: `PromptRef.uuid` and
+  `ScriptStep.uuid`): core strips them from every routine of the snapshot and an attachment
+  (`spec.WithoutUUIDs`, in `kitRoutine`), the schema, the shapes, and the guide name neither key,
+  and a proposal that holds one has it dropped as it is read (`canonical`), so a proposal file
+  never holds one; `Save` stamps each again from the name. Snapshot version 2 is the one whose
+  routines are in version 2 of the spec's format, which an older tool mode refuses.
 - **The proposal** (`Proposal`): a summary; new prompts (`NewPrompt`: names, purpose, review,
   kinds, and text; no models, effort, plan mode, worktree, or flags, which reach a click's launch
   without a fence); new routines and changes to routines (`RoutineChange`: for a change, the

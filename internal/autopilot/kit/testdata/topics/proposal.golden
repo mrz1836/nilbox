@@ -88,7 +88,7 @@ This example holds every part at once to show the format; a real proposal holds 
       "mode": "ask",
       "template": "fix-failing-checks-on-my-prs",
       "spec": {
-        "version": 1,
+        "version": 2,
         "watch": {
           "sources": [
             {

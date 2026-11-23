@@ -37,7 +37,8 @@ func newBackup(pool *sql.DB, c *Core, promptStore *prompts.Store, opts Options, 
 			},
 			backup.SectionScripts: backupScripts{scripts: scripts.NewBackupPart(c.Scripts)},
 			backup.SectionAutopilot: backupRoutines{
-				routines: autopilot.NewBackupPart(c.Autopilot), app: opts.Version, clock: clock.Or(opts.Clock),
+				routines: autopilot.NewBackupPart(c.Autopilot), prompts: promptStore, app: opts.Version,
+				clock: clock.Or(opts.Clock),
 			},
 		},
 		Dir: opts.Paths.Backups, App: opts.Version, Home: opts.Home, Clock: opts.Clock, Logger: logger,
@@ -305,14 +306,17 @@ func (b backupScripts) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared,
 	return b.scripts.ApplyBackup(ctx, tx, stateOf[scripts.ScriptsPlan](p))
 }
 
-// Done implements backup.Part. Repo scripts reads the scripts as it lists a clone's, so
-// nothing needs telling.
-func (backupScripts) Done(context.Context, backup.Prepared) {}
+// Done implements backup.Part: the scripts' Changed is told, so the routines follow the
+// scripts the import changed. Repo scripts reads the scripts as it lists a clone's.
+func (b backupScripts) Done(ctx context.Context, _ backup.Prepared) {
+	b.scripts.BackupDone(ctx)
+}
 
 // backupRoutines adapts the Autopilot routines to a backup's Autopilot section, which is
-// their copy's format, naming prompts by nickname.
+// their copy's format, naming prompts and scripts by UUID beside their names.
 type backupRoutines struct {
 	routines *autopilot.BackupPart
+	prompts  *prompts.Store
 	app      string
 	clock    clock.Clock
 }
@@ -344,9 +348,45 @@ func (b backupRoutines) Prepare(ctx context.Context, raw json.RawMessage, how ba
 	return backup.Prepared{Plan: plan.Plan, State: plan}, nil
 }
 
-// Apply implements backup.Part.
-func (b backupRoutines) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared, _ backup.Links) (backup.Count, error) {
-	return b.routines.ApplyBackup(ctx, tx, stateOf[autopilot.BackupPlan](p))
+// Apply implements backup.Part: each routine's prompts and scripts are found among what the
+// import's transaction holds, the prompts the file brought (links) first, by the UUIDs they
+// have here.
+func (b backupRoutines) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared, links backup.Links,
+) (backup.Count, error) {
+	lib, err := b.prompts.WithTx(tx).All(ctx)
+	if err != nil {
+		return backup.Count{}, err
+	}
+
+	mine, err := scripts.TxScripts(ctx, tx)
+	if err != nil {
+		return backup.Count{}, err
+	}
+
+	recs := autopilot.BackupRecords{
+		Prompts: libraryPromptsOf(lib), Scripts: myScriptsOf(mine), Links: linkedUUIDs(lib, links),
+	}
+
+	return b.routines.ApplyBackup(ctx, tx, stateOf[autopilot.BackupPlan](p), recs)
+}
+
+// linkedUUIDs returns the UUID of each prompt links names, by its nickname in the file,
+// among lib.
+func linkedUUIDs(lib []prompts.Prompt, links backup.Links) map[string]string {
+	byID := make(map[int64]string, len(lib))
+	for _, p := range lib {
+		byID[p.ID] = p.UUID
+	}
+
+	out := make(map[string]string, len(links))
+
+	for nickname, id := range links {
+		if u := byID[id]; u != "" {
+			out[nickname] = u
+		}
+	}
+
+	return out
 }
 
 // Done implements backup.Part: the copy of the routines is written again.

@@ -161,14 +161,14 @@ func TestAScriptStepWaitsWhileTheUsersScriptsCantBeRead(t *testing.T) {
 	assert.Equal(t, verdict{}, p.scriptAsks(&stepRun{Step: scriptSpec().Steps[0]}), "a step that runs no script")
 
 	// Read, a script that is gone is let through: its runner refuses it.
-	p.scriptsFailed, p.scripts = false, map[int64]MyScript{}
+	p.scriptsFailed, p.scripts = false, []MyScript{}
 	assert.Equal(t, verdict{}, p.scriptAsks(sr))
 }
 
 func TestAScriptThatAsksIsHeldForTheOKOfExactlyTheScriptAsItIs(t *testing.T) {
 	t.Parallel()
 
-	p := &pass{scripts: map[int64]MyScript{7: {ID: 7, Name: "Lint", Asks: true, Look: "v1"}}}
+	p := &pass{scripts: []MyScript{{ID: 7, Name: "Lint", Asks: true, Look: "v1"}}}
 	sr := &stepRun{Step: scriptSpec().Steps[1]}
 
 	assert.Equal(t, wait(BlockScriptAsks, `"Lint" asks before each run: run it?`), p.scriptAsks(sr))
@@ -176,11 +176,30 @@ func TestAScriptThatAsksIsHeldForTheOKOfExactlyTheScriptAsItIs(t *testing.T) {
 	assert.Equal(t, Result{
 		Wait: BlockScriptAsks, WaitWords: `"Lint" asks before each run: run it?`,
 		Hold: &Hold{Key: "script:7:v1", Reason: HoldScriptAsks},
-	}, ScriptAsks(p.scripts[7]), "the runner's own check asks the same")
+	}, ScriptAsks(p.scripts[0]), "the runner's own check asks the same")
 
 	sr.Confirmed = []string{ScriptKey(7, "v1")}
 	assert.Equal(t, verdict{}, p.scriptAsks(sr), "the user's OK for it as it is")
 
-	p.scripts[7] = MyScript{ID: 7, Name: "Lint", Asks: true, Look: "v2"}
+	p.scripts[0] = MyScript{ID: 7, Name: "Lint", Asks: true, Look: "v2"}
 	assert.Equal(t, BlockScriptAsks, p.scriptAsks(sr).block, "changed since, it asks again")
+}
+
+func TestAScriptRenamedUnderItsUUIDRunsAndOneFoundByItsIDAloneWaits(t *testing.T) {
+	t.Parallel()
+
+	const lintUUID = "3a7f1c52-9d84-4e6b-8f21-6c0d5e9b4a13"
+
+	// Lint was renamed, and a restore gave it another ID.
+	p := &pass{scripts: []MyScript{{UUID: lintUUID, ID: 12, Name: "Lint all", Look: "v1"}}}
+
+	byUUID := &stepRun{Step: spec.Step{Script: &spec.ScriptStep{UUID: lintUUID, ID: 7, Name: "Lint"}}}
+	assert.Equal(t, verdict{}, p.scriptAsks(byUUID), "the step's UUID finds it, whatever it is called now")
+
+	// A step from before UUIDs finds a script by its ID alone, and one saved under another
+	// name since waits to be picked again: its ID may name another script now.
+	p.scripts = []MyScript{{UUID: lintUUID, ID: 7, Name: "Deploy", Look: "v1"}}
+	byID := &stepRun{Step: spec.Step{Script: &spec.ScriptStep{ID: 7, Name: "Lint"}}}
+	assert.Equal(t, wait(BlockNotReady, `The script picked as "Lint" is now "Deploy": pick it again in the routine.`),
+		p.scriptAsks(byID))
 }

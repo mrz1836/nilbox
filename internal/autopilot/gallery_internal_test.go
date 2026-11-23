@@ -158,7 +158,7 @@ func TestEveryTemplateRunsAStarterThisBuildShips(t *testing.T) {
 	}
 
 	for _, g := range Gallery() {
-		for _, ref := range promptRefs(g.Spec) {
+		for _, ref := range spec.PromptRefs(&g.Spec) {
 			assert.NotEmpty(t, ref.Starter, "%s names its prompts by starter, which every Mac has", g.Key)
 			assert.True(t, shipped[ref.Starter], "%s runs %q, which no starter is", g.Key, ref.Starter)
 		}

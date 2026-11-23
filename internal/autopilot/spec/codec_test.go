@@ -131,7 +131,7 @@ func TestLoadVersions(t *testing.T) {
 	}{
 		{
 			name: "a newer build's, with fields this build doesn't know",
-			json: `{"version":2,"watch":{"sources":[]},"newPart":{"x":1}}`, reason: spec.ReasonNewer, err: spec.ErrNewer,
+			json: `{"version":3,"watch":{"sources":[]},"newPart":{"x":1}}`, reason: spec.ReasonNewer, err: spec.ErrNewer,
 		},
 		{name: "no version", json: `{"watch":{"sources":[]}}`, reason: spec.ReasonUnreadable, err: spec.ErrUnreadable},
 		{name: "version zero", json: `{"version":0}`, reason: spec.ReasonUnreadable, err: spec.ErrUnreadable},

@@ -19,6 +19,7 @@ import type {
   AutopilotPart,
   AutopilotPlace,
   AutopilotProblem,
+  AutopilotPromptRef,
   AutopilotRoutine,
   AutopilotSearch,
   AutopilotSetting,
@@ -29,6 +30,7 @@ import type {
   AutopilotTrigger,
   AutopilotWhere,
   ItemKind,
+  Prompt,
 } from '../platform'
 import { counted } from './format'
 
@@ -81,13 +83,48 @@ export function routineDraft(r: AutopilotRoutine): AutopilotDraft {
 // checks fail, telling you. It saves as it is, and every part is there to change.
 export function scratchSpec(): AutopilotSpec {
   return {
-    version: 1,
+    version: 2,
     watch: { sources: [{ search: { kind: 'pr', where: ['@me'] } }] },
     trigger: { event: 'checks_failed' },
     conditions: { match: 'all', of: [] },
     steps: [{ notify: {} }],
     limits: {},
   }
+}
+
+// LibraryPrompt is what a step reads of a library prompt to name it.
+type LibraryPrompt = Pick<Prompt, 'uuid' | 'starterKey' | 'nickname'>
+
+// promptRefOf is how a step names a library prompt: by its UUID, beside its starter's key,
+// else its nickname, which find it in a library where no prompt has the UUID.
+export function promptRefOf(p: LibraryPrompt): AutopilotPromptRef {
+  const fallback = p.starterKey !== '' ? { starter: p.starterKey } : { nickname: p.nickname }
+
+  return p.uuid !== '' ? { uuid: p.uuid, ...fallback } : fallback
+}
+
+// findPrompt returns the library prompt ref names, as Go finds it: the one with its UUID,
+// whatever it is called now; else the user's copy of its starter, or the one with its
+// nickname, ignoring case. The item's own default names none.
+export function findPrompt<P extends LibraryPrompt>(prompts: readonly P[], ref: AutopilotPromptRef): P | undefined {
+  if (ref.itemDefault === true) {
+    return undefined
+  }
+
+  const uuid = ref.uuid ?? ''
+  const byUUID = uuid === '' ? undefined : prompts.find((p) => p.uuid === uuid)
+  if (byUUID !== undefined) {
+    return byUUID
+  }
+
+  const starter = ref.starter ?? ''
+  if (starter !== '') {
+    return prompts.find((p) => p.starterKey === starter)
+  }
+
+  const nickname = (ref.nickname ?? '').toLowerCase()
+
+  return nickname === '' ? undefined : prompts.find((p) => p.nickname.toLowerCase() === nickname)
 }
 
 // scratchDraft is a new routine named name, in mode, the one new routines start in.

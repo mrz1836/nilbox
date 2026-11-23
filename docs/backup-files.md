@@ -64,7 +64,7 @@ export is a section of the file; one you leave unticked is absent.
         "mode": "ask",
         "enabled": true,
         "spec": {
-          "version": 1,
+          "version": 2,
           "watch": {"sources": [{"lists": ["authored"]}]},
           "trigger": {"event": "checks_failed"},
           "conditions": {"match": "all", "of": []},
@@ -187,16 +187,23 @@ brought back or imported keeps it when no routine here has it, and is otherwise 
 one), its `name` (unique, ignoring case), `description` (left out when empty),
 `mode` (`dryRun`, `ask`, or `auto`), `enabled` (whether it was on where it was exported),
 `template` (the template it was made from, left out for none), and `spec`, its definition: one
-JSON object with its own `version`, naming prompts by nickname or by starter and profiles by
-agent and name, never by ID, so it works on another Mac. A routine has no ID and no account in
+JSON object with its own `version` (`2` today; this version of the app reads a version `1` spec
+as well, and an older one reads a version `2` spec as made by a newer version, left as it is),
+naming each prompt by its `uuid` beside its nickname or starter, each of your scripts by its
+`uuid` beside its ID and name, and profiles by agent and name, so it works on another Mac: a
+UUID this Mac doesn't know falls back to the name. A routine has no ID and no account in
 a file, and never its history: what it matched, ran, or was told. Nor does a file hold your
 confirmation that a routine may merge your own pull requests past the rules (its Merge it's
 `allowBypass`): a routine with that tick arrives asking for it again, and merges only what
 GitHub allows until you save it, confirming it.
 
-An import matches routines by name, ignoring case in any alphabet. A routine the same as the
-file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either mode;
-any other match is saved over and switched off, and a routine this Mac lacks is added,
+An import matches routines by `uuid` first, then by name, ignoring case in any alphabet, each
+routine here matched once. A routine found by its UUID keeps its name here and its history,
+whatever it was renamed to since the backup; one added takes a free name. A prompt a routine
+names is found first among the prompts the same file brings, so a prompt the import renames
+(as "Review 2" beside your own "Review") stays the one the routine runs. A routine the same as
+the file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either
+mode; any other match is saved over and switched off, and a routine this Mac lacks is added,
 switched off. Replace also deletes the routines the file doesn't name. A routine here that a
 newer version of the app wrote is never saved over or deleted: it is left as it is, with a
 note. One of the file's whose `spec` this version can't read (as one a newer version wrote,

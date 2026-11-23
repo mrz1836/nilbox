@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/draft"
@@ -15,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -29,6 +31,17 @@ type BackupPart struct {
 // NewBackupPart returns the backup's part over s.
 func NewBackupPart(s *Service) *BackupPart {
 	return &BackupPart{s: s}
+}
+
+// BackupRecords are what a backup's routines name, as the import's transaction holds them:
+// the prompt library and the user's scripts, with the prompts and scripts the same import
+// brought, and Links, the UUID here of each prompt the file brings, by its nickname in the
+// file, which a routine's prompt is found among first, so a prompt the import renamed (as
+// "Review 2" beside the user's own "Review") stays the one the routine runs.
+type BackupRecords struct {
+	Prompts []LibraryPrompt
+	Scripts []MyScript
+	Links   map[string]string
 }
 
 // Bundle returns every routine not deleted in the export format, in the user's order,
@@ -57,13 +70,17 @@ type BackupPlan struct {
 // PlanBackup works out what importing b, a backup's routines, does under mode, changing
 // nothing. Each routine must have a name and a definition that loads; one that doesn't
 // (as one a newer build wrote) is left out, with a note on why, as is a second routine of
-// a name. Routines are matched by name, ignoring case: a match whose definition,
-// description, and mode are the file's is left as it is, on or off, another is saved over
-// and switched off, and a routine of a name this Mac lacks is added, off, at the end.
-// Replace also deletes every routine the file doesn't name, and puts the rest in the
-// file's order. A routine here that a newer build wrote is never saved over or deleted,
-// under either mode: it is left as it is, with a note. A routine whose mode this build
-// doesn't know takes the mode new routines start in.
+// a name. Routines are matched by UUID, then by name, ignoring case, each routine here once
+// (backupMatch): a match whose definition, description, and mode are the file's, the
+// prompts and scripts it names stamped as they are here, is left as it is, on or off,
+// another is saved over and switched off, keeping its name here, and a routine this Mac
+// lacks is added, off, at the end, under a free name. Replace also deletes every routine
+// the file doesn't match, and puts the rest in the file's order. A routine here that a
+// newer build wrote is never saved over or deleted, under either mode: it is left as it
+// is, with a note. A routine whose mode this build doesn't know takes the mode new
+// routines start in. The preview reads the library and the scripts as they are, before
+// the import changes them; ApplyBackup works it out again on what the import's
+// transaction holds.
 func (bp *BackupPart) PlanBackup(ctx context.Context, b Bundle, mode backup.Mode) (BackupPlan, error) {
 	current, err := bp.s.store.all(ctx)
 	if err != nil {
@@ -71,36 +88,84 @@ func (bp *BackupPart) PlanBackup(ctx context.Context, b Bundle, mode backup.Mode
 	}
 
 	out := BackupPlan{mode: mode, viewer: bp.s.viewer(ctx)}
-	defaultMode := bp.s.defaultMode(ctx)
 	v := bp.s.view(ctx)
-	matched := map[int64]bool{}
+	pv := &backupPreview{
+		current: current, matched: map[int64]bool{}, taken: slices.Clone(current), recs: bp.s.liveRecords(ctx),
+		names: v.names, defaultMode: bp.s.defaultMode(ctx),
+	}
 
 	for _, r := range b.Routines {
-		k, note := checkImport(r, defaultMode)
-		if note == "" && out.holds(k.name) {
-			note = fmt.Sprintf("The routine “%s” was left out: the file holds another of that name.", k.name)
-		}
-
-		if note != "" {
-			out.AddNote(note)
-
-			continue
-		}
-
-		change, kept := k.change(current, matched)
-		if kept != "" {
-			out.AddNote(newerNote(kept))
-		}
-
-		out.routines = append(out.routines, k)
-		out.Add(backup.Item{Label: k.name, Change: change, Detail: spec.Sentence(k.spec.spec, v.names)})
+		pv.plan(&out, r)
 	}
 
 	if mode == backup.ModeReplace {
-		out.planRemoves(current, matched, v)
+		out.planRemoves(current, pv.matched, v)
 	}
 
 	return out, nil
+}
+
+// backupPreview is what PlanBackup works each of the file's routines out against: the
+// routines here, those matched so far, the names taken, what the routines name here now,
+// how the sentence names a starter, and the mode new routines start in.
+type backupPreview struct {
+	current     []queries.AutopilotRoutine
+	matched     map[int64]bool
+	taken       []queries.AutopilotRoutine
+	recs        BackupRecords
+	names       spec.PromptNames
+	defaultMode autopilotprefs.Mode
+}
+
+// plan works out r, one of the file's routines, into out: left out with a note, or what
+// importing it does, listed under the name it is saved under.
+func (pv *backupPreview) plan(out *BackupPlan, r BundleRoutine) {
+	k, note := checkImport(r, pv.defaultMode)
+	if note == "" && out.holds(k.name) {
+		note = fmt.Sprintf("The routine “%s” was left out: the file holds another of that name.", k.name)
+	}
+
+	if note != "" {
+		out.AddNote(note)
+
+		return
+	}
+
+	out.routines = append(out.routines, k)
+
+	stamped := k.stampedWith(pv.recs)
+	label, change, kept := stamped.change(pv.current, pv.matched, pv.recs)
+
+	if kept != "" {
+		out.AddNote(newerNote(kept))
+	}
+
+	if change == backup.ChangeAdd {
+		label = freeName(k.name, pv.taken)
+		pv.taken = append(pv.taken, queries.AutopilotRoutine{Name: label})
+	}
+
+	out.Add(backup.Item{Label: label, Change: change, Detail: spec.Sentence(stamped.spec.spec, pv.names)})
+}
+
+// liveRecords reads what the routines name as the pool holds it now, for a preview: none of
+// a source that can't be read (logged).
+func (s *Service) liveRecords(ctx context.Context) BackupRecords {
+	setup := serviceSetup{s: s}
+	library, _ := setup.Library(ctx)
+
+	var mine []MyScript
+
+	if s.myScripts != nil {
+		got, err := s.myScripts.MyScripts(ctx)
+		if err != nil {
+			s.logger.WarnContext(ctx, "could not read the user's scripts to preview a backup's routines", "error", err)
+		}
+
+		mine = got
+	}
+
+	return BackupRecords{Prompts: library, Scripts: mine}
 }
 
 // holds reports whether the plan imports a routine named name, ignoring case.
@@ -122,24 +187,51 @@ func (p *BackupPlan) planRemoves(current []queries.AutopilotRoutine, matched map
 	}
 }
 
-// change says what importing k does to the routines in current: adds it, saves over the
-// routine of its name, or leaves that routine as it is, marking the routine matched. A
-// routine a newer build wrote is left as it is, and its name returned for a note.
-func (k keptRoutine) change(current []queries.AutopilotRoutine, matched map[int64]bool) (backup.Change, string) {
-	i := slices.IndexFunc(current, func(c queries.AutopilotRoutine) bool { return sameName(c.Name, k.name) })
-	if i < 0 {
-		return backup.ChangeAdd, ""
+// backupMatch returns the index in current of the routine k, one of a backup's routines,
+// is, which matched doesn't hold yet, -1 for none: the one with k's UUID, whatever it is
+// called now, else the one with k's name, ignoring case. A preview and its apply match
+// alike.
+func backupMatch(current []queries.AutopilotRoutine, matched map[int64]bool, k keptRoutine) int {
+	if u, ok := textutil.CanonicalUUID(strings.TrimSpace(k.uuid)); ok {
+		if i := slices.IndexFunc(current, func(c queries.AutopilotRoutine) bool {
+			return !matched[c.ID] && c.UUID == u
+		}); i >= 0 {
+			return i
+		}
 	}
 
-	matched[current[i].ID] = true
+	return slices.IndexFunc(current, func(c queries.AutopilotRoutine) bool {
+		return !matched[c.ID] && sameName(c.Name, k.name)
+	})
+}
+
+// change says what importing k, stamped with recs, does to the routines in current: adds
+// it, saves over the routine it matches, or leaves that routine as it is, marking the
+// routine matched, with the name to list it under: k's, or, for a routine here its UUID
+// matched under another name, the name it keeps here. A routine a newer build wrote is
+// left as it is, and its name returned for a note.
+func (k keptRoutine) change(current []queries.AutopilotRoutine, matched map[int64]bool, recs BackupRecords,
+) (string, backup.Change, string) {
+	i := backupMatch(current, matched, k)
+	if i < 0 {
+		return k.name, backup.ChangeAdd, ""
+	}
+
+	row := current[i]
+	matched[row.ID] = true
+
+	label := k.name
+	if !sameName(row.Name, k.name) {
+		label = row.Name
+	}
 
 	switch {
-	case newerBuild(current[i]):
-		return backup.ChangeSame, current[i].Name
-	case k.same(current[i]):
-		return backup.ChangeSame, ""
+	case newerBuild(row):
+		return label, backup.ChangeSame, row.Name
+	case k.same(row, recs):
+		return label, backup.ChangeSame, ""
 	default:
-		return backup.ChangeUpdate, ""
+		return label, backup.ChangeUpdate, ""
 	}
 }
 
@@ -192,26 +284,85 @@ func importRefusal(err error) string {
 	return "Its definition can't be read."
 }
 
-// same reports whether k is the routine row as it stands: the same definition,
-// description, and mode.
-func (k keptRoutine) same(row queries.AutopilotRoutine) bool {
-	stored := load(row.Spec)
-	if stored.broken != nil {
-		return false
+// stampedWith returns k with each prompt and script its spec names stamped with what it is
+// in recs (draft.Stamp), a prompt the file brings found first through recs.Links; a spec
+// that doesn't load, or that would grow past spec.MaxBytes, stays as it is.
+func (k keptRoutine) stampedWith(recs BackupRecords) keptRoutine {
+	if !k.spec.loads {
+		return k
 	}
 
-	a, errA := spec.Encode(stored.spec)
-	b, errB := spec.Encode(k.spec.spec)
+	sp := spec.Clone(k.spec.spec)
+	recs.linkIn(&sp)
+	draft.Stamp(recs.Prompts, draftScripts(recs.Scripts), &sp)
 
-	return errA == nil && errB == nil && string(a) == string(b) && row.Description == k.desc &&
-		storedMode(row.Mode) == k.mode
+	data, err := spec.Encode(spec.Normalize(sp))
+	if err != nil {
+		return k
+	}
+
+	loaded, err := spec.Load(data)
+	if err != nil {
+		return k
+	}
+
+	k.spec.spec, k.spec.data, k.spec.version = loaded, string(data), int64(loaded.Version)
+
+	return k
+}
+
+// linkIn names each prompt sp's steps name by nickname alone that the file brings by the
+// UUID the import gave it here (Links), whatever UUID the file named it by.
+func (r BackupRecords) linkIn(sp *spec.Spec) {
+	if len(r.Links) == 0 {
+		return
+	}
+
+	for _, ref := range spec.PromptRefs(sp) {
+		if ref.Starter != "" {
+			continue
+		}
+
+		if u, ok := r.Links[ref.Nickname]; ok && u != "" {
+			ref.UUID = u
+		}
+	}
+}
+
+// stampedText returns the stored spec data with each prompt and script it names stamped
+// with what it is in r, encoded as stored; "" for a spec that won't load.
+func (r BackupRecords) stampedText(data string) string {
+	sp, ok := loadedSpec(data)
+	if !ok {
+		return ""
+	}
+
+	draft.Stamp(r.Prompts, draftScripts(r.Scripts), &sp)
+
+	out, err := spec.Encode(spec.Normalize(sp))
+	if err != nil {
+		return ""
+	}
+
+	return string(out)
+}
+
+// same reports whether k, stamped with recs, is the routine row as it stands: the same
+// definition, the prompts and scripts it names stamped alike, description, and mode.
+func (k keptRoutine) same(row queries.AutopilotRoutine, recs BackupRecords) bool {
+	stored := recs.stampedText(row.Spec)
+
+	return stored != "" && stored == k.spec.data && row.Description == k.desc && storedMode(row.Mode) == k.mode
 }
 
 // ApplyBackup stores plan's routines inside tx, an import's transaction, and returns what
-// it changed: each one saved over is switched off, each one added is off, and under
-// Replace each routine the file doesn't name is deleted and the rest put in the file's
-// order. Merge adds at the end, in the file's order, and deletes nothing.
-func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPlan) (backup.Count, error) {
+// it changed, each routine of the file's stamped with recs, what tx holds, and matched as
+// PlanBackup matched it: each one saved over is switched off and keeps its name, each one
+// added is off, under a free name, and under Replace each routine the file doesn't match is
+// deleted and the rest put in the file's order. Merge adds at the end, in the file's order,
+// and deletes nothing.
+func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPlan, recs BackupRecords,
+) (backup.Count, error) {
 	if bp.s.store.q == nil {
 		return backup.Count{}, ErrNotSetUp
 	}
@@ -225,7 +376,7 @@ func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPl
 
 	im := routineImport{
 		q: q, clock: bp.s.clock, viewer: plan.viewer, rows: rows, replace: plan.mode == backup.ModeReplace,
-		matched: map[int64]bool{},
+		matched: map[int64]bool{}, recs: recs, taken: slices.Clone(rows),
 	}
 
 	if !im.replace {
@@ -233,7 +384,7 @@ func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPl
 	}
 
 	for _, k := range plan.routines {
-		if err = im.place(ctx, k); err != nil {
+		if err = im.place(ctx, k.stampedWith(recs)); err != nil {
 			return backup.Count{}, err
 		}
 	}
@@ -253,26 +404,29 @@ func (bp *BackupPart) BackupDone(ctx context.Context) {
 }
 
 // routineImport is an import of the routines as it is applied: the rows stored before it,
-// those a routine of the file's matched, the order it stores, and what it did.
+// those a routine of the file's matched, the names taken, the order it stores, and what it
+// did.
 type routineImport struct {
 	q       *queries.Queries
 	clock   clock.Clock
 	viewer  string
 	rows    []queries.AutopilotRoutine
 	replace bool
+	recs    BackupRecords
 
 	matched map[int64]bool
+	taken   []queries.AutopilotRoutine
 	order   []queries.AutopilotRoutine
 	count   backup.Count
 }
 
-// place stores k: over the routine of its name, which is switched off unless it is the
-// same or a newer build wrote it, either of which is left as it is, or else as a new
-// routine, off, at the end.
+// place stores k: over the routine it matches (backupMatch), which keeps its name and is
+// switched off unless it is the same or a newer build wrote it, either of which is left as
+// it is, or else as a new routine, off, at the end, under a free name.
 func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
-	i := slices.IndexFunc(im.rows, func(r queries.AutopilotRoutine) bool { return sameName(r.Name, k.name) })
+	i := backupMatch(im.rows, im.matched, k)
 	if i < 0 {
-		k.account = im.viewer
+		k.account, k.name = im.viewer, freeName(k.name, im.taken)
 
 		row, err := insertKept(ctx, im.q, im.clock, k, int64(len(im.rows)+len(im.order)))
 		if err != nil {
@@ -281,6 +435,7 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 
 		im.count = im.count.With(backup.ChangeAdd)
 		im.order = append(im.order, row)
+		im.taken = append(im.taken, row)
 
 		return nil
 	}
@@ -292,7 +447,7 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 		im.order = append(im.order, row)
 	}
 
-	if newerBuild(row) || k.same(row) {
+	if newerBuild(row) || k.same(row, im.recs) {
 		im.count = im.count.With(backup.ChangeSame)
 
 		return nil

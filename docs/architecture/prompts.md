@@ -371,18 +371,23 @@ falling back as `Library` does (`replaceDefaults`).
 
 ## Renames, and Autopilot (`routinebundle.go`)
 
-A routine names its prompts by a starter's key or a nickname, so the library learns of them
-through `Config.Routines` (`RoutineSource`) and tells of a rename through `Config.Renamed`, both
-core's `routinePrompts` over Autopilot's `PromptFollower` (`internal/autopilot/follow.go`). The
-routines' uses join each prompt's `Usage`, so `Delete` refuses a prompt one runs, `checkRepoSwitch`
-refuses to make it one for repositories, and an import never makes a starter's copy one runs a
-prompt for repositories. `Update` tells `Renamed(from, to)` when the nickname changed (compared
-exactly, so a change of case counts), once the change is stored and before the library file and
-`Changed`. The follower writes the new nickname into every routine naming the old one, ignoring
-case, in one transaction, leaving a starter's key, which follows its prompt on its own; core logs
-a failure, and such a routine then says its prompt isn't in the library before any start (see
-[The routines, kept](autopilot/routines-kept.md)). Only `Update` tells it: neither `Reset`, which
-may give a copy back its starter's nickname, nor an import's save over a starter's copy does.
+A routine names each prompt it runs by the prompt's UUID, beside a starter's key or a nickname,
+its fallback where no prompt has the UUID (as on another Mac). The library learns of them through
+`Config.Routines` (`RoutineSource`): each `RoutineUse` resolves to one prompt (`usedPrompt`: its UUID
+first, then the user's copy of its starter, then its nickname, ignoring case), so its `Usage` names
+the routines that run it whatever it is called now, `Delete` refuses a prompt one runs,
+`checkRepoSwitch` refuses to make it one for repositories, and an import never makes a starter's
+copy one runs a prompt for repositories. Every change to the library, whatever made it (an edit,
+`Reset`, an import or a backup saving over a starter's copy, a delete), tells `Config.Changed`
+after the library file is written, which core points at the launch defaults' copy and at
+Autopilot's `Follower.Follow` (`internal/autopilot/follow.go`): it stamps every routine with the
+UUID and the nickname now of each prompt it names, so a reset or an import that renames a prompt
+never breaks a routine. `Update` also tells `Config.Renamed(from, to)` when the nickname changed
+(compared exactly, so a change of case counts), once the change is stored and before the library
+file and `Changed`, which `Follow` replays on a routine that names the prompt by its old nickname
+alone, as one stored before UUIDs; a starter's key follows its prompt on its own. Core logs a
+failure; the routine still finds its prompt by UUID, and the next change or start writes its
+name (see [The routines, kept](autopilot/routines-kept.md)).
 
 `RoutinePrompts` (`NewRoutinePrompts`), never bound, carries the prompts an Autopilot export names
 (core's `routinePromptTransfer`; see [Easy mode](autopilot/easy-mode.md)): `Bundled(nicknames)`
@@ -392,7 +397,8 @@ same (`sameContent`), or different, the copy here kept; and `AddNew` hands the n
 `Import`, with no defaults, so a prompt here under its UUID is never added again, whatever either
 is called now. Core's other Autopilot
 adapters (`promptLibrary` for a routine's checks, `starterNames`, `promptIDOf` for an agent step,
-and `githubSteps.reply`) read the `Store` directly.
+and `githubSteps.reply`) read the `Store` directly, and find a routine's prompt as the draft does,
+its UUID first (`draft.PromptIndex`).
 
 ## How other packages reach it
 

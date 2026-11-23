@@ -463,13 +463,17 @@ func (v *validator) tell(field string, t TellStep) {
 	}
 }
 
-// script checks Run one of my scripts: a script, by its ID, with the name it was picked
-// under.
+// script checks Run one of my scripts: a script, by its ID and, once picked since UUIDs,
+// its UUID, with the name it was picked under.
 func (v *validator) script(field string, s ScriptStep) {
 	if s.ID <= 0 {
 		v.add(PartSteps, field+".id", "pick one of your scripts")
 
 		return
+	}
+
+	if s.UUID != "" && !canonicalUUID(s.UUID) {
+		v.add(PartSteps, field+".uuid", "%q isn't a script's UUID", s.UUID)
 	}
 
 	if msg := checkText(s.Name, MaxTextRunes); msg != "" {

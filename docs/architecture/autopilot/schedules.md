@@ -56,10 +56,13 @@ app, refusing a script saved otherwise since its check (`ErrChanged`), its end t
 run engine's `Recorded` with how it ended (`RoutineEnd`, from its `Finish`: the user's Stop, its
 time limit, the app's quit, which interrupts it). A busy clone waits queued, Scripts turned off or a
 script that can't run waits not ready, no clone waits for the user, and a script gone or not showing
-in the clone fails the step. A step names its script by its ID and the name it was picked under: a
-script saved under another name waits not ready, and `Save` and `Describe` say so (the draft leaf's
-`RenamedWords`), since an ID a routine brought from another Mac (an export, a backup) may name
-another script here; the builder offers it to be picked again. After a restart, `Alive` reads the
+in the clone fails the step. A step names its script by its UUID beside its ID and the name it
+was picked under (`draft.FindScript`): the script with the UUID is the step's, whatever its ID and
+name now, and `Follow` writes them into the step. A step from before UUIDs, or whose UUID no script
+has, finds its script by ID, and one saved under another name since waits not ready, and `Save`
+and `Describe` say so (the draft leaf's `RenamedWords`), since an ID a routine brought from another
+Mac (an export, a backup) may name another script here; the builder offers it to be picked again,
+and a pick writes the UUID. After a restart, `Alive` reads the
 run engine's record of the run's `script_run_id` and tells the engine an end it didn't hear.
 
 ## Run on the matches now (`runon.go`)

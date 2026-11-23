@@ -136,7 +136,7 @@ Draft 2020-12, generated from this build's format: every key, every closed set o
       "properties": {
         "version": {
           "type": "integer",
-          "const": 1
+          "const": 2
         },
         "watch": {
           "$ref": "#/$defs/Watch"
