@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
@@ -7,6 +7,7 @@ import { bumpHint, intentOf } from '../../lib/release'
 import { isLive } from '../../lib/scriptRuns'
 import { terminalLabel } from '../../lib/terminals'
 import { formatAgo } from '../../lib/time'
+import { useClock } from '../../lib/useNow'
 import { useMutation } from '../../lib/useMutation'
 import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
@@ -32,10 +33,11 @@ import {
   inkLinkClass,
   linkClass,
   primaryButtonClass,
+  quietButtonClass,
   Segmented,
 } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { ChevronRightIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
+import { ChevronRightIcon, ExternalIcon, InfoIcon, RefreshIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { Sheet } from '../Sheet'
 import { Spinner } from '../Spinner'
@@ -49,6 +51,10 @@ import { RunPanel } from './RunPanel'
 
 // shownCommits is how many of the commits since the last version show before "N more".
 const shownCommits = 3
+
+// recheckAfter is how old the last fresh read must be, in milliseconds, before coming back
+// to the window reads the clone, origin, and GitHub again.
+const recheckAfter = 10_000
 
 // ReleaseTarget is the repository a sheet releases: its "owner/name", its clone as the
 // page lists it (with ~), and the branch to release, or '' for the default on GitHub.
@@ -165,8 +171,11 @@ export interface ReleaseSheetProps {
 // newest version, the three versions to choose from (Patch, every time, to start; Major
 // only with its typed confirmation), where it runs, the sentence that says exactly what
 // will happen, the command, and the button that names the version. A choice decides the
-// sheet again on the facts already read; Check again reads them afresh. Start reads them
-// once more under the clone's lock: when that refuses, the sheet says why and checks
+// sheet again on the facts already read. Check again, under the checks, reads them
+// afresh, and so does coming back to the window while a check blocks or warns (as from
+// the terminal where the user fixed it), at most every recheckAfter and never while a
+// release starts or runs; a sheet with nothing to fix never reads by itself. Start reads
+// them once more under the clone's lock: when that refuses, the sheet says why and checks
 // again, showing the new version if it moved. Once started, the sheet follows the run's
 // steps above its panel and log, and once the release ended, how it came out. Closing the
 // sheet never stops a release; it goes on under Runs.
@@ -196,12 +205,21 @@ export function ReleaseSheet({
   // times one was asked for, so each asks again.
   const [owed, setOwed] = useState(true)
   const [checks, setChecks] = useState(1)
+  // lastRead is when the latest fresh read was asked for, on the window's clock, which
+  // coming back to the window waits recheckAfter from. Whether it was answered doesn't
+  // matter, so a read that keeps failing is asked no more often.
+  const clock = useClock()
+  const lastRead = useRef(0)
   const [majorVersion, setMajorVersion] = useState('')
   const typed = choice.typed.trim()
   // The typed version goes to Prepare only once it matches, so typing asks nothing.
   const confirmed = choice.bump === 'major' && typed !== '' && typed === majorVersion ? typed : ''
   const prepared = useQuery(() => {
     const refresh = owed
+
+    if (refresh) {
+      lastRead.current = clock.read().getTime()
+    }
 
     return prepareRelease({
       repo,
@@ -311,6 +329,33 @@ export function ReleaseSheet({
   const buttonLabel = offer === undefined || offer.button === '' ? `Release ${repo}` : offer.button
   const footer = runId === null || live
 
+  // recheck reads afresh as the window comes back to the front, only while there is
+  // something to fix (a check that blocks or warns, or checks that couldn't be read at
+  // all), no release starts or runs, no read is under way, and the last fresh read is
+  // recheckAfter old. A focus otherwise asks nothing.
+  const recheck = useEffectEvent(() => {
+    const unsettled =
+      offer === undefined ? prepared.error !== '' : offer.checks.some((c) => c.state === 'block' || c.state === 'warn')
+
+    if (!unsettled || busy || prepared.pending || clock.read().getTime() - lastRead.current < recheckAfter) {
+      return
+    }
+
+    readAgain()
+  })
+
+  useEffect(() => {
+    const onFocus = () => {
+      recheck()
+    }
+
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
+
   return (
     <Sheet labelledBy={`${id}-title`} onClose={onClose}>
       <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
@@ -399,22 +444,30 @@ export function ReleaseSheet({
                   </span>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {rereading && (
-                    <p role="status" className="flex items-center gap-2 text-xs text-muted">
-                      <Spinner className="size-3.5" />
-                      Checking again…
-                    </p>
-                  )}
-                  {prepared.error !== '' && <ErrorText error={`Couldn’t check again: ${prepared.error}`} />}
                   <ReleaseChecks
                     checks={offer.checks}
                     repo={repo}
                     dir={dir}
-                    checking={rereading}
-                    onCheckAgain={readAgain}
                     onOpenSettings={onOpenSettings}
                     onWatch={onWatch}
                   />
+                  {/* The row stays while the checks show, its status empty between reads, so
+                      nothing below moves as a read starts or ends. */}
+                  <div className="flex items-center justify-between gap-3">
+                    <span role="status" className="flex min-w-0 items-center gap-2 text-xs text-muted">
+                      {rereading && (
+                        <>
+                          <Spinner className="size-3.5" />
+                          Checking again…
+                        </>
+                      )}
+                    </span>
+                    <button type="button" disabled={rereading || busy} onClick={readAgain} className={quietButtonClass}>
+                      <RefreshIcon className={`size-3.5 ${rereading ? 'motion-safe:animate-spin' : ''}`} />
+                      Check again
+                    </button>
+                  </div>
+                  {prepared.error !== '' && <ErrorText error={`Couldn’t check again: ${prepared.error}`} />}
                 </div>
                 {candidate !== undefined && candidate.commits.length > 0 && <WhatsInIt candidate={candidate} />}
                 {offer.bumps.length > 0 && (

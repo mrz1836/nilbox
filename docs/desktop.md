@@ -1397,8 +1397,9 @@ Unmute itself unmutes, never a click on the row.
   commit, another run holding the clone, signed tags, your shell's environment, and your hooks.
   A ✗ blocks the release; a ⚠ makes the button read **Release v1.4.3 anyway**. Fixes sit beside
   each: **Open Settings**, **Update magex in Settings**, **Open in terminal** (your terminal in
-  the clone, running nothing), **Check again**, **View on GitHub**, **Watch the run**, and
-  **Copy** for a command the app never runs itself.
+  the clone, running nothing), **View on GitHub**, **Watch the run**, and **Copy** for a command
+  the app never runs itself. Under the checks, one **Check again** reads them all afresh,
+  whatever they say, with *Checking again…* beside it while it reads.
 - **The checks on the newest commit** are GitHub's own rollup of them, which counts commit
   statuses (a coverage service's, say) as well as Actions runs, so it can fail while every
   workflow passed. A failing line names what failed (*codecov/project is failing on 4ce994b*;
@@ -1408,8 +1409,8 @@ Unmute itself unmutes, never a click on the row.
   other check done and none failing, never started: the line warns and names it
   (*.github/dependabot.yml never started on 4ce994b; the other checks passed*), and **View on
   GitHub** opens that run's own page, or the commit's checks when more than one never started.
-  A running line's **View on GitHub** opens the commit's checks. A failing, stuck, or running
-  line offers **Check again**, which reads GitHub afresh.
+  A running line's **View on GitHub** opens the commit's checks. For a failing, stuck, or
+  running line, the sheet's **Check again** reads GitHub afresh.
 - **What's in it:** the newest commits since the newest version, from GitHub (up to 10, three
   shown until you ask for the rest, with GitHub's comparison for any past those), each linked
   to its commit.
@@ -1429,10 +1430,14 @@ Unmute itself unmutes, never a click on the row.
   copy. The button names the version: **Release v1.4.3**, **Release v1.4.3 in iTerm2**, or
   **Release v2.0.0 (major)**.
 
-Choices decide the sheet again on the facts it read; only opening it and **Check again** read
-the clone, origin, and GitHub afresh. **Release** reads the clone and origin once more under the
-clone's lock before magex starts. When that refuses (the clone changed, or someone released that
-version meanwhile), the sheet says why, checks again, and shows the version it would make now.
+Choices decide the sheet again on the facts it read. Only opening it, **Check again**, and
+coming back to the window while a check blocks or warns, or the sheet couldn't check at all (at
+most every 10 seconds, never while a release starts or runs), read the clone, origin, and GitHub
+afresh: push a tag only on this Mac from your terminal, come back, and its ✗ clears by itself. A
+sheet whose checks all pass or only inform never reads by itself. **Release** reads the clone and
+origin once more under the clone's lock before magex starts. When that refuses (the clone
+changed, or someone released that version meanwhile), the sheet says why, checks again, and
+shows the version it would make now.
 
 **While it runs,** the sheet ticks off magex's steps (switched to the branch, pulled, tagged,
 pushed, then the app's own check that GitHub has the tag), with the run's panel and log below.

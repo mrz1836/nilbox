@@ -203,7 +203,7 @@ func toolAndRepoCases() []decideCase {
 		},
 		{
 			name: "GitHub unread", id: CheckRepo, state: CheckBlock, text: "Couldn't read acme-org/sdk on GitHub.",
-			fixes:  []Fix{FixCheckAgain},
+			fixes:  []Fix{},
 			change: func(f *Facts) { f.Repo = RepoFacts{Name: f.Repo.Name, Error: "Couldn't read acme-org/sdk on GitHub."} },
 		},
 		{
@@ -249,7 +249,7 @@ func originCases() []decideCase {
 		},
 		{
 			name: "unreadable clone", id: CheckOrigin, state: CheckBlock,
-			text: "Couldn't read this clone with git: not a git repository.", fixes: []Fix{FixCheckAgain},
+			text: "Couldn't read this clone with git: not a git repository.", fixes: []Fix{},
 			change: func(f *Facts) { f.Clone.Error = "not a git repository" },
 		},
 	}
@@ -262,20 +262,20 @@ func cloneCases() []decideCase {
 			name: "dirty", id: CheckDirty, state: CheckBlock,
 			text: "3 uncommitted changes: go.mod, main.go, notes.txt. magex won't tag with uncommitted work. " +
 				"Commit or stash them.",
-			fixes:  []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes:  []Fix{FixOpenTerminal},
 			change: func(f *Facts) { f.Clone.Changes = []string{"go.mod", "main.go", "notes.txt"} },
 		},
 		{
 			name: "one change", id: CheckDirty, state: CheckBlock,
 			text:   "1 uncommitted change: go.mod. magex won't tag with uncommitted work. Commit or stash it.",
-			fixes:  []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes:  []Fix{FixOpenTerminal},
 			change: func(f *Facts) { f.Clone.Changes = []string{"go.mod"} },
 		},
 		{
 			name: "many changes", id: CheckDirty, state: CheckBlock,
 			text: "7 uncommitted changes: a.go, b.go, c.go, d.go, e.go, and 2 more. magex won't tag with " +
 				"uncommitted work. Commit or stash them.",
-			fixes: []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes: []Fix{FixOpenTerminal},
 			change: func(f *Facts) {
 				f.Clone.Changes = []string{"a.go", "b.go", "c.go", "d.go", "e.go", "f.go", "g.go"}
 			},
@@ -378,7 +378,7 @@ func branchCases() []decideCase {
 		{
 			name: "not fetched", id: CheckBranch, state: CheckBlock,
 			text:   "This clone doesn't have master yet. Fetch origin in your terminal, then check again.",
-			fixes:  []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes:  []Fix{FixOpenTerminal},
 			change: func(f *Facts) { f.Clone.LocalHead, f.Clone.TrackingHead = "", "" },
 		},
 		{
@@ -447,7 +447,7 @@ func unpushedCases() []decideCase {
 			name: "unpushed unknown", id: CheckUnpushed, state: CheckBlock,
 			text: "Can't tell whether master has commits that aren't on origin: this clone has neither " +
 				"origin/master nor origin's newest commit. Fetch origin in your terminal, then check again.",
-			fixes:  []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes:  []Fix{FixOpenTerminal},
 			change: func(f *Facts) { f.Clone.Unpushed = UnpushedUnknown },
 		},
 		{
@@ -519,7 +519,7 @@ func otherCases() []decideCase {
 		{
 			name: "unreachable", id: CheckReach, state: CheckBlock,
 			text:  "Can't reach origin with your git credentials: Permission denied (publickey).",
-			fixes: []Fix{FixOpenTerminal, FixCheckAgain},
+			fixes: []Fix{FixOpenTerminal},
 			change: func(f *Facts) {
 				f.Clone.Reached, f.Clone.ReachError = false, "Permission denied (publickey)."
 				f.Clone.RemoteHeads, f.Clone.RemoteTags = map[string]string{}, map[string]gitread.RemoteTag{}
@@ -527,7 +527,7 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "unreachable, git silent", id: CheckReach, state: CheckBlock,
-			text: "Can't reach origin with your git credentials.", fixes: []Fix{FixOpenTerminal, FixCheckAgain},
+			text: "Can't reach origin with your git credentials.", fixes: []Fix{FixOpenTerminal},
 			change: func(f *Facts) { f.Clone.Reached = false },
 		},
 		{
@@ -558,15 +558,15 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "checks failing", id: CheckChecks, state: CheckWarn, text: "Checks are failing on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksFailure },
+			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksFailure },
 		},
 		{
 			name: "checks erred", id: CheckChecks, state: CheckWarn, text: "Checks are failing on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksError },
+			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksError },
 		},
 		{
 			name: "one check failing", id: CheckChecks, state: CheckWarn, text: "coverage/project is failing on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks = ChecksFailure
 				f.Repo.Failing = []FailedCheck{{Name: "coverage/project", Status: true}}
@@ -574,7 +574,7 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "one check failing twice", id: CheckChecks, state: CheckWarn, text: "Test is failing on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks = ChecksFailure
 				f.Repo.Failing = []FailedCheck{{Name: "Test"}, {Name: ""}, {Name: "Test"}}
@@ -582,7 +582,7 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "two checks failing", id: CheckChecks, state: CheckWarn, text: "Lint and Test are failing on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks = ChecksFailure
 				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}}
@@ -590,7 +590,7 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "three checks failing", id: CheckChecks, state: CheckWarn,
-			text: "Lint, Test, and coverage/project are failing on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			text: "Lint, Test, and coverage/project are failing on a1b2c3d", fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks = ChecksFailure
 				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}, {Name: "coverage/project", Status: true}}
@@ -598,7 +598,7 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "many checks failing", id: CheckChecks, state: CheckWarn,
-			text: "Lint, Test, and 3 more checks are failing on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			text: "Lint, Test, and 3 more checks are failing on a1b2c3d", fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks = ChecksFailure
 				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}, {Name: "Vet"}, {Name: "Fuzz"}, {Name: "Bench"}}
@@ -606,16 +606,16 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "checks running", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksPending },
+			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksPending },
 		},
 		{
 			name: "checks expected", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
+			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
 		},
 		{
 			name: "one check never started", id: CheckChecks, state: CheckWarn,
 			text:  ".github/dependabot.yml never started on a1b2c3d; the other checks passed",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 1
 				f.Repo.Queued = []QueuedCheck{{Name: ".github/dependabot.yml", URL: "https://github.com/acme-org/sdk/runs/7"}}
@@ -624,7 +624,7 @@ func otherCases() []decideCase {
 		{
 			name: "two checks never started", id: CheckChecks, state: CheckWarn,
 			text:  "Deploy and Scan never started on a1b2c3d; the other checks passed",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 3
 				f.Repo.Queued = []QueuedCheck{{Name: "Deploy"}, {Name: ""}, {Name: "Scan"}, {Name: "Deploy"}}
@@ -633,7 +633,7 @@ func otherCases() []decideCase {
 		{
 			name: "many checks never started", id: CheckChecks, state: CheckWarn,
 			text:  "Deploy, Scan, and 2 more checks never started on a1b2c3d; the other checks passed",
-			fixes: []Fix{FixView, FixCheckAgain},
+			fixes: []Fix{FixView},
 			change: func(f *Facts) {
 				f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 4
 				f.Repo.Queued = []QueuedCheck{{Name: "Deploy"}, {Name: "Scan"}, {Name: "Lint"}, {Name: "Vet"}}
@@ -641,12 +641,12 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "a check never started, unnamed", id: CheckChecks, state: CheckWarn,
-			text: "1 check never started on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			text: "1 check never started on a1b2c3d", fixes: []Fix{FixView},
 			change: func(f *Facts) { f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 1 },
 		},
 		{
 			name: "checks never started, unnamed", id: CheckChecks, state: CheckWarn,
-			text: "3 checks never started on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			text: "3 checks never started on a1b2c3d", fixes: []Fix{FixView},
 			change: func(f *Facts) { f.Repo.Checks, f.Repo.Stuck = ChecksStuck, 3 },
 		},
 		{name: "no checks", id: CheckChecks, absent: true, change: func(f *Facts) { f.Repo.Checks = ChecksNone }},
@@ -670,7 +670,7 @@ func otherCases() []decideCase {
 			name: "shell unread", id: CheckShell, state: CheckWarn,
 			text: brand.Name + " couldn't read your shell's environment, so your ssh agent (or your password " +
 				"manager's) may be missing. If the push fails, release in your terminal.",
-			fixes: []Fix{FixCheckAgain}, change: func(f *Facts) { f.Clone.ShellRead = false },
+			fixes: []Fix{}, change: func(f *Facts) { f.Clone.ShellRead = false },
 		},
 		{
 			name: "shell unread, in the terminal", id: CheckShell, absent: true,

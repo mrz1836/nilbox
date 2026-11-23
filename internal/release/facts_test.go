@@ -250,7 +250,7 @@ func TestGatherNamesTheChecksThatFailed(t *testing.T) {
 	got, ok := checkOf(o, CheckChecks)
 	require.True(t, ok)
 	assert.Equal(t, "coverage/project is failing on "+r.second[:shortOIDLen], got.Text)
-	assert.Equal(t, []Fix{FixView, FixCheckAgain}, got.Fixes)
+	assert.Equal(t, []Fix{FixView}, got.Fixes)
 	assert.True(t, o.Ready, "failing checks only warn")
 }
 

@@ -1,10 +1,12 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { ReleaseCandidate, ReleasePrepareRequest, RunsIn } from '../../platform'
-import { renderAt } from '../../test/clock'
+import type { Clock } from '../../lib/useNow'
+import type { ReleaseCandidate, ReleaseCheckState, ReleaseOffer, ReleasePrepareRequest, RunsIn } from '../../platform'
+import { deferred } from '../../test/async'
+import { clockAt, FIXED_NOW, withClock } from '../../test/clock'
 import { releaseCandidate, releaseCheck, releaseOffer, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
@@ -15,10 +17,12 @@ interface Options {
   target?: Partial<ReleaseTarget>
   candidate?: ReleaseCandidate | undefined
   runsIn?: RunsIn
+  // clock is the window's clock, standing still at FIXED_NOW unless given.
+  clock?: Clock
 }
 
 function renderSheet(options: Options = {}) {
-  const { target = {}, runsIn = 'app' } = options
+  const { target = {}, runsIn = 'app', clock = clockAt(FIXED_NOW) } = options
   const candidate = 'candidate' in options ? options.candidate : releaseCandidate()
   const handlers = {
     onOpenSettings: vi.fn<() => void>(),
@@ -26,7 +30,7 @@ function renderSheet(options: Options = {}) {
     onClose: vi.fn<() => void>(),
   }
 
-  renderAt(
+  render(
     <ReleaseSheet
       target={{ repo: 'acme-org/sdk', dir: '~/projects/sdk', branch: '', ...target }}
       candidate={candidate}
@@ -34,9 +38,45 @@ function renderSheet(options: Options = {}) {
       terminal="iterm2"
       {...handlers}
     />,
+    { wrapper: withClock(clock) },
   )
 
   return handlers
+}
+
+// movingClock is a clock that stands at FIXED_NOW until move moves it on by ms.
+function movingClock() {
+  let now = FIXED_NOW
+
+  return {
+    clock: clockAt(() => now),
+    move: (ms: number) => {
+      now = new Date(now.getTime() + ms)
+    },
+  }
+}
+
+// comeBack brings the window back to the front, as from the terminal.
+function comeBack() {
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+}
+
+// prepares counts the Prepares the sheet made, and fresh those that read afresh.
+function prepares() {
+  const calls = platform.prepareRelease.mock.calls
+
+  return { all: calls.length, fresh: calls.filter(([req]) => req.refresh).length }
+}
+
+// offerWith is an offer whose one check is in state, with the open-terminal fix a check
+// fixed outside the app offers; a block holds the release back.
+function offerWith(state: ReleaseCheckState): ReleaseOffer {
+  return releaseOffer({
+    ready: state !== 'block',
+    checks: [releaseCheck({ id: 'dirty', state, text: '3 uncommitted changes', fixes: ['openTerminal'] })],
+  })
 }
 
 // sheet is the open sheet, once its offer shows.
@@ -160,7 +200,7 @@ describe('ReleaseSheet', () => {
     platform.prepareRelease.mockImplementationOnce((req) =>
       offerFor(req).then((o) => ({
         ...o,
-        checks: [releaseCheck({ id: 'dirty', state: 'block', text: '3 uncommitted changes', fixes: ['checkAgain'] })],
+        checks: [releaseCheck({ id: 'dirty', state: 'block', text: '3 uncommitted changes' })],
       })),
     )
     renderSheet()
@@ -183,7 +223,7 @@ describe('ReleaseSheet', () => {
     platform.prepareRelease.mockImplementationOnce((req) =>
       offerFor(req).then((o) => ({
         ...o,
-        checks: [releaseCheck({ id: 'dirty', state: 'block', text: '3 uncommitted changes', fixes: ['checkAgain'] })],
+        checks: [releaseCheck({ id: 'dirty', state: 'block', text: '3 uncommitted changes' })],
       })),
     )
     await userEvent.click(s.getByRole('radio', { name: brand.name }))
@@ -401,10 +441,7 @@ describe('ReleaseSheet', () => {
     platform.prepareRelease.mockImplementation((req) =>
       offerFor(req).then((o) => ({
         ...o,
-        checks:
-          req.runsIn === 'terminal'
-            ? []
-            : [releaseCheck({ id: 'shell', state: 'warn', text: unread, fixes: ['checkAgain'] })],
+        checks: req.runsIn === 'terminal' ? [] : [releaseCheck({ id: 'shell', state: 'warn', text: unread })],
       })),
     )
     renderSheet()
@@ -416,7 +453,7 @@ describe('ReleaseSheet', () => {
     expect(item.querySelector('.sr-only')).toHaveTextContent('Warning:')
     expect(s.getByRole('button', { name: 'Release v1.4.3' })).toBeEnabled()
 
-    await userEvent.click(within(item).getByRole('button', { name: 'Check again' }))
+    await userEvent.click(s.getByRole('button', { name: 'Check again' }))
     await waitFor(() => {
       expect(lastRequest()).toMatchObject({ runsIn: 'app', refresh: true })
     })
@@ -539,9 +576,6 @@ describe('ReleaseSheet', () => {
 
   it('shows nothing new while it decides again on a new choice, so nothing below moves', async () => {
     platform.prepareRelease.mockImplementation(offerFor)
-    platform.prepareRelease.mockImplementationOnce((req) =>
-      offerFor(req).then((o) => ({ ...o, checks: [releaseCheck({ fixes: ['checkAgain'] })] })),
-    )
     renderSheet()
 
     const s = await sheet()
@@ -559,7 +593,6 @@ describe('ReleaseSheet', () => {
   })
 
   it('reads afresh after Check again even when a choice replaces that read before it is answered', async () => {
-    platform.prepareRelease.mockResolvedValue(releaseOffer({ checks: [releaseCheck({ fixes: ['checkAgain'] })] }))
     renderSheet()
 
     const s = await sheet()
@@ -598,6 +631,183 @@ describe('ReleaseSheet', () => {
     await dialog.findByRole('list', { name: 'Checks' })
 
     expect(platform.prepareRelease.mock.calls.map(([req]) => req.refresh)).toEqual([true, true])
+  })
+
+  it('offers one Check again under the checks, even when every check passed, and it reads afresh', async () => {
+    renderSheet()
+
+    const s = await sheet()
+
+    expect(within(s.getByRole('list', { name: 'Checks' })).queryByRole('button')).not.toBeInTheDocument()
+    expect(s.getAllByRole('button', { name: 'Check again' })).toHaveLength(1)
+    expect(s.queryByText('Checking again…')).not.toBeInTheDocument()
+
+    const answer = deferred<ReleaseOffer>()
+
+    platform.prepareRelease.mockReturnValueOnce(answer.promise)
+    await userEvent.click(s.getByRole('button', { name: 'Check again' }))
+
+    expect(lastRequest()).toMatchObject({ refresh: true })
+    expect(s.getByText('Checking again…')).toHaveAttribute('role', 'status')
+    expect(s.getByRole('button', { name: 'Check again' })).toBeDisabled()
+
+    act(() => {
+      answer.resolve(releaseOffer())
+    })
+
+    await waitFor(() => {
+      expect(s.queryByText('Checking again…')).not.toBeInTheDocument()
+    })
+    expect(s.getByRole('button', { name: 'Check again' })).toBeEnabled()
+  })
+
+  it('offers the release once a tag only on this Mac is pushed and checked again', async () => {
+    const localOnly = releaseCheck({
+      id: 'localOnly',
+      state: 'block',
+      text: 'v1.4.3 is tagged on this Mac but isn’t on GitHub. magex would skip it and leave a gap.',
+      fixes: ['openTerminal'],
+      commands: ['git push origin v1.4.3', 'git tag -d v1.4.3'],
+    })
+
+    platform.prepareRelease.mockResolvedValueOnce(releaseOffer({ ready: false, checks: [localOnly] }))
+    renderSheet()
+
+    const s = await sheet()
+
+    expect(s.getByRole('button', { name: 'Release v1.4.3' })).toBeDisabled()
+    expect(s.getByRole('button', { name: 'Open in terminal' })).toBeInTheDocument()
+
+    // The user pushed the tag from the terminal: the next patch is v1.4.4.
+    platform.prepareRelease.mockResolvedValueOnce(releaseOffer({ version: 'v1.4.4', button: 'Release v1.4.4' }))
+    await userEvent.click(s.getByRole('button', { name: 'Check again' }))
+
+    expect(await s.findByRole('button', { name: 'Release v1.4.4' })).toBeEnabled()
+    expect(s.queryByText(/tagged on this Mac/)).not.toBeInTheDocument()
+    expect(lastRequest()).toMatchObject({ refresh: true })
+  })
+
+  it.each([
+    { state: 'block', says: 'blocks' },
+    { state: 'warn', says: 'warns' },
+  ] as const)('reads afresh as the window comes back while a check $says', async ({ state }) => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockResolvedValueOnce(offerWith(state))
+    renderSheet({ clock })
+
+    const s = await sheet()
+
+    expect(s.getByText('3 uncommitted changes')).toBeInTheDocument()
+
+    move(10_000)
+    comeBack()
+
+    expect(prepares()).toEqual({ all: 2, fresh: 2 })
+    await waitFor(() => {
+      expect(s.queryByText('3 uncommitted changes')).not.toBeInTheDocument()
+    })
+    expect(s.getByRole('button', { name: 'Release v1.4.3' })).toBeEnabled()
+  })
+
+  it('reads afresh as the window comes back after checks that couldn’t be read at all', async () => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockRejectedValueOnce(new Error('origin timed out'))
+    renderSheet({ clock })
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Release acme-org/sdk' }))
+
+    expect(await dialog.findByRole('alert')).toHaveTextContent('Couldn’t check the release: origin timed out')
+
+    move(10_000)
+    comeBack()
+
+    expect(await dialog.findByRole('list', { name: 'Checks' })).toBeInTheDocument()
+    expect(prepares()).toEqual({ all: 2, fresh: 2 })
+  })
+
+  it('never reads by itself as the window comes back while every check passed or only informs', async () => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockResolvedValue(
+      releaseOffer({
+        checks: [
+          releaseCheck(),
+          releaseCheck({ id: 'behind', state: 'info', text: 'origin/master has commits your clone doesn’t.' }),
+        ],
+      }),
+    )
+    renderSheet({ clock })
+    await sheet()
+
+    move(60_000)
+    comeBack()
+
+    expect(prepares()).toEqual({ all: 1, fresh: 1 })
+  })
+
+  it('reads afresh as the window comes back only once the last fresh read is 10 seconds old', async () => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockResolvedValue(offerWith('block'))
+    renderSheet({ clock })
+    await sheet()
+
+    move(9_999)
+    comeBack()
+    expect(prepares()).toEqual({ all: 1, fresh: 1 })
+
+    move(1)
+    comeBack()
+    expect(prepares()).toEqual({ all: 2, fresh: 2 })
+
+    // That read starts the wait over.
+    await waitFor(() => {
+      expect(screen.queryByText('Checking again…')).not.toBeInTheDocument()
+    })
+    move(5_000)
+    comeBack()
+    expect(prepares()).toEqual({ all: 2, fresh: 2 })
+  })
+
+  it('reads nothing as the window comes back while a read is under way', async () => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockResolvedValueOnce(offerWith('block'))
+    renderSheet({ clock })
+
+    const s = await sheet()
+
+    // The decision for a new choice is still under way.
+    platform.prepareRelease.mockImplementationOnce(() => new Promise(() => undefined))
+    await userEvent.click(s.getByRole('radio', { name: /Minor/ }))
+    await waitFor(() => {
+      expect(lastRequest()).toMatchObject({ bump: 'minor', refresh: false })
+    })
+
+    move(10_000)
+    comeBack()
+
+    expect(prepares()).toEqual({ all: 2, fresh: 1 })
+  })
+
+  it('reads nothing as the window comes back once a release started', async () => {
+    const { clock, move } = movingClock()
+
+    platform.prepareRelease.mockResolvedValue(offerWith('warn'))
+    platform.getScriptRun.mockResolvedValue(releaseRun())
+    renderSheet({ clock })
+
+    const s = await sheet()
+
+    await userEvent.click(s.getByRole('button', { name: 'Release v1.4.3' }))
+    expect(await screen.findByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
+
+    move(10_000)
+    comeBack()
+
+    expect(prepares()).toEqual({ all: 1, fresh: 1 })
   })
 
   it('says why a release didn’t start, and checks again, showing the version it moved to', async () => {
