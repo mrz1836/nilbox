@@ -243,3 +243,124 @@ func TestDocsLinksResolve(t *testing.T) {
 		}
 	}
 }
+
+// docsMaxBytes caps each doc, so that a reader, a person or an agent, reads the one topic they
+// came for rather than a book.
+const docsMaxBytes = 48 << 10
+
+// docsIndex is the one index of every doc.
+const docsIndex = "docs/README.md"
+
+// docsUnder returns the docs under docs/, with their text.
+func docsUnder(t *testing.T) map[string]string {
+	t.Helper()
+
+	docs := map[string]string{}
+
+	for rel, text := range docFiles(t) {
+		if strings.HasPrefix(rel, "docs/") {
+			docs[rel] = text
+		}
+	}
+
+	return docs
+}
+
+// linkedDocs returns the repository paths a doc links to, a folder's link as its README.md.
+func linkedDocs(from, text string, tree repoTree) map[string]bool {
+	linked := map[string]bool{}
+
+	for _, link := range docLinks(text) {
+		rel, _, _ := strings.Cut(link.target, "#")
+		if rel == "" || strings.Contains(rel, "://") {
+			continue
+		}
+
+		target, problem := linkPath(from, rel)
+		if problem != "" {
+			continue
+		}
+
+		if tree.folders[target] {
+			target += "/README.md"
+		}
+
+		linked[target] = true
+	}
+
+	return linked
+}
+
+// TestDocsAreIndexed checks that docs/README.md links to every doc, so it is the one place
+// to start, and that a folder's README.md links to every topic in the folder.
+func TestDocsAreIndexed(t *testing.T) {
+	t.Parallel()
+
+	tree := newRepoTree(repoFiles(t))
+	docs := docsUnder(t)
+
+	index, ok := docs[docsIndex]
+	if !assert.True(t, ok, "%s is missing", docsIndex) {
+		return
+	}
+
+	indexed := linkedDocs(docsIndex, index, tree)
+	readmes := map[string]map[string]bool{}
+
+	for rel := range docs {
+		if rel == docsIndex {
+			continue
+		}
+
+		assert.True(t, indexed[rel], "%s links to no %s: add it to its section", docsIndex, rel)
+
+		dir := path.Dir(rel)
+		readme := dir + "/README.md"
+
+		if dir == "docs" || rel == readme || docs[readme] == "" {
+			continue
+		}
+
+		if readmes[readme] == nil {
+			readmes[readme] = linkedDocs(readme, docs[readme], tree)
+		}
+
+		assert.True(t, readmes[readme][rel], "%s links to no %s: add it to its In this folder list", readme, rel)
+	}
+}
+
+// TestDocsOpenWithTheirNavLine checks that every doc under docs/ but the index opens with its
+// title, then a nav line whose breadcrumb leads back to the index.
+func TestDocsOpenWithTheirNavLine(t *testing.T) {
+	t.Parallel()
+
+	for rel, text := range docsUnder(t) {
+		lines := strings.SplitN(text, "\n", 4)
+		if !assert.GreaterOrEqual(t, len(lines), 3, "%s is too short for a title and a nav line", rel) {
+			continue
+		}
+
+		assert.True(t, strings.HasPrefix(lines[0], "# "), "%s:1 is not the file's title (# …)", rel)
+
+		if rel == docsIndex {
+			continue
+		}
+
+		crumb := "[Docs](" + strings.Repeat("../", strings.Count(strings.TrimPrefix(rel, "docs/"), "/")) + "README.md)"
+
+		assert.Empty(t, lines[1], "%s:2 is not the blank line under the title", rel)
+		assert.True(t, strings.HasPrefix(lines[2], crumb),
+			"%s:3 is not the nav line: it starts with %s, the breadcrumb back to %s", rel, crumb, docsIndex)
+	}
+}
+
+// TestDocsStaySmall caps every doc under docs/ at docsMaxBytes.
+func TestDocsStaySmall(t *testing.T) {
+	t.Parallel()
+
+	for rel, text := range docsUnder(t) {
+		assert.LessOrEqual(t, len(text), docsMaxBytes,
+			"%s is %d bytes, over %d: make it a folder, with a README.md for its own notes and one file "+
+				"per topic, each listed in the README.md and in %s", rel, len(text), docsMaxBytes, docsIndex)
+	}
+}

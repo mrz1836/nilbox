@@ -33,7 +33,8 @@ keeps; everything else is here, one topic to a file.
   where a type, a setting, or a file is described.
 - **Keeping them current.** Read a package's notes before changing the package, and change them
   with it: a package's design belongs here, never in `CLAUDE.md`, whose size a guard test caps.
-  Repository tests (`internal/repoguard`) check that every link and anchor resolves.
+  Repository tests (`internal/repoguard`) check that every link and anchor resolves, that every
+  file is listed here, that each opens with its title and nav line, and that none passes 48 KiB.
 
 <br>
 

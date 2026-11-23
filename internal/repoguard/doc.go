@@ -31,7 +31,10 @@
 // agents load it whole into every session, so a package's design goes in its file under
 // docs/architecture/. The docs guards check every link of the docs (the guide, the README,
 // and everything under docs/): each names a file or folder of the repository, and each
-// anchor into a doc one of its headings.
+// anchor into a doc one of its headings. They keep docs/README.md the index of every doc,
+// and a folder's README.md the index of its topics; open every doc with its title and a nav
+// line back to the index; and cap each doc at 48 KiB, so a topic that outgrows one file
+// becomes a folder.
 //
 // One guard is personal: a contributor can list their own private names (employers,
 // clients, private organizations and repositories) in the clone's git directory, at
