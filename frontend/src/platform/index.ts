@@ -137,6 +137,15 @@ export type QueuedClear = NonNullLists<ghthreads.QueuedClear>
 export type SettledClear = NonNullLists<ghthreads.SettledClear>
 export type ClearState = ghthreads.ClearState
 export type ClearSkipReason = ghthreads.SkipReason
+// Marking them done in bulk (Mark all done): what the user asks for, the ages it offers,
+// how the job stands, and why it waits.
+export type GitHubBulkRequest = NonNullLists<ghthreads.BulkDoneRequest>
+export type GitHubBulkAge = ghthreads.BulkAge
+export type GitHubBulkDone = NonNullLists<ghthreads.BulkDoneStatus>
+export type GitHubBulkPause = ghthreads.BulkPause
+// GitHubBulkProgress is a "ghthreads:bulk" event's counts: how many the running job marked,
+// gave up on, and has left.
+export type GitHubBulkProgress = NonNullLists<event.GHThreadsBulk>
 // The user's rules for their GitHub notifications, from the settings, and the names their
 // setters take.
 export type ThreadRules = NonNullLists<threadrules.Rules>
@@ -1360,6 +1369,13 @@ export const {
 // Keep takes back queued clears, the toast's Undo, and MarkDone and MarkRead mark threads
 // done or read on GitHub at the user's click in the panel, whatever their subject. Each
 // returns the Snapshot.
+//
+// StartBulkDone marks a backlog done (Mark all done): every notification older than an
+// age, in the repositories chosen or all of them, past the newest 1,000 the app mirrors
+// too, one at a time in the background, which carries on after a restart. StopBulkDone
+// stops it, and DismissBulkDone forgets how the last one ended. Each returns the Snapshot,
+// whose bulkDone says how the job stands; a "ghthreads:bulk" event follows each
+// notification it marks, with its counts.
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
@@ -1370,6 +1386,10 @@ export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<
   githubThreads.MarkDone
 export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkRead
+export const startGitHubBulkDone: (req: GitHubBulkRequest) => CancellablePromise<GitHubThreadsSnapshot> =
+  githubThreads.StartBulkDone
+export const stopGitHubBulkDone: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.StopBulkDone
+export const dismissGitHubBulkDone: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.DismissBulkDone
 
 // The status pages of the services the user watches. Status judges each provider's last
 // reading against what the user watches now, reading nothing from the network itself, so

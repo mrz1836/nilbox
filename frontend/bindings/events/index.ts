@@ -39,6 +39,11 @@ export const DescribeitProposals = "describeit:proposals";
 export const DescribeitUpdated = "describeit:updated";
 
 /**
+ * Name of the custom event "ghthreads:bulk".
+ */
+export const GhthreadsBulk = "ghthreads:bulk";
+
+/**
  * Name of the custom event "ghthreads:updated".
  */
 export const GhthreadsUpdated = "ghthreads:updated";

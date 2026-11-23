@@ -50,6 +50,10 @@ type passRequest struct {
 	// send is a run that only sends the queued clears that are due, when the Syncer's timer
 	// says one is: it lists nothing and decides nothing anew.
 	send bool
+
+	// bulk is a run of the bulk mark (bulkDue), when the Syncer's timer says one is due: it
+	// lists only the job's own pages, and decides nothing.
+	bulk bool
 }
 
 // decidesAll reports whether the run decides every thread, rather than those of its refs.
@@ -110,11 +114,13 @@ func (e *refusedError) Error() string { return e.err.Error() }
 func (e *refusedError) Unwrap() error { return e.err }
 
 // runPass runs one pass, once any other has ended, then tells the window when what
-// Snapshot shows changed, and works out when the next queued clear may be sent. A timed
-// pass that finds another ended while it waited runs nothing. Every pass but a nudged one
-// that didn't list, and a run that only sends, counts as the last pass for the Syncer's
-// timer. Both are done however the run ends, a panic included, so a run that panics never
-// has the Syncer run it again at once.
+// Snapshot shows changed (a bulk run at most every bulkTellEvery, but for a change beyond
+// its counts), and works out when the next queued clear may be sent, and the next bulk run
+// is due: after any other pass, at once when a bulk mark runs and waits on no time. A
+// timed pass that finds another ended while it waited runs nothing. Every pass but a
+// nudged one that didn't list, a run that only sends, and a bulk run counts as the last
+// pass for the Syncer's timer. The plans are made however the run ends, a panic included,
+// so a run that panics never has the Syncer run it again at once.
 func (s *Service) runPass(ctx context.Context, req passRequest) (err error) {
 	if err = ctx.Err(); err != nil {
 		return fmt.Errorf("start a pass: %w", err)
@@ -134,23 +140,34 @@ func (s *Service) runPass(ctx context.Context, req passRequest) (err error) {
 
 	var did ran
 
-	gen := s.sendGeneration()
-	defer func() { s.endRun(req, did, gen) }()
+	gen, bulkGen := s.sendGeneration(), s.bulkGeneration()
+	defer func() { s.endRun(req, did, gen, bulkGen) }()
 
-	before := s.shownBefore(ctx)
+	// A bulk run, which tells the window seldom, compares with what was told last.
+	before := s.shown
+	if !req.bulk {
+		before = s.shownBefore(ctx)
+	}
+
 	did, err = s.pass(ctx, req)
 
-	s.tell(ctx, before)
+	if !req.bulk {
+		s.armBulk(ctx)
+	}
+
+	s.tellAfter(ctx, req, did, before)
 
 	return err
 }
 
 // endRun does what follows any run, however it ended: it records when the next queued
-// clear may be sent (planSend), and, for a pass that listed or meant to, that it ended.
-func (s *Service) endRun(req passRequest, did ran, gen uint64) {
+// clear may be sent (planSend) and the next bulk run is due (planBulk), and, for a pass
+// that listed or meant to, that it ended.
+func (s *Service) endRun(req passRequest, did ran, gen, bulkGen uint64) {
 	s.planSend(req, did, gen)
+	s.planBulk(req, did, bulkGen)
 
-	if did.listed || (!req.nudged && !req.send) {
+	if did.listed || (!req.nudged && !req.send && !req.bulk) {
 		s.passEnded()
 	}
 }
@@ -178,6 +195,10 @@ type ran struct {
 	// sends is when the next queued clear may be sent, as the run's sends left it: nil when
 	// it stopped before them.
 	sends *sendOutcome
+
+	// bulk is what a bulk run left for the next: nil for any other run, or one that stopped
+	// before it said.
+	bulk *bulkOutcome
 }
 
 // planSend records when the next queued clear may be sent, as the run did left it. A run
@@ -235,9 +256,9 @@ func (s *Service) tell(ctx context.Context, before *Snapshot) {
 // pass reads the rules, then, while reading is on, lists the notifications (a nudged run
 // only while the mirror is stale) and follows the listing: it checks the items' states,
 // decides which threads clear, queues them, and sends the clears that are due (follow). A
-// run that only sends goes straight to the sends. Each failure of the listing or the
-// states is recorded as the status's last error before it is returned, but a pass the
-// caller gave up on.
+// run that only sends goes straight to the sends, and a bulk run to the bulk mark, which
+// waits while reading is off. Each failure of the listing or the states is recorded as
+// the status's last error before it is returned, but a pass the caller gave up on.
 func (s *Service) pass(ctx context.Context, req passRequest) (ran, error) {
 	now := s.clock.Now()
 
@@ -254,6 +275,12 @@ func (s *Service) pass(ctx context.Context, req passRequest) (ran, error) {
 	}
 
 	if !rules.Read {
+		if req.bulk {
+			out, bulkErr := s.bulkReadingOff(ctx)
+
+			return ran{bulk: &out}, bulkErr
+		}
+
 		return ran{sends: &sendOutcome{}}, s.readingOff(ctx, st, now)
 	}
 
@@ -261,13 +288,25 @@ func (s *Service) pass(ctx context.Context, req passRequest) (ran, error) {
 		return ran{}, err
 	}
 
-	if req.send {
-		out, sendErr := s.sendDue(ctx, rules, st)
+	return s.passWith(ctx, req, rules, st, now)
+}
 
-		return ran{sends: &out}, sendErr
+// passWith runs what req asks once reading is on: the sends, a bulk run, or the listing
+// and what follows it.
+func (s *Service) passWith(ctx context.Context, req passRequest, rules threadrules.Rules, st syncState, now time.Time,
+) (ran, error) {
+	switch {
+	case req.send:
+		out, err := s.sendDue(ctx, rules, st)
+
+		return ran{sends: &out}, err
+	case req.bulk:
+		out, err := s.bulkDue(ctx)
+
+		return ran{bulk: &out}, err
+	default:
+		return s.listAndFollow(ctx, req, rules, st, now)
 	}
-
-	return s.listAndFollow(ctx, req, rules, st, now)
 }
 
 // listAndFollow lists the notifications, but for a nudged run while the mirror is fresh,

@@ -9,7 +9,22 @@ import {
   githubNotificationSuggestions,
   notificationHint,
   notificationSpec,
+  reposNamed,
 } from './notificationFilter'
+
+describe('reposNamed', () => {
+  const repos = ['acme-org/example-repo', 'acme-org/example-repo-docs', 'acme-org/other-repo']
+
+  it('names the repositories the repo: filters keep, as the list keeps them', () => {
+    expect(reposNamed('', repos)).toBeNull()
+    expect(reposNamed('flaky test', repos)).toBeNull()
+    expect(reposNamed('repo:acme-org/example-repo', repos)).toEqual(new Set(['acme-org/example-repo']))
+    expect(reposNamed('repo:example', repos)).toEqual(new Set(['acme-org/example-repo', 'acme-org/example-repo-docs']))
+    expect(reposNamed('repo:example -repo:docs', repos)).toEqual(new Set(['acme-org/example-repo']))
+    expect(reposNamed('repo:ACME-ORG/OTHER-REPO', repos)).toEqual(new Set(['acme-org/other-repo']))
+    expect(reposNamed('repo:nowhere', repos)).toEqual(new Set())
+  })
+})
 
 describe('notificationSpec', () => {
   it('knows the repository, the type, the state, and GitHub’s reason, several states at once', () => {

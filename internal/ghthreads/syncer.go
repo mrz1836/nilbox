@@ -28,8 +28,10 @@ type passer interface {
 	woken() <-chan struct{}
 	rulesChanged()
 
-	// untilSend says how long until a queued clear may be sent.
+	// untilSend says how long until a queued clear may be sent, and untilBulk until the
+	// next bulk run is due.
 	untilSend() (time.Duration, bool)
+	untilBulk() (time.Duration, bool)
 
 	// takeFollowUp and untilFollowUp are the follow-up runs of the items merged or closed:
 	// the one due now, and how long until the next is.
@@ -42,10 +44,11 @@ type passer interface {
 // the end of the last pass, its own or CheckNow's. Wake makes it read the interval again at
 // once. Between passes it runs what it is nudged to at once (what the inbox tells the
 // Settler, and the rules changing, RulesChanged), a follow-up run of the items merged or
-// closed every FollowUpEvery for FollowUpFor, and a run that sends the queued clears as
-// soon as the next may go, so an Undo hold of seconds is never stretched into the
-// interval's wait. A pass that fails is logged, and one that panics is recovered and
-// logged, so the Syncer keeps going until its context is canceled.
+// closed every FollowUpEvery for FollowUpFor, a run that sends the queued clears as soon as
+// the next may go, so an Undo hold of seconds is never stretched into the interval's wait,
+// and, while a bulk mark runs, a bulk run as soon as its lane lets the next mark go. A pass
+// that fails is logged, and one that panics is recovered and logged, so the Syncer keeps
+// going until its context is canceled.
 type Syncer struct {
 	svc    passer
 	every  periodic.Every
@@ -111,7 +114,8 @@ func (s *Syncer) Run(ctx context.Context) {
 
 // next returns the run due now, if any: the timed pass when due (found due when the last
 // pass had ended at ended), else what the Syncer was nudged to, else a follow-up run when
-// due, else a run that sends the queued clears once the next may go.
+// due, else a run that sends the queued clears once the next may go, else a bulk run once
+// it is due.
 func (s *Syncer) next(due bool, ended time.Time) (passRequest, bool) {
 	if due {
 		return passRequest{timed: true, lastEnded: ended}, true
@@ -129,35 +133,28 @@ func (s *Syncer) next(due bool, ended time.Time) (passRequest, bool) {
 		return passRequest{send: true}, true
 	}
 
+	if wait, ok := s.svc.untilBulk(); ok && wait <= 0 {
+		return passRequest{bulk: true}, true
+	}
+
 	return passRequest{}, false
 }
 
-// sleep waits for wait, when timed, for the next queued clear or follow-up run to come due,
-// for a nudge, or for a wake, and reports false once ctx is canceled. Each only has Run
-// work out what is due again.
+// sleep waits for wait, when timed, for the next queued clear, follow-up run, or bulk run
+// to come due, for a nudge, or for a wake, and reports false once ctx is canceled. Each
+// only has Run work out what is due again.
 func (s *Syncer) sleep(ctx context.Context, wait time.Duration, timed bool) bool {
-	var due, send, follow <-chan time.Time
+	due, stopDue := firesAfter(wait, timed)
+	defer stopDue()
 
-	if timed {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
+	send, stopSend := firesAfter(s.svc.untilSend())
+	defer stopSend()
 
-		due = timer.C
-	}
+	follow, stopFollow := firesAfter(s.svc.untilFollowUp())
+	defer stopFollow()
 
-	if until, ok := s.svc.untilSend(); ok {
-		timer := time.NewTimer(until)
-		defer timer.Stop()
-
-		send = timer.C
-	}
-
-	if until, ok := s.svc.untilFollowUp(); ok {
-		timer := time.NewTimer(until)
-		defer timer.Stop()
-
-		follow = timer.C
-	}
+	bulk, stopBulk := firesAfter(s.svc.untilBulk())
+	defer stopBulk()
 
 	select {
 	case <-ctx.Done():
@@ -165,11 +162,24 @@ func (s *Syncer) sleep(ctx context.Context, wait time.Duration, timed bool) bool
 	case <-due:
 	case <-send:
 	case <-follow:
+	case <-bulk:
 	case <-s.svc.woken():
 	case <-s.wake:
 	}
 
 	return true
+}
+
+// firesAfter returns a channel that fires once wait is over, and the stop of its timer;
+// when not ok, a nil channel, which never fires, and a stop that does nothing.
+func firesAfter(wait time.Duration, ok bool) (<-chan time.Time, func()) {
+	if !ok {
+		return nil, func() {}
+	}
+
+	timer := time.NewTimer(wait)
+
+	return timer.C, func() { timer.Stop() }
 }
 
 // untilDue says how long until the next pass is due, as set now, when the last pass ended

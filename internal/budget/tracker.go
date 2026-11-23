@@ -14,7 +14,8 @@
 // see writes.go): an edit is refused before it is sent when its budget is down to the
 // reserve left for everything else, when the app has made as many as it makes in a minute
 // or an hour, or while GitHub has asked it to wait. It paces the chore lane's notification
-// writes (github.ChoreGate) the same way, more slowly, and with counts of their own.
+// writes (github.ChoreGate) the same way, more slowly, and with counts of their own, and a
+// bulk mark's writes in a lane of their own, slower still.
 //
 // Each change emits an event.BudgetUpdated, and the window reads the budgets again.
 package budget
@@ -112,11 +113,12 @@ type Tracker struct {
 	budgets map[string]*held
 	last    refresh
 
-	// writes and chores are the lanes of the edits and the chores, each with the times it
-	// sent its changes of the last hour, and heldUntil when GitHub's request to wait
-	// before the next of either ends (see writes.go).
+	// writes, chores, and bulk are the lanes of the edits, the chores, and a bulk mark's
+	// writes, each with the times it sent its changes of the last hour, and heldUntil when
+	// GitHub's request to wait before the next of any ends (see writes.go).
 	writes    lane
 	chores    lane
+	bulk      lane
 	heldUntil time.Time
 
 	// dirty holds a signal while a change waits to be saved (see Saver).
@@ -130,7 +132,7 @@ func NewTracker(c clock.Clock, events event.Sink) *Tracker {
 
 	return &Tracker{
 		clock: c, events: event.Or(events), started: c.Now().UTC(), budgets: make(map[string]*held),
-		writes: writeLane(), chores: choreLane(), dirty: make(chan struct{}, 1),
+		writes: writeLane(), chores: choreLane(), bulk: bulkLane(), dirty: make(chan struct{}, 1),
 	}
 }
 

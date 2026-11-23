@@ -102,9 +102,11 @@ type listedRequest struct {
 	// of one).
 	kind string
 
-	// page is a listing's page, and ifNoneMatch the ETag it was sent with.
+	// page is a listing's page, ifNoneMatch the ETag it was sent with, and before the
+	// cutoff it asked for, zero for none.
 	page        int
 	ifNoneMatch string
+	before      time.Time
 
 	// refs are the items a states query asked about, as owner/name#number.
 	refs []string
@@ -371,16 +373,18 @@ func (f *fakeGitHub) serveComment(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, `{"id": 1, "user": {"login": "someone", "type": %q}}`, typ)
 }
 
-// serveListing answers a page of the listing: 304 for page 1 sent with its ETag, the page
-// with a Link to the next while there is one.
+// serveListing answers a page of the listing, of the threads updated before its before
+// when it names one: 304 for page 1 sent with its ETag, the page with a Link to the next
+// while there is one.
 func (f *fakeGitHub) serveListing(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	ifNoneMatch := r.Header.Get("If-None-Match")
+	before, _ := time.Parse(time.RFC3339, r.URL.Query().Get("before"))
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.got = append(f.got, listedRequest{kind: "list", page: page, ifNoneMatch: ifNoneMatch})
+	f.got = append(f.got, listedRequest{kind: "list", page: page, ifNoneMatch: ifNoneMatch, before: before})
 
 	if f.poll != "" {
 		w.Header().Set("X-Poll-Interval", f.poll)
@@ -401,6 +405,10 @@ func (f *fakeGitHub) serveListing(w http.ResponseWriter, r *http.Request) {
 	// GitHub lists the newest updated first.
 	sorted := slices.Clone(f.threads)
 	slices.SortStableFunc(sorted, func(a, b fakeThread) int { return b.updated.Compare(a.updated) })
+
+	if !before.IsZero() {
+		sorted = slices.DeleteFunc(sorted, func(t fakeThread) bool { return !t.updated.Before(before) })
+	}
 
 	pages := slices.Collect(slices.Chunk(sorted, github.ThreadsPerPage))
 
@@ -610,7 +618,8 @@ func (r *fakeRules) fail(err error) {
 	r.err = err
 }
 
-// fakeGate is a chore lane that allows every clear, unless told to refuse.
+// fakeGate is a chore lane that allows every clear, unless told to refuse, and a bulk lane
+// that allows every bulk mark, unless told to refuse those.
 type fakeGate struct {
 	mu      sync.Mutex
 	refuse  error
@@ -618,6 +627,12 @@ type fakeGate struct {
 
 	// paced is how many chores to come it refuses for the app's pace before it allows one.
 	paced int
+
+	// bulkRefuse refuses every bulk mark, bulkPaced the next ones for the pace, and
+	// bulkAllowed counts those allowed.
+	bulkRefuse  error
+	bulkPaced   int
+	bulkAllowed int
 }
 
 // AllowChore allows the clear, or refuses it as told.
@@ -640,8 +655,36 @@ func (g *fakeGate) AllowChore(string) error {
 	return nil
 }
 
+// AllowBulkChore allows the bulk mark, or refuses it as told.
+func (g *fakeGate) AllowBulkChore(string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.bulkRefuse != nil {
+		return g.bulkRefuse
+	}
+
+	if g.bulkPaced > 0 {
+		g.bulkPaced--
+
+		return budget.ErrWritePace
+	}
+
+	g.bulkAllowed++
+
+	return nil
+}
+
 // HoldWrites hears nothing.
 func (*fakeGate) HoldWrites(time.Duration) {}
+
+// configure changes the gate under its lock.
+func (g *fakeGate) configure(change func(g *fakeGate)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	change(g)
+}
 
 // fakeHolds is the toast setting, in seconds, or a failure to read it.
 type fakeHolds struct {

@@ -15,11 +15,12 @@ import (
 
 // The app reads the user's GitHub notifications and clears them one thread at a time, so
 // the GitHub client calls three notification endpoints and no other: GET /notifications,
-// which lists the web inbox, and DELETE and PATCH on /notifications/threads/{id}, which
-// mark one thread done or read. It can never mark every notification read (PUT
-// /notifications), mark a repository's read (PUT /repos/{owner}/{name}/notifications), or
-// change a subscription (/notifications/threads/{id}/subscription). So, inside
-// internal/github:
+// which lists the web inbox (before a time, for a bulk mark), and DELETE and PATCH on
+// /notifications/threads/{id}, which mark one thread done or read. A bulk mark (Mark all
+// done) is one DELETE a thread too, through chore in the gate's bulk lane. It can never
+// mark every notification read (PUT /notifications), mark a repository's read (PUT
+// /repos/{owner}/{name}/notifications), or change a subscription
+// (/notifications/threads/{id}/subscription). So, inside internal/github:
 //
 //   - a string that names notifications is one of the two paths, each held by its
 //     constant (notificationPaths), unless it is an error's message or a struct tag;

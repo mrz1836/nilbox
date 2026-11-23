@@ -83,6 +83,7 @@ import type {
   LocationState,
   FileCheck,
   GitHubSignIn,
+  GitHubBulkDone,
   GitHubThread,
   GitHubThreadList,
   GitHubThreadsSnapshot,
@@ -2265,6 +2266,8 @@ export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
     writes: writes(),
     // The chore lane: no notifications cleared lately, paced as the app paces them.
     chores: writes({ perHour: 300, perMinute: 50 }),
+    // The bulk lane: none marked done in bulk lately.
+    bulk: writes({ perHour: 1200, perMinute: 40 }),
     ...overrides,
   }
 }
@@ -2422,14 +2425,63 @@ export function threadsStatus(overrides: Partial<GitHubThreadsStatus> = {}): Git
 
 // githubThreads is what the app mirrors of the user's GitHub notifications: by default
 // read a minute ago, with none in the GitHub inbox, nothing queued to clear, none held back
-// for review, and none cleared lately. Every test builds one here, with the fields it cares
-// about, so a field the backend adds needs a default in this one place.
+// for review, none cleared lately, and no bulk mark. Every test builds one here, with the
+// fields it cares about, so a field the backend adds needs a default in this one place.
 export function githubThreads(
   overrides: Partial<Omit<GitHubThreadsSnapshot, 'status'>> & { status?: Partial<GitHubThreadsStatus> } = {},
 ): GitHubThreadsSnapshot {
   const { status, ...rest } = overrides
 
-  return { unread: [], queued: [], backlog: 0, recent: [], ...rest, status: threadsStatus(status) }
+  return {
+    unread: [],
+    queued: [],
+    backlog: 0,
+    recent: [],
+    bulkDone: githubBulkDone(),
+    ...rest,
+    status: threadsStatus(status),
+  }
+}
+
+// githubBulkDone is the bulk mark of the user's GitHub notifications (Mark all done): by
+// default none to show. bulkRunning is one started at noon less a minute, of every one in
+// example-repo, 412 of about 1,180 marked so far.
+export function githubBulkDone(overrides: Partial<GitHubBulkDone> = {}): GitHubBulkDone {
+  return {
+    running: false,
+    age: 'any',
+    before: '',
+    all: false,
+    repos: [],
+    expected: 0,
+    done: 0,
+    failed: 0,
+    left: 0,
+    more: false,
+    nextAt: '',
+    pause: 'none',
+    error: '',
+    startedAt: '',
+    endedAt: '',
+    stopped: false,
+    perMinute: 40,
+    perHour: 1200,
+    ...overrides,
+  }
+}
+
+// bulkRunning is a bulk mark going well, as githubBulkDone describes it.
+export function bulkRunning(overrides: Partial<GitHubBulkDone> = {}): GitHubBulkDone {
+  return githubBulkDone({
+    running: true,
+    before: '2026-06-15T11:59:00Z',
+    repos: ['acme-org/example-repo'],
+    expected: 1180,
+    done: 412,
+    left: 768,
+    startedAt: '2026-06-15T11:59:00Z',
+    ...overrides,
+  })
 }
 
 // queuedClear is the notification about pull request #7 of example-repo, queued to be

@@ -39,6 +39,15 @@ export function ClearItemThreads(owner: string, name: string, $number: number): 
 }
 
 /**
+ * DismissBulkDone forgets the summary of a bulk mark that ended, so the window no longer
+ * shows it, this run or the next. One still running is left as it is. It returns the
+ * Snapshot.
+ */
+export function DismissBulkDone(): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2271080006);
+}
+
+/**
  * Keep takes back the queued clears with clearIDs, the toast's Undo: each one still queued
  * is kept, and never sent. A clear kept stays kept: its thread isn't queued again on its
  * own until it changes on GitHub. It returns the Snapshot.
@@ -88,4 +97,24 @@ export function MarkRead(ids: number[] | null): $CancellablePromise<$models.Snap
  */
 export function Snapshot(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2433404930);
+}
+
+/**
+ * StartBulkDone starts marking done on GitHub, in the background, the notifications of the
+ * account the last pass read that req names: those updated before now less req.Age, in
+ * req.Repos or every repository, in the mirror or past it. It refuses, with a sentence
+ * that says why, while reading is off, before a pass read an account, while GitHub refuses
+ * the listing, for a request that names nothing, and while another bulk mark runs. It
+ * returns the Snapshot.
+ */
+export function StartBulkDone(req: $models.BulkDoneRequest): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(10898282, req);
+}
+
+/**
+ * StopBulkDone stops the bulk mark that runs, if any: what it marked stays marked, and the
+ * rest stay in the user's inbox. It returns the Snapshot.
+ */
+export function StopBulkDone(): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(1438186162);
 }

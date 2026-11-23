@@ -31,6 +31,12 @@ export interface Gauge {
      * it paces them, apart from the edits.
      */
     "chores": Writes;
+
+    /**
+     * Bulk is the notifications a bulk mark (Mark all done) marked done on GitHub lately,
+     * and how its lane paces them, apart from the chores.
+     */
+    "bulk": Writes;
 }
 
 /**
@@ -123,8 +129,8 @@ export interface Refresh {
 
 /**
  * Writes is what the app changed on GitHub lately in one lane, and how it paces that lane:
- * the edits it made for the user (Gauge.Writes), or its chores (Gauge.Chores). Every field
- * is a plain value.
+ * the edits it made for the user (Gauge.Writes), its chores (Gauge.Chores), or a bulk
+ * mark's writes (Gauge.Bulk). Every field is a plain value.
  */
 export interface Writes {
     /**
@@ -146,8 +152,8 @@ export interface Writes {
     "reserve": number;
 
     /**
-     * HeldUntil is when GitHub's request to wait before the next change, which holds both
-     * lanes, ends, as RFC 3339, or "" when there is none.
+     * HeldUntil is when GitHub's request to wait before the next change, which holds every
+     * lane, ends, as RFC 3339, or "" when there is none.
      */
     "heldUntil": string;
 }

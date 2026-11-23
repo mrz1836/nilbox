@@ -64,6 +64,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.ThreadRulesChanged{}, event.NameThreadRulesChanged},
 		{event.StatusRulesChanged{}, event.NameStatusRulesChanged},
 		{event.GHThreadsUpdated{}, event.NameGHThreadsUpdated},
+		{event.GHThreadsBulk{}, event.NameGHThreadsBulk},
 		{event.ServiceStatusUpdated{}, event.NameServiceStatusUpdated},
 		{event.SetupFinished{}, event.NameSetupFinished},
 		{event.ResetRequested{}, event.NameResetRequested},
@@ -105,7 +106,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress, event.NameIssueProgress,
 		event.NameToolsUpdated, event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested,
 		event.NameReleasesUpdated, event.NameReleasesProgress, event.NameHooksUpdated, event.NameWorktreesProgress,
-		event.NameManifestsProgress, event.NameGHThreadsUpdated, event.NameServiceStatusUpdated, event.NameUpdatesUpdated, event.NameUpdateRestartRequested,
+		event.NameManifestsProgress, event.NameGHThreadsUpdated, event.NameGHThreadsBulk, event.NameServiceStatusUpdated, event.NameUpdatesUpdated, event.NameUpdateRestartRequested,
 		event.NameAutopilotUpdated, event.NameAutopilotRun, event.NameDescribeItUpdated, event.NameDescribeItProposals,
 	}, names)
 

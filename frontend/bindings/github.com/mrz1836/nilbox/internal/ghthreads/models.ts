@@ -37,6 +37,160 @@ export const Access = {
 } as const;
 
 /**
+ * BulkAge is how old the notifications a bulk mark marks done are, at least: updated
+ * before the click's time less the age.
+ */
+export type BulkAge = "any" | "day" | "week" | "month" | "quarter";
+
+/**
+ * The values of BulkAge, by the names of their Go constants.
+ */
+export const BulkAge = {
+    /**
+     * The ages a bulk mark may choose.
+     *
+     * BulkAgeAny is every notification, updated before the click.
+     */
+    BulkAgeAny: "any",
+
+    /**
+     * BulkAgeDay is those not updated for a day.
+     */
+    BulkAgeDay: "day",
+
+    /**
+     * BulkAgeWeek is those not updated for a week.
+     */
+    BulkAgeWeek: "week",
+
+    /**
+     * BulkAgeMonth is those not updated for 30 days.
+     */
+    BulkAgeMonth: "month",
+
+    /**
+     * BulkAgeQuarter is those not updated for 90 days.
+     */
+    BulkAgeQuarter: "quarter",
+} as const;
+
+/**
+ * BulkDoneRequest is what the user chose to mark done: the notifications older than Age,
+ * in Repos ("owner/name", any case), or in every repository, and those about none, when
+ * All.
+ */
+export interface BulkDoneRequest {
+    "age": BulkAge;
+    "repos": string[] | null;
+    "all": boolean;
+}
+
+/**
+ * BulkDoneStatus is how the bulk mark stands, for the window: none before the first, or
+ * once the user dismissed the last. Every slice is non-nil.
+ */
+export interface BulkDoneStatus {
+    /**
+     * Running is whether it is going; StartedAt is "" when there is none to show.
+     */
+    "running": boolean;
+
+    /**
+     * Age, Before, All, and Repos are what it marks: those updated before Before (RFC 3339),
+     * the click's time less Age, in Repos, or every one when All.
+     */
+    "age": BulkAge;
+    "before": string;
+    "all": boolean;
+    "repos": string[] | null;
+
+    /**
+     * Expected is how many the mirror listed in its scope when it started, Done how many
+     * it marked (GitHub's own count of those it no longer had included), and Failed how
+     * many it gave up on.
+     */
+    "expected": number;
+    "done": number;
+    "failed": number;
+
+    /**
+     * Left is how many in its scope the mirror still lists, those given up on aside, and
+     * More whether GitHub holds more than the mirror's newest MaxThreads, so the job may
+     * mark more than it counts.
+     */
+    "left": number;
+    "more": boolean;
+
+    /**
+     * NextAt is when it goes on after a pause (RFC 3339, "" for none), Pause why it waits,
+     * and Error the last failure, in a sentence.
+     */
+    "nextAt": string;
+    "pause": BulkPause;
+    "error": string;
+
+    /**
+     * StartedAt and EndedAt are when it started and ended (RFC 3339, "" for not yet), and
+     * Stopped whether the user stopped it.
+     */
+    "startedAt": string;
+    "endedAt": string;
+    "stopped": boolean;
+
+    /**
+     * PerMinute and PerHour are the most its lane marks in a minute and in an hour, from
+     * which the window works out how long it takes.
+     */
+    "perMinute": number;
+    "perHour": number;
+}
+
+/**
+ * BulkPause is why a running bulk mark is waiting, other than its pace.
+ */
+export type BulkPause = "none" | "held" | "reserve" | "otherAccount" | "readingOff" | "failing";
+
+/**
+ * The values of BulkPause, by the names of their Go constants.
+ */
+export const BulkPause = {
+    /**
+     * The reasons a bulk mark waits.
+     *
+     * BulkPauseNone is no pause: it goes as fast as its lane lets it.
+     */
+    BulkPauseNone: "none",
+
+    /**
+     * BulkPauseHeld is GitHub asking the app to slow down, until NextAt.
+     */
+    BulkPauseHeld: "held",
+
+    /**
+     * BulkPauseReserve is the API budget down to the reserve the app leaves for
+     * everything else, until it refills at NextAt.
+     */
+    BulkPauseReserve: "reserve",
+
+    /**
+     * BulkPauseOtherAccount is the GitHub token belonging to another account than the
+     * job's, or none to borrow: it waits for the next pass.
+     */
+    BulkPauseOtherAccount: "otherAccount",
+
+    /**
+     * BulkPauseReadingOff is reading the notifications turned off: it waits until it is
+     * back on.
+     */
+    BulkPauseReadingOff: "readingOff",
+
+    /**
+     * BulkPauseFailing is GitHub failing a listing or a mark, tried again at NextAt.
+     */
+    BulkPauseFailing: "failing",
+} as const;
+
+/**
  * ClearState is where a clear stands in the ledger.
  */
 export type ClearState = "queued" | "sent" | "kept" | "failed" | "skipped";
@@ -257,6 +411,12 @@ export interface Snapshot {
      * Recent are the latest MaxRecent clears that settled, the latest first.
      */
     "recent": SettledClear[] | null;
+
+    /**
+     * BulkDone is how the bulk mark (Mark all done) stands: running, or how the last
+     * ended, until the user dismisses it.
+     */
+    "bulkDone": BulkDoneStatus;
 }
 
 /**

@@ -107,6 +107,10 @@ type Gauge struct {
 	// Chores is the notifications the app's chore lane cleared on GitHub lately, and how
 	// it paces them, apart from the edits.
 	Chores Writes `json:"chores"`
+
+	// Bulk is the notifications a bulk mark (Mark all done) marked done on GitHub lately,
+	// and how its lane paces them, apart from the chores.
+	Bulk Writes `json:"bulk"`
 }
 
 // Reading is one budget as GitHub last reported it, and what the app spent from it since
@@ -191,6 +195,7 @@ func (t *Tracker) gauge(perHour int) Gauge {
 		RefreshesPerHour: perHour,
 		Writes:           t.writes.writes(now, reserve, t.heldUntil),
 		Chores:           t.chores.writes(now, reserve, t.heldUntil),
+		Bulk:             t.bulk.writes(now, reserve, t.heldUntil),
 	}
 
 	if !t.last.at.IsZero() {

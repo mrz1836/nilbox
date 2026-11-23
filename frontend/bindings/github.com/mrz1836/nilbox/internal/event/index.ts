@@ -15,6 +15,7 @@ export type {
     BudgetUpdated,
     DescribeItProposals,
     DescribeItUpdated,
+    GHThreadsBulk,
     GHThreadsUpdated,
     HooksUpdated,
     InboxProgress,

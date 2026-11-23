@@ -481,6 +481,7 @@ func registerEvents() {
 	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)
 	application.RegisterEvent[event.ManifestsProgress](event.NameManifestsProgress)
 	application.RegisterEvent[event.GHThreadsUpdated](event.NameGHThreadsUpdated)
+	application.RegisterEvent[event.GHThreadsBulk](event.NameGHThreadsBulk)
 	application.RegisterEvent[event.ServiceStatusUpdated](event.NameServiceStatusUpdated)
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)

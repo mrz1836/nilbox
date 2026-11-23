@@ -36,6 +36,10 @@ type Snapshot struct {
 	// Recent are the latest MaxRecent clears that settled, the latest first.
 	Recent []SettledClear `json:"recent"`
 
+	// BulkDone is how the bulk mark (Mark all done) stands: running, or how the last
+	// ended, until the user dismisses it.
+	BulkDone BulkDoneStatus `json:"bulkDone"`
+
 	// listed is a fingerprint of every thread the mirror lists for the account (its id,
 	// unread, state, title, reason, and update time), read and unread, past the newest
 	// MaxUnread too: List shows them all, so a pass that changes any of them differs from
@@ -176,9 +180,17 @@ type Thread struct {
 }
 
 // compared is s as a pass compares it with the last one told: the passes' times left out,
-// since a pass that changed nothing else tells nothing.
+// since a pass that changed nothing else tells nothing, and the bulk mark's counts, and,
+// without a pause, when it goes on, which its progress events tell.
 func compared(s Snapshot) Snapshot {
 	s.Status.LastPassAt, s.Status.LastFullWalkAt = "", ""
+
+	b := &s.BulkDone
+	b.Done, b.Failed, b.Left, b.More = 0, 0, 0, false
+
+	if b.Pause == BulkPauseNone {
+		b.NextAt = ""
+	}
 
 	return s
 }
@@ -218,7 +230,14 @@ func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Sna
 		return Snapshot{}, err
 	}
 
-	out := Snapshot{Status: status, Unread: []Thread{}, Queued: []QueuedClear{}, Recent: []SettledClear{}}
+	bulk, err := s.bulkStatus(ctx, rows, st.Truncated)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	out := Snapshot{
+		Status: status, Unread: []Thread{}, Queued: []QueuedClear{}, Recent: []SettledClear{}, BulkDone: bulk,
+	}
 
 	if !reading || st.Account == "" {
 		return out, nil

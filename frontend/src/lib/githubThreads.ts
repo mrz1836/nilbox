@@ -6,6 +6,8 @@
 
 import { brand } from '../generated/brand'
 import type {
+  GitHubBulkAge,
+  GitHubBulkDone,
   GitHubThread,
   GitHubThreadState,
   GitHubThreadsStatus,
@@ -14,9 +16,9 @@ import type {
   SettledClear,
   ThreadTrigger,
 } from '../platform'
-import { formatCount } from './format'
+import { counted, formatCount } from './format'
 import { itemKey } from './itemWorktrees'
-import { formatAgo, formatUntil } from './time'
+import { formatAgo, formatTimeOfDay, formatUntil } from './time'
 
 // inboxURL is the user's GitHub inbox on the web, and doneURL its Done view, which lists
 // what was marked done: every clear that marked one.
@@ -533,4 +535,226 @@ export function groupWhere(group: ThreadGroup): string {
     : group.subjectType
 
   return [group.repo, subject].filter((part) => part !== '').join(' · ')
+}
+
+// Marking notifications done in bulk (Mark all done): the backend runs the job, one
+// notification at a time, and the window chooses what it marks, from the list it already
+// holds, and words how it goes.
+
+// BulkAgeOption is one of the ages a bulk mark offers, as the dialog's Older than names it,
+// and how many days back it reaches.
+export interface BulkAgeOption {
+  value: GitHubBulkAge
+  label: string
+  days: number
+}
+
+// bulkAges are the ages a bulk mark offers, the youngest first, as the backend measures
+// them.
+export const bulkAges: readonly BulkAgeOption[] = [
+  { value: 'any', label: 'Any age', days: 0 },
+  { value: 'day', label: '1 day', days: 1 },
+  { value: 'week', label: '1 week', days: 7 },
+  { value: 'month', label: '1 month', days: 30 },
+  { value: 'quarter', label: '3 months', days: 90 },
+]
+
+// dayMs is a day, in milliseconds.
+const dayMs = 24 * 60 * 60 * 1000
+
+// BulkRepo is one repository a bulk mark offers: "owner/name", how many notifications it
+// holds at the age chosen, and how many of them are unread.
+export interface BulkRepo {
+  repo: string
+  count: number
+  unread: number
+}
+
+// bulkRepos counts threads by repository, those updated before now less age, the most
+// first, then by name. A repository with none at that age isn't there, nor a thread about
+// no repository, which only a bulk mark of everything reaches.
+export function bulkRepos(threads: readonly GitHubThread[], age: GitHubBulkAge, now: Date): BulkRepo[] {
+  const days = bulkAges.find((a) => a.value === age)?.days ?? 0
+  const cutoff = now.getTime() - days * dayMs
+  const byRepo = new Map<string, BulkRepo>()
+
+  for (const t of threads) {
+    const updated = Date.parse(t.updatedAt)
+
+    if (t.owner === '' || t.name === '' || Number.isNaN(updated) || updated >= cutoff) {
+      continue
+    }
+
+    const repo = `${t.owner}/${t.name}`
+    const row = byRepo.get(repo) ?? { repo, count: 0, unread: 0 }
+
+    row.count++
+    row.unread += t.unread ? 1 : 0
+    byRepo.set(repo, row)
+  }
+
+  return [...byRepo.values()].sort((a, b) => b.count - a.count || a.repo.localeCompare(b.repo))
+}
+
+// bulkMinutes is how long marking n done takes, in minutes, at most perMinute a minute and
+// perHour an hour: past an hour's worth, each one waits for the hour to pass.
+export function bulkMinutes(n: number, perMinute: number, perHour: number): number {
+  if (n <= 0 || perMinute <= 0) {
+    return 0
+  }
+
+  const hours = perHour > 0 ? Math.floor((n - 1) / perHour) : 0
+
+  return hours * 60 + (n - hours * perHour) / perMinute
+}
+
+// aboutText says roughly how long minutes take: "less than a minute", "about 25 minutes",
+// "about 1 hour 15 minutes", to the five minutes past the first hour.
+export function aboutText(minutes: number): string {
+  if (minutes < 1) {
+    return 'less than a minute'
+  }
+
+  if (minutes < 59.5) {
+    return `about ${counted(Math.round(minutes), 'minute', 'minutes')}`
+  }
+
+  const fives = Math.round(minutes / 5)
+  const hours = Math.floor(fives / 12)
+  const rest = (fives % 12) * 5
+  const spoken = counted(hours, 'hour', 'hours')
+
+  return rest === 0 ? `about ${spoken}` : `about ${spoken} ${counted(rest, 'minute', 'minutes')}`
+}
+
+// bulkKeepsText says what a bulk mark at age leaves in the user's inbox.
+export function bulkKeepsText(age: GitHubBulkAge): string {
+  const option = bulkAges.find((a) => a.value === age)
+
+  return option === undefined || option.days === 0
+    ? 'Anything updated after now stays in your inbox.'
+    : `Anything updated in the last ${option.label.replace(/^1 /, '')} stays in your inbox.`
+}
+
+// BulkLineKind is how a bulk mark's line reads: going, waiting, waiting on a failure,
+// ended, ended with some it couldn't mark, or stopped.
+export type BulkLineKind = 'running' | 'paused' | 'failing' | 'done' | 'partial' | 'stopped'
+
+// BulkLine is a bulk mark's status line: its words, how far it got (0 to 1) while it runs,
+// or null when that can't be told, or it ended, and how it reads.
+export interface BulkLine {
+  text: string
+  share: number | null
+  kind: BulkLineKind
+}
+
+// inText says when iso comes, as a wait: "in 40 seconds", "in 2 minutes", "in a moment".
+function inText(now: Date, iso: string): string {
+  const at = Date.parse(iso)
+  const seconds = Number.isNaN(at) ? 0 : Math.ceil((at - now.getTime()) / 1000)
+
+  if (seconds <= 0) {
+    return 'in a moment'
+  }
+
+  return seconds < 60
+    ? `in ${counted(seconds, 'second', 'seconds')}`
+    : `in ${counted(Math.ceil(seconds / 60), 'minute', 'minutes')}`
+}
+
+// pausedText says why a running bulk mark waits, or '' when it goes on.
+function pausedText(now: Date, b: GitHubBulkDone): string {
+  switch (b.pause) {
+    case 'held':
+      return `Paused: GitHub asked for a short break. Resuming ${inText(now, b.nextAt)}.`
+    case 'reserve': {
+      const at = formatTimeOfDay(b.nextAt)
+
+      return at === ''
+        ? 'Paused until your GitHub API budget refills.'
+        : `Paused until your GitHub API budget refills at ${at}.`
+    }
+    case 'otherAccount':
+      return 'Paused: your GitHub token is for another account now.'
+    case 'readingOff':
+      return `Paused while ${brand.name} isn’t reading your GitHub notifications.`
+    case 'failing':
+      return `Couldn’t reach GitHub. Trying again ${inText(now, b.nextAt)}.`
+    case 'none':
+      return ''
+  }
+}
+
+// runningText says how far a running bulk mark got: "Marking done on GitHub: 412 of 1,180
+// · about 19 minutes left", with "or more" when GitHub holds more than the app mirrors.
+function runningText(b: GitHubBulkDone): string {
+  const total = b.done + b.failed + b.left
+
+  if (total === 0) {
+    return 'Marking done on GitHub…'
+  }
+
+  if (b.left === 0) {
+    return `Marking done on GitHub: ${formatCount(b.done)} so far`
+  }
+
+  const of = `${formatCount(total)}${b.more ? ' or more' : ''}`
+  const left = aboutText(bulkMinutes(b.left, b.perMinute, b.perHour))
+
+  return `Marking done on GitHub: ${formatCount(b.done)} of ${of} · ${left} left`
+}
+
+// endedText says how a bulk mark that ended went.
+function endedText(b: GitHubBulkDone): BulkLine {
+  if (b.stopped) {
+    return {
+      text: `Stopped after marking ${formatCount(b.done)} done. The rest are still in your inbox.`,
+      share: null,
+      kind: 'stopped',
+    }
+  }
+
+  const marked = `Marked ${formatCount(b.done)} done on GitHub`
+
+  if (b.failed === 0) {
+    return { text: marked, share: null, kind: 'done' }
+  }
+
+  return {
+    text: `${marked} · ${formatCount(b.failed)} couldn’t be marked; they’re still in your inbox`,
+    share: null,
+    kind: 'partial',
+  }
+}
+
+// bulkDoneText is the line that says how the bulk mark stands, as of now: how far it got,
+// why it waits, or how it ended; null when there is none to show.
+export function bulkDoneText(now: Date, b: GitHubBulkDone): BulkLine | null {
+  if (b.startedAt === '') {
+    return null
+  }
+
+  if (!b.running) {
+    return endedText(b)
+  }
+
+  const total = b.done + b.failed + b.left
+  const share = total === 0 ? null : (b.done + b.failed) / total
+  const paused = pausedText(now, b)
+
+  if (paused !== '') {
+    return { text: paused, share, kind: b.pause === 'failing' ? 'failing' : 'paused' }
+  }
+
+  return { text: runningText(b), share, kind: 'running' }
+}
+
+// bulkToastText is what the toast says once a bulk mark finished: "Marked 1,180
+// notifications done on GitHub", with "3 couldn’t be marked" as its detail when some
+// couldn't be.
+export function bulkToastText(b: GitHubBulkDone): { text: string; detail: string } {
+  return {
+    text: `Marked ${counted(b.done, 'notification', 'notifications')} done on GitHub`,
+    detail: b.failed === 0 ? '' : `${formatCount(b.failed)} couldn’t be marked`,
+  }
 }

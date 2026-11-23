@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { GitHubThreadsSnapshot, Settings, ThreadRules } from '../platform'
 import { renderAt } from '../test/clock'
-import { githubThread, githubThreads, settings } from '../test/fixtures'
+import { bulkRunning, githubThread, githubThreads, settings } from '../test/fixtures'
 import { mocks, platform } from '../test/platform'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 
@@ -32,6 +32,10 @@ function state(
     list: null,
     listError: '',
     keep: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+    bulk: snapshot?.bulkDone ?? null,
+    startBulk: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+    stopBulk: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+    dismissBulk: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
     ...overrides,
   }
 }
@@ -459,5 +463,21 @@ describe('GitHubThreadsMenu', () => {
     expect(panel.getByText('GitHub didn’t answer in time.')).toBeInTheDocument()
     await userEvent.click(panel.getByRole('button', { name: 'Check GitHub now' }))
     expect(threads.checkNow).toHaveBeenCalledOnce()
+  })
+
+  it('says how a bulk mark that runs is going, at the top, from any page', async () => {
+    const { unmount } = renderMenu(state(githubThreads({ status: { count: 4 }, bulkDone: bulkRunning() })))
+
+    let panel = await open()
+
+    expect(panel.getByRole('status')).toHaveTextContent('Marking done on GitHub: 412 of 1,180 · about 19 minutes left')
+    unmount()
+
+    // One that ended says so on the Notifications page alone.
+    renderMenu(state(githubThreads({ status: { count: 4 }, bulkDone: bulkRunning({ running: false }) })))
+    panel = await open()
+
+    expect(panel.queryByRole('status')).not.toBeInTheDocument()
+    expect(panel.queryByText(/Marked 412 done/)).not.toBeInTheDocument()
   })
 })

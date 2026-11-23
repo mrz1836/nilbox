@@ -37,9 +37,12 @@ type fakePasser struct {
 	runs []fakeRun
 
 	// nudges holds what the Syncer is nudged to; sendAt is when a send is due, zero for
-	// none, which a send run clears.
-	nudges nudges
-	sendAt time.Time
+	// none, which a send run clears, and bulkAt when a bulk run is, which a bulk run moves
+	// on by bulkEvery, or clears when that is zero.
+	nudges    nudges
+	sendAt    time.Time
+	bulkAt    time.Time
+	bulkEvery time.Duration
 }
 
 // fakeRun is one run a fakePasser was asked, and when.
@@ -61,6 +64,15 @@ func (p *fakePasser) runPass(_ context.Context, req passRequest) error {
 
 	if req.send {
 		p.sendAt = time.Time{}
+
+		return nil
+	}
+
+	if req.bulk {
+		p.bulkAt = time.Time{}
+		if p.bulkEvery > 0 {
+			p.bulkAt = time.Now().Add(p.bulkEvery)
+		}
 
 		return nil
 	}
@@ -102,6 +114,27 @@ func (p *fakePasser) untilSend() (time.Duration, bool) {
 	}
 
 	return time.Until(p.sendAt), true
+}
+
+func (p *fakePasser) untilBulk() (time.Duration, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.bulkAt.IsZero() {
+		return 0, false
+	}
+
+	return time.Until(p.bulkAt), true
+}
+
+// bulkBy has a bulk run come due at, then every after it until stopped, and wakes the
+// Syncer, as a bulk mark started does.
+func (p *fakePasser) bulkBy(at time.Time, every time.Duration) {
+	p.mu.Lock()
+	p.bulkAt, p.bulkEvery = at, every
+	p.mu.Unlock()
+
+	p.nudges.signal()
 }
 
 // sendBy has a send come due at, and wakes the Syncer, as a clear queued does.
@@ -389,6 +422,8 @@ func (*gatedClient) FetchLatestComment(context.Context, github.Token, string) (*
 func (*gatedClient) ParseSubject(string) (item.Ref, bool) { return item.Ref{}, false }
 
 func (*gatedClient) MarkThreadDone(context.Context, github.Token, int64) error { return nil }
+
+func (*gatedClient) MarkThreadDoneInBulk(context.Context, github.Token, int64) error { return nil }
 
 func (*gatedClient) MarkThreadRead(context.Context, github.Token, int64) error { return nil }
 

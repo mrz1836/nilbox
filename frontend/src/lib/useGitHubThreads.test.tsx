@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
-import { githubThread, githubThreadList, githubThreads, queuedClear, settledClear } from '../test/fixtures'
-import { listening, platform, send } from '../test/platform'
+import { bulkRunning, githubThread, githubThreadList, githubThreads, queuedClear, settledClear } from '../test/fixtures'
+import { emit, listening, platform, send } from '../test/platform'
 import { useGitHubThreads } from './useGitHubThreads'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -254,5 +254,80 @@ describe('useGitHubThreads', () => {
 
     expect(kept).toEqual({ ok: false, error: 'database is locked' })
     expect(result.current.snapshot?.recent).toHaveLength(1)
+  })
+
+  it('keeps a running bulk mark current with each mark it tells of', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ bulkDone: bulkRunning() }))
+
+    const { result } = renderHook(() => useGitHubThreads())
+
+    await waitFor(() => {
+      expect(result.current.bulk?.done).toBe(412)
+    })
+
+    act(() => {
+      emit('ghthreads:bulk', { done: 413, failed: 1, left: 766, more: true })
+    })
+
+    expect(result.current.bulk).toMatchObject({ running: true, done: 413, failed: 1, left: 766, more: true })
+
+    // A read of the mirror older than the event it came after never takes the counts back.
+    send('ghthreads:updated')
+    await waitFor(() => {
+      expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(2)
+    })
+    expect(result.current.bulk?.done).toBe(413)
+
+    // Nor does an event of another job count toward the next.
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ bulkDone: bulkRunning({ startedAt: '2026-06-15T12:00:00Z', done: 2, left: 8 }) }),
+    )
+    send('ghthreads:updated')
+
+    await waitFor(() => {
+      expect(result.current.bulk?.done).toBe(2)
+    })
+    expect(result.current.bulk?.left).toBe(8)
+  })
+
+  it('starts, stops, and dismisses a bulk mark, showing the mirror each left', async () => {
+    const { result } = renderHook(() => useGitHubThreads())
+
+    await waitFor(() => {
+      expect(result.current.bulk?.running).toBe(false)
+    })
+
+    let started: Awaited<ReturnType<typeof result.current.startBulk>> | undefined
+    await act(async () => {
+      started = await result.current.startBulk({ age: 'week', repos: ['acme-org/example-repo'], all: false })
+    })
+
+    expect(platform.startGitHubBulkDone).toHaveBeenCalledExactlyOnceWith({
+      age: 'week',
+      repos: ['acme-org/example-repo'],
+      all: false,
+    })
+    expect(started?.ok).toBe(true)
+    expect(result.current.bulk?.running).toBe(true)
+
+    platform.stopGitHubBulkDone.mockResolvedValueOnce(
+      githubThreads({ bulkDone: bulkRunning({ running: false, stopped: true, endedAt: '2026-06-15T12:00:00Z' }) }),
+    )
+    await act(async () => {
+      await result.current.stopBulk()
+    })
+    expect(result.current.bulk).toMatchObject({ running: false, stopped: true })
+
+    await act(async () => {
+      await result.current.dismissBulk()
+    })
+    expect(platform.dismissGitHubBulkDone).toHaveBeenCalledOnce()
+    expect(result.current.bulk?.startedAt).toBe('')
+
+    platform.startGitHubBulkDone.mockRejectedValueOnce(new Error('Notifications are being marked done already.'))
+    await act(async () => {
+      started = await result.current.startBulk({ age: 'any', repos: [], all: true })
+    })
+    expect(started).toEqual({ ok: false, error: 'Notifications are being marked done already.' })
   })
 })

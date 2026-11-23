@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { brand } from '../generated/brand'
 import { FIXED_NOW } from '../test/clock'
-import { githubThread, queuedClear, settledClear, threadsStatus } from '../test/fixtures'
+import { bulkRunning, githubBulkDone, githubThread, queuedClear, settledClear, threadsStatus } from '../test/fixtures'
 import {
   askAgainText,
   byHandText,
@@ -31,6 +32,12 @@ import {
   summaryText,
   threadGroups,
   threadItem,
+  aboutText,
+  bulkDoneText,
+  bulkKeepsText,
+  bulkMinutes,
+  bulkRepos,
+  bulkToastText,
 } from './githubThreads'
 
 describe('threadItem and itemURL', () => {
@@ -344,5 +351,136 @@ describe('the Cleared view’s words', () => {
     )
     expect(clearURL(settledClear({ owner: 'acme org' }))).toBe(inboxURL)
     expect(doneURL).toBe('https://github.com/notifications?query=is%3Adone')
+  })
+})
+
+describe('bulkRepos', () => {
+  it('counts the notifications older than the age by repository, the noisiest first', () => {
+    const threads = [
+      githubThread({ id: 1, owner: 'acme-org', name: 'small', updatedAt: '2026-06-01T00:00:00Z' }),
+      githubThread({ id: 2, owner: 'acme-org', name: 'big', updatedAt: '2026-06-01T00:00:00Z', unread: false }),
+      githubThread({ id: 3, owner: 'acme-org', name: 'big', updatedAt: '2026-06-14T00:00:00Z' }),
+      githubThread({ id: 4, owner: 'acme-org', name: 'fresh', updatedAt: '2026-06-15T11:00:00Z' }),
+      githubThread({ id: 5, owner: '', name: '', updatedAt: '2026-06-01T00:00:00Z' }),
+    ]
+
+    expect(bulkRepos(threads, 'any', FIXED_NOW)).toEqual([
+      { repo: 'acme-org/big', count: 2, unread: 1 },
+      { repo: 'acme-org/fresh', count: 1, unread: 1 },
+      { repo: 'acme-org/small', count: 1, unread: 1 },
+    ])
+    expect(bulkRepos(threads, 'day', FIXED_NOW).map((r) => r.repo)).toEqual(['acme-org/big', 'acme-org/small'])
+    expect(bulkRepos(threads, 'week', FIXED_NOW)).toEqual([
+      { repo: 'acme-org/big', count: 1, unread: 0 },
+      { repo: 'acme-org/small', count: 1, unread: 1 },
+    ])
+    expect(bulkRepos(threads, 'quarter', FIXED_NOW)).toEqual([])
+  })
+})
+
+describe('bulkMinutes and aboutText', () => {
+  it('words how long the bulk lane takes, an hour’s worth at a time', () => {
+    expect(bulkMinutes(0, 40, 1200)).toBe(0)
+    expect(bulkMinutes(1000, 40, 1200)).toBe(25)
+    expect(bulkMinutes(1200, 40, 1200)).toBe(30)
+    expect(bulkMinutes(1201, 40, 1200)).toBe(60 + 1 / 40)
+    expect(bulkMinutes(2400, 40, 1200)).toBe(90)
+
+    expect(aboutText(0.5)).toBe('less than a minute')
+    expect(aboutText(1.2)).toBe('about 1 minute')
+    expect(aboutText(29.5)).toBe('about 30 minutes')
+    expect(aboutText(60)).toBe('about 1 hour')
+    expect(aboutText(90)).toBe('about 1 hour 30 minutes')
+    expect(aboutText(147)).toBe('about 2 hours 25 minutes')
+  })
+
+  it('says what a bulk mark leaves in the inbox', () => {
+    expect(bulkKeepsText('any')).toBe('Anything updated after now stays in your inbox.')
+    expect(bulkKeepsText('day')).toBe('Anything updated in the last day stays in your inbox.')
+    expect(bulkKeepsText('quarter')).toBe('Anything updated in the last 3 months stays in your inbox.')
+  })
+})
+
+describe('bulkDoneText', () => {
+  it('shows nothing without a bulk mark', () => {
+    expect(bulkDoneText(FIXED_NOW, githubBulkDone())).toBeNull()
+  })
+
+  it('says how far a running one got, and how long is left', () => {
+    expect(bulkDoneText(FIXED_NOW, bulkRunning())).toEqual({
+      text: 'Marking done on GitHub: 412 of 1,180 · about 19 minutes left',
+      share: 412 / 1180,
+      kind: 'running',
+    })
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ more: true }))?.text).toBe(
+      'Marking done on GitHub: 412 of 1,180 or more · about 19 minutes left',
+    )
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ done: 1000, left: 0, expected: 1000, more: true }))).toEqual({
+      text: 'Marking done on GitHub: 1,000 so far',
+      share: 1,
+      kind: 'running',
+    })
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ done: 0, left: 0 }))).toEqual({
+      text: 'Marking done on GitHub…',
+      share: null,
+      kind: 'running',
+    })
+  })
+
+  it('says why a running one waits', () => {
+    const paused = (overrides: Parameters<typeof bulkRunning>[0]) => bulkDoneText(FIXED_NOW, bulkRunning(overrides))
+
+    expect(paused({ pause: 'held', nextAt: '2026-06-15T12:00:40Z' })).toEqual({
+      text: 'Paused: GitHub asked for a short break. Resuming in 40 seconds.',
+      share: 412 / 1180,
+      kind: 'paused',
+    })
+    expect(paused({ pause: 'held', nextAt: '2026-06-15T11:59:00Z' })?.text).toBe(
+      'Paused: GitHub asked for a short break. Resuming in a moment.',
+    )
+    expect(paused({ pause: 'reserve', nextAt: '2026-06-15T12:20:00Z' })?.text).toMatch(
+      /^Paused until your GitHub API budget refills at 12:20\s?PM\.$/,
+    )
+    expect(paused({ pause: 'reserve', nextAt: '' })?.text).toBe('Paused until your GitHub API budget refills.')
+    expect(paused({ pause: 'otherAccount' })?.text).toBe('Paused: your GitHub token is for another account now.')
+    expect(paused({ pause: 'readingOff' })?.text).toBe(
+      `Paused while ${brand.name} isn’t reading your GitHub notifications.`,
+    )
+    expect(paused({ pause: 'failing', nextAt: '2026-06-15T12:01:00Z' })).toEqual({
+      text: 'Couldn’t reach GitHub. Trying again in 1 minute.',
+      share: 412 / 1180,
+      kind: 'failing',
+    })
+  })
+
+  it('says how one that ended went', () => {
+    const ended = { running: false, endedAt: '2026-06-15T12:30:00Z', left: 0 }
+
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ ...ended, done: 1180 }))).toEqual({
+      text: 'Marked 1,180 done on GitHub',
+      share: null,
+      kind: 'done',
+    })
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ ...ended, done: 1177, failed: 3 }))).toEqual({
+      text: 'Marked 1,177 done on GitHub · 3 couldn’t be marked; they’re still in your inbox',
+      share: null,
+      kind: 'partial',
+    })
+    expect(bulkDoneText(FIXED_NOW, bulkRunning({ ...ended, stopped: true }))).toEqual({
+      text: 'Stopped after marking 412 done. The rest are still in your inbox.',
+      share: null,
+      kind: 'stopped',
+    })
+  })
+
+  it('words the toast once one finished', () => {
+    expect(bulkToastText(bulkRunning({ running: false, done: 1180 }))).toEqual({
+      text: 'Marked 1,180 notifications done on GitHub',
+      detail: '',
+    })
+    expect(bulkToastText(bulkRunning({ running: false, done: 1, failed: 3 }))).toEqual({
+      text: 'Marked 1 notification done on GitHub',
+      detail: '3 couldn’t be marked',
+    })
   })
 })
