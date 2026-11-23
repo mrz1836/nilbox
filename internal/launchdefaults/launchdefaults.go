@@ -525,7 +525,9 @@ func emptyDefaults(owner, name string) Defaults {
 	}
 }
 
-// normalized trims every text field, and leaves out each agent's entry that is blank.
+// normalized trims the owner, the name, the agent, each agent's entry, and the outside
+// contributors' choice, and leaves out each agent's entry that is blank. The effort is checked
+// as given.
 func (in Input) normalized() Input {
 	in.Owner = strings.TrimSpace(in.Owner)
 	in.Name = strings.TrimSpace(in.Name)

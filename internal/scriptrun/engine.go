@@ -268,12 +268,12 @@ func (e *Engine) RegisterVerifier(kind Kind, v Verifier) {
 	e.verifiers[kind] = v
 }
 
-// Start starts the run spec describes and returns its ID. In order, it takes the clone's
-// lock, failing at once with a *clonelock.BusyError when another job holds it; takes a
-// slot, for a run in the app, waiting for one until ctx ends unless it is a release, which
-// fails at once with ErrNoSlot; runs spec.Before; records the run; and starts it, in the
-// app or in the terminal. A run that was recorded but couldn't start is recorded as failed,
-// and its ID comes back with the error.
+// Start starts the run spec describes and returns its ID. In order, it takes a slot, for a
+// run in the app, waiting for one until ctx ends unless it is a release, which fails at once
+// with ErrNoSlot, so no clone stays locked while a run waits; takes the clone's lock, failing
+// at once with a *clonelock.BusyError when another job holds it; runs spec.Before; records
+// the run; and starts it, in the app or in the terminal. A run that was recorded but couldn't
+// start is recorded as failed, and its ID comes back with the error.
 func (e *Engine) Start(ctx context.Context, spec Spec) (int64, error) {
 	if spec.RunsIn == "" {
 		spec.RunsIn = RunsInApp
