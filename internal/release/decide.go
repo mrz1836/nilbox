@@ -96,7 +96,8 @@ const (
 	CheckBlock CheckState = "block"
 )
 
-// Fix is an action the sheet offers beside a check.
+// Fix is an action the sheet offers beside a check. Reading the facts again is not one: the
+// sheet offers Check again once, under every check, so no check can lack it.
 type Fix string
 
 // The fixes a check offers.
@@ -109,9 +110,6 @@ const (
 
 	// FixOpenTerminal opens the user's terminal in the clone, and runs nothing there.
 	FixOpenTerminal Fix = "openTerminal"
-
-	// FixCheckAgain gathers the facts again.
-	FixCheckAgain Fix = "checkAgain"
 
 	// FixView opens Check.Link.
 	FixView Fix = "view"
@@ -348,7 +346,7 @@ func (d decider) repoCheck() (Check, bool) {
 
 	switch {
 	case r.Error != "":
-		return checkBlock(CheckRepo, r.Error, FixCheckAgain), true
+		return checkBlock(CheckRepo, r.Error), true
 	case !r.Found:
 		return checkBlock(CheckRepo, "GitHub doesn't show "+name+" to you."), true
 	case r.Archived:
@@ -366,7 +364,7 @@ func (d decider) originCheck() (Check, bool) {
 
 	switch {
 	case c.Error != "":
-		return checkBlock(CheckOrigin, textutil.WithReason("Couldn't read this clone with git", c.Error), FixCheckAgain), true
+		return checkBlock(CheckOrigin, textutil.WithReason("Couldn't read this clone with git", c.Error)), true
 	case !c.OriginMatches:
 		return checkBlock(CheckOrigin, d.f.Repo.Name.String()+"'s clone has a different origin"), true
 	default:
@@ -433,7 +431,7 @@ func (d decider) dirtyCheck() (Check, bool) {
 
 	text := fmt.Sprintf("%s: %s. %s won't tag with uncommitted work. Commit or stash %s.", count, names, magexName, them)
 
-	return checkBlock(CheckDirty, text, FixOpenTerminal, FixCheckAgain), true
+	return checkBlock(CheckDirty, text, FixOpenTerminal), true
 }
 
 // detachedCheck: the clone is on a branch, not a bare commit.
@@ -483,7 +481,7 @@ func (d decider) branchCheck() (Check, bool) {
 	default:
 		text := fmt.Sprintf("This clone doesn't have %s yet. Fetch origin in your terminal, then check again.", b)
 
-		return checkBlock(CheckBranch, text, FixOpenTerminal, FixCheckAgain), true
+		return checkBlock(CheckBranch, text, FixOpenTerminal), true
 	}
 }
 
@@ -521,7 +519,7 @@ func (d decider) unpushedCheck() (Check, bool) {
 		text := fmt.Sprintf("Can't tell whether %s has commits that aren't on origin: this clone has neither "+
 			"origin/%s nor origin's newest commit. Fetch origin in your terminal, then check again.", b, b)
 
-		return checkBlock(CheckUnpushed, text, FixOpenTerminal, FixCheckAgain), true
+		return checkBlock(CheckUnpushed, text, FixOpenTerminal), true
 	case c.Unpushed == 1:
 		has, them = "1 commit that isn't", "it"
 	case c.Unpushed == UnpushedSome:
@@ -599,7 +597,7 @@ func (d decider) reachCheck() (Check, bool) {
 
 	text := textutil.WithReason("Can't reach origin with your git credentials", c.ReachError)
 
-	return checkBlock(CheckReach, text, FixOpenTerminal, FixCheckAgain), true
+	return checkBlock(CheckReach, text, FixOpenTerminal), true
 }
 
 // nothingNewCheck: origin's newest commit has no version yet.
@@ -629,17 +627,17 @@ func (d decider) ciCheck() (Check, bool) {
 	case ChecksSuccess:
 		return checkOK(CheckChecks, "Checks passed on "+short), true
 	case ChecksFailure, ChecksError:
-		out := checkWarn(CheckChecks, failingText(r.Failing, short), FixView, FixCheckAgain)
+		out := checkWarn(CheckChecks, failingText(r.Failing, short), FixView)
 		out.Link = failingURL(r)
 
 		return out, true
 	case ChecksStuck:
-		out := checkWarn(CheckChecks, stuckText(r.Queued, r.Stuck, short), FixView, FixCheckAgain)
+		out := checkWarn(CheckChecks, stuckText(r.Queued, r.Stuck, short), FixView)
 		out.Link = stuckURL(r)
 
 		return out, true
 	case ChecksPending, ChecksExpected:
-		out := checkWarn(CheckChecks, "Checks are still running on "+short, FixView, FixCheckAgain)
+		out := checkWarn(CheckChecks, "Checks are still running on "+short, FixView)
 		out.Link = checksURL(r.Name, r.HeadOID)
 
 		return out, true
@@ -724,7 +722,7 @@ func (d decider) shellCheck() (Check, bool) {
 	text := brand.Name + " couldn't read your shell's environment, so your ssh agent (or your password manager's) " +
 		"may be missing. If the push fails, release in your terminal."
 
-	return checkWarn(CheckShell, text, FixCheckAgain), true
+	return checkWarn(CheckShell, text), true
 }
 
 // hooksCheck: the hooks the release runs, inside magex's time for each git command:

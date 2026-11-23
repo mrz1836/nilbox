@@ -3034,8 +3034,12 @@ check, every bump's version over the clone's and origin's tags, the Major gate, 
 argv, `push=true` (never the bare word) plus `expect=`, `json=true`, and `ff-only` only for a
 magex whose `Definition.Features` has them. The bound `Prepare` takes the sheet's choice and,
 within `FactsFor`, decides again on the facts the sheet was shown, so a choice asks GitHub
-nothing; the bound `Start` hands `scriptrun` a release whose `Before`, under the clone's lock,
-gathers the facts once (origin and the clone afresh, GitHub's from the sheet while under
+nothing. Only its `Refresh` gathers them afresh, which the sheet sets as it opens, on its
+**Check again**, and when the window comes back to the front while a check blocks or warns
+(or none could be read), at most every 10 seconds and never while a release starts or runs.
+A `Fix` is a check's own action, so none reads again: the sheet offers Check again once,
+under every check, so no check can lack it. The bound `Start` hands `scriptrun` a release
+whose `Before`, under the clone's lock, gathers the facts once (origin and the clone afresh, GitHub's from the sheet while under
 `FactsFor` old) and decides there what magex runs, so a release that isn't ready, whose
 version moved, or that the sheet should never have sent (a major without its typed version,
 its go.mod box, or a magex with `expect=`, logged as a bug) never runs. The run's

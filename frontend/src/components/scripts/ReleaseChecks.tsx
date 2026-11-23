@@ -34,9 +34,6 @@ export interface ReleaseChecksProps {
   // repo and dir are the repository and its clone, which Open in terminal opens.
   repo: string
   dir: string
-  // checking reports the checks being read again, which Check again waits out.
-  checking: boolean
-  onCheckAgain: () => void
   // onOpenSettings opens Settings → Integrations, where magex is installed and updated.
   onOpenSettings: () => void
   // onWatch opens the run that holds the clone.
@@ -46,16 +43,9 @@ export interface ReleaseChecksProps {
 // ReleaseChecks lists what is true about the clone, origin, GitHub, and magex right now,
 // each with its state, the commands it offers to copy (which the app never runs), and
 // the fixes beside it: open the settings, update magex there, open the terminal in the
-// clone, check again, view the checks on GitHub, or watch the run that holds the clone.
-export function ReleaseChecks({
-  checks,
-  repo,
-  dir,
-  checking,
-  onCheckAgain,
-  onOpenSettings,
-  onWatch,
-}: ReleaseChecksProps) {
+// clone, view the checks on GitHub, or watch the run that holds the clone. Checking again
+// is no check's fix: the sheet offers it once, under them all.
+export function ReleaseChecks({ checks, repo, dir, onOpenSettings, onWatch }: ReleaseChecksProps) {
   const terminal = useMutation(() => openReleaseTerminal(repo, dir))
 
   // fixButton is the button for one fix on a check.
@@ -85,12 +75,6 @@ export function ReleaseChecks({
             className={quietButtonClass}
           >
             Open in terminal
-          </button>
-        )
-      case 'checkAgain':
-        return (
-          <button key={fix} type="button" disabled={checking} onClick={onCheckAgain} className={quietButtonClass}>
-            {checking ? 'Checking…' : 'Check again'}
           </button>
         )
       case 'view':

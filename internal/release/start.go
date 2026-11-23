@@ -93,8 +93,8 @@ type PrepareRequest struct {
 	// RunsIn is where this release runs, or "" for the setting.
 	RunsIn integrationprefs.RunsIn `json:"runsIn"`
 
-	// Refresh reads GitHub, origin, and the clone again, as opening the sheet and Check
-	// again do.
+	// Refresh reads GitHub, origin, and the clone again, as opening the sheet, Check again,
+	// and coming back to the window while a check blocks or warns do.
 	Refresh bool `json:"refresh"`
 }
 

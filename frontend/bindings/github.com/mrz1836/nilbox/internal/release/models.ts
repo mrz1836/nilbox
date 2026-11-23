@@ -451,9 +451,10 @@ export const FailureKind = {
 } as const;
 
 /**
- * Fix is an action the sheet offers beside a check.
+ * Fix is an action the sheet offers beside a check. Reading the facts again is not one: the
+ * sheet offers Check again once, under every check, so no check can lack it.
  */
-export type Fix = "openSettings" | "update" | "openTerminal" | "checkAgain" | "view" | "watch";
+export type Fix = "openSettings" | "update" | "openTerminal" | "view" | "watch";
 
 /**
  * The values of Fix, by the names of their Go constants.
@@ -475,11 +476,6 @@ export const Fix = {
      * FixOpenTerminal opens the user's terminal in the clone, and runs nothing there.
      */
     FixOpenTerminal: "openTerminal",
-
-    /**
-     * FixCheckAgain gathers the facts again.
-     */
-    FixCheckAgain: "checkAgain",
 
     /**
      * FixView opens Check.Link.
@@ -739,8 +735,8 @@ export interface PrepareRequest {
     "runsIn": integrationprefs$0.RunsIn;
 
     /**
-     * Refresh reads GitHub, origin, and the clone again, as opening the sheet and Check
-     * again do.
+     * Refresh reads GitHub, origin, and the clone again, as opening the sheet, Check again,
+     * and coming back to the window while a check blocks or warns do.
      */
     "refresh": boolean;
 }
