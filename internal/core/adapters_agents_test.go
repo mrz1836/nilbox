@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -496,6 +497,26 @@ func TestARepositorysMarkersNameTheToolsItNeeds(t *testing.T) {
 
 	assert.Equal(t, []string{"go", "pnpm", "magex"}, repoTools(dir), "each once, from the files alone")
 	assert.Empty(t, repoTools(t.TempDir()))
+}
+
+// TestReadinessWaitsOnlyForToolsTheFenceLetsRun keeps readiness's markers within the fence's:
+// a tool a routine waits for on a marker must be one fence.Markers lets an agent run on that
+// marker, or a fenced run would wait for a tool it then may not run.
+func TestReadinessWaitsOnlyForToolsTheFenceLetsRun(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{}
+	for _, m := range fence.Markers() {
+		allowed[m.Name] = m.Tools
+	}
+
+	for _, m := range toolMarkers() {
+		tools, ok := allowed[m.file]
+		if assert.True(t, ok, "readiness reads %s, which fence.Markers doesn't name", m.file) {
+			assert.Contains(t, tools, m.tool,
+				"readiness waits for %s on %s, which fence.Markers doesn't let an agent run there", m.tool, m.file)
+		}
+	}
 }
 
 // ensure the recorder satisfies the runner shape the deps take.
