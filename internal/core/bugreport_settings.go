@@ -140,7 +140,7 @@ func cardsLine(s settings.Settings) string {
 		fmt.Sprintf("collapsed lists %d", len(s.CollapsedSections)))
 }
 
-// reviewingLine counts the ignored workflows, never names them.
+// reviewingLine counts the ignored workflows and the auto-merge bots, never names them.
 func reviewingLine(s settings.Settings) string {
 	nudge := "nudges off"
 	if s.NudgeAfterHours > 0 {
@@ -149,6 +149,7 @@ func reviewingLine(s settings.Settings) string {
 
 	return pageLine("Reviewing", "merge method "+string(s.MergeMethod), "merge own past the rules "+onOff(s.BypassOwn),
 		nudge, "snooze after a nudge "+onOff(s.NudgeSnooze), fmt.Sprintf("ignored workflows %d", len(s.IgnoredWorkflows)),
+		fmt.Sprintf("auto-merge bots %s (%d)", onOff(s.MergeBotsOn), len(s.MergeBots)),
 		"conversation "+string(s.ConversationOrder)+" first")
 }
 

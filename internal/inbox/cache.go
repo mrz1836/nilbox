@@ -13,10 +13,11 @@ import (
 // stored: the trusted bots, which decide each item's trust, the sensitive-file settings,
 // which decide whose files are checked and what each check points out, the pinned and
 // muted repositories and orgs, which decide each item's repository rule and its place in
-// its lists, and the ignored workflows, which decide which held runs each card counts. The
-// settings package writes them, so the inbox reads them back to tell whether a snapshot or
-// a compiled scope still holds: a change to any of them builds the next snapshot again from
-// what is stored, asking GitHub nothing.
+// its lists, the ignored workflows, which decide which held runs each card counts, and the
+// auto-merge bots, which decide whether a pull request's card names one that approved it.
+// The settings package writes them, so the inbox reads them back to tell whether a snapshot
+// or a compiled scope still holds: a change to any of them builds the next snapshot again
+// from what is stored, asking GitHub nothing.
 type settingsKey struct {
 	bots       string
 	botsStored bool
@@ -26,12 +27,15 @@ type settingsKey struct {
 	pinned     string
 	muted      string
 	ignored    string
+	mergeOn    string
+	mergeBots  string
 }
 
 // settingsPrefs are the prefs keys a settingsKey is read from.
 func settingsPrefs() []string {
 	return append([]string{
 		trust.PrefBots, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, heldruns.KeyIgnoredWorkflows,
+		trust.PrefMergeBotsOn, trust.PrefMergeBots,
 	}, reporules.Keys()...)
 }
 
@@ -43,6 +47,7 @@ func keyOf(stored map[string]string) settingsKey {
 		bots: bots, botsStored: botsStored, scope: stored[sensitive.PrefScope], off: stored[sensitive.PrefOff],
 		patterns: stored[sensitive.PrefPatterns], pinned: stored[reporules.PrefPinned],
 		muted: stored[reporules.PrefMuted], ignored: stored[heldruns.KeyIgnoredWorkflows],
+		mergeOn: stored[trust.PrefMergeBotsOn], mergeBots: stored[trust.PrefMergeBots],
 	}
 }
 

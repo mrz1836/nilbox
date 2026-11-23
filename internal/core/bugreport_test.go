@@ -109,6 +109,8 @@ func privateSettings() settings.Settings {
 		CardDensity:         settings.CardCompact,
 		CardUnread:          true,
 		IgnoredWorkflows:    []string{"private-workflow"},
+		MergeBotsOn:         true,
+		MergeBots:           []string{"private-bot-automerge", "private-org-automerge"},
 		MergeMethod:         "squash",
 		BypassOwn:           true,
 		NudgeAfterHours:     48,
@@ -236,7 +238,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Cards: density compact · author pictures on · unread dots on · hidden labels the user's own (3) · " +
 			"lists sorted by status 1 · status order the user's own (1) · lists showing one kind 1 · collapsed lists 2",
 		"Reviewing: merge method squash · merge own past the rules on · nudge after 48 h · snooze after a nudge on · " +
-			"ignored workflows 1 · conversation newest first",
+			"ignored workflows 1 · auto-merge bots on (2) · conversation newest first",
 		"Reviewing replies: approve a starter · approve bots none · request changes the user's own · comment none · " +
 			"nudge a missing prompt",
 		"Repositories: clone root the user's own · other locations 2 · 1 pinned, 2 muted · " +

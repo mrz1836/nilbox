@@ -91,6 +91,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Reviews: Reviews{Decision: "APPROVED", Reviewers: 5, Reviewed: 2, Approvals: 2},
 			// Who is asked, in GitHub's order; the null requests are skipped.
 			ReviewRequests: ReviewRequests{Users: []string{"octo-user", "Octo-Approver"}, Teams: []string{"reviewers"}},
+			ApprovingBots:  []string{},
 		},
 		"PR_fakeNodeIdFailing": {
 			Labels:         []Label{{Name: "needs-work", Color: "#ffd700"}},
@@ -104,6 +105,7 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Checks:         Checks{State: "FAILURE", Passed: 18, Failed: 5, Pending: 4},
 			Reviews:        Reviews{Decision: "CHANGES_REQUESTED", Reviewers: 1, Reviewed: 1, ChangesRequested: 1},
 			ReviewRequests: noRequests(),
+			ApprovingBots:  []string{},
 		},
 		"PR_fakeNodeIdNoChecks": {
 			Labels:         []Label{},
@@ -114,12 +116,85 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			HeadOID:        "3333333333333333333333333333333333333333",
 			Mergeable:      "UNKNOWN",
 			ReviewRequests: noRequests(),
+			ApprovingBots:  []string{},
 		},
 		"I_fakeNodeIdIssue": {
 			Labels:   []Label{{Name: "bug", Color: "#d73a4a"}},
 			Comments: 7,
 		},
 	}, details.Items, "the unresolvable item is left out, not a failure")
+}
+
+func TestFetchDetailsReadsWhichBotsApproved(t *testing.T) {
+	t.Parallel()
+
+	body := `{"data":{
+  "nodes":[{"__typename":"PullRequest","id":"PR_fakeNodeIdBots","author":{"login":"dependabot"},
+    "latestReviews":{"nodes":[
+      {"state":"APPROVED","author":{"__typename":"Bot","login":"Acme-Org-Automerge"}},
+      {"state":"APPROVED","author":{"__typename":"User","login":"example-automerge"}},
+      {"state":"COMMENTED","author":{"__typename":"Bot","login":"example-helper"}},
+      {"state":"DISMISSED","author":{"__typename":"Bot","login":"example-merger"}},
+      {"state":"APPROVED","author":{"__typename":"Bot","login":""}},
+      {"state":"APPROVED","author":null},
+      null]},
+    "reviewRequests":{"nodes":[]},"labels":{"nodes":[]}},
+   {"__typename":"PullRequest","id":"PR_fakeNodeIdNoBots","author":{"login":"octo-author"},
+    "latestReviews":{"nodes":[{"state":"APPROVED","author":{"__typename":"User","login":"octo-approver"}}]},
+    "reviewRequests":{"nodes":[]},"labels":{"nodes":[]}}],
+  "rateLimit":{"cost":1,"limit":5000,"remaining":4999,"used":1,"resetAt":"2026-01-10T13:00:00Z"}}}`
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readDetailsRequest(t, r)
+		assert.Contains(t, req.Query, "latestReviews(first: 50) { nodes { state body author { __typename login } } }",
+			"each review's author comes with its type, and its text, at no extra point")
+
+		_, _ = io.WriteString(w, body)
+	})
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken),
+		[]string{"PR_fakeNodeIdBots", "PR_fakeNodeIdNoBots"}, DetailOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"acme-org-automerge"}, details.Items["PR_fakeNodeIdBots"].ApprovingBots,
+		"only a bot's standing approval: never a person's of a bot's login, a comment, or a dismissed approval")
+	assert.Equal(t, 2, details.Items["PR_fakeNodeIdBots"].Reviews.Approvals, "a bot's approval counts as any other")
+	assert.Equal(t, []string{}, details.Items["PR_fakeNodeIdNoBots"].ApprovingBots, "no bot approved")
+}
+
+func TestFetchDetailsCountsTheReviewsThatSaySomething(t *testing.T) {
+	t.Parallel()
+
+	body := `{"data":{
+  "nodes":[{"__typename":"PullRequest","id":"PR_fakeNodeIdSaid","author":{"login":"dependabot"},
+    "totalCommentsCount":2,
+    "latestReviews":{"nodes":[
+      {"state":"APPROVED","body":"✅ Auto-approving a patch update","author":{"__typename":"Bot","login":"acme-org-automerge"}},
+      {"state":"APPROVED","body":"","author":{"__typename":"User","login":"octo-approver"}},
+      {"state":"COMMENTED","body":"  \n ","author":{"__typename":"User","login":"octo-blank"}},
+      {"state":"CHANGES_REQUESTED","body":"Please add a test.","author":{"__typename":"User","login":"octo-reviewer"}},
+      {"state":"DISMISSED","body":"Looks wrong.","author":{"__typename":"User","login":"octo-dismissed"}},
+      {"state":"COMMENTED","body":"Answered below.","author":{"__typename":"Bot","login":"dependabot"}},
+      {"state":"PENDING","body":"A draft not sent","author":{"__typename":"User","login":"octo-user"}},
+      {"state":"COMMENTED","body":"A ghost's note","author":null},
+      null]},
+    "reviewRequests":{"nodes":[]},"labels":{"nodes":[]}},
+   {"__typename":"Issue","id":"I_fakeNodeIdIssue","comments":{"totalCount":3},"labels":{"nodes":[]}}],
+  "rateLimit":{"cost":1,"limit":5000,"remaining":4999,"used":1,"resetAt":"2026-01-10T13:00:00Z"}}}`
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	})
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken),
+		[]string{"PR_fakeNodeIdSaid", "I_fakeNodeIdIssue"}, DetailOptions{})
+	require.NoError(t, err)
+
+	pull := details.Items["PR_fakeNodeIdSaid"]
+	assert.Equal(t, 2, pull.Comments, "GitHub's own count, which leaves a review's text out")
+	assert.Equal(t, 5, pull.ReviewTexts,
+		"every latest review with text, the author's, a dismissed one's, and a ghost's included, but no draft")
+	assert.Zero(t, details.Items["I_fakeNodeIdIssue"].ReviewTexts, "an issue has no reviews")
 }
 
 // noRequests is a pull request that asks no one to review it.

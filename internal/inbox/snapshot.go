@@ -272,8 +272,9 @@ type Details struct {
 	// listed issues it closes in theirs.
 	ClosingPulls []ClosingPull `json:"closingPulls"`
 
-	// Comments counts the conversation's comments, review comments included for a pull
-	// request.
+	// Comments counts what people wrote in the conversation: its comments and, for a pull
+	// request, its review comments and the latest reviews that say something, as the review
+	// sheet counts them.
 	Comments int `json:"comments"`
 
 	Additions    int `json:"additions"`
@@ -290,6 +291,12 @@ type Details struct {
 	// AutoMerge is the method a pull request's auto-merge merges with (MERGE, SQUASH, or
 	// REBASE), and "" while auto-merge is off and for an issue.
 	AutoMerge string `json:"autoMerge"`
+
+	// MergeBot is the listed auto-merge bot (trust.MergeBots) whose latest review approves
+	// this pull request, so it merges by itself once its checks pass: the first one listed
+	// when more than one did. It is "" when the setting is off, no listed bot approved, and
+	// for an issue.
+	MergeBot string `json:"mergeBot"`
 
 	// FetchedAt is when the details were read, as RFC 3339.
 	FetchedAt string `json:"fetchedAt"`
@@ -565,8 +572,7 @@ func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, err
 		return Snapshot{}, settingsKey{}, err
 	}
 
-	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status),
-		heldruns.Decode(status[heldruns.KeyIgnoredWorkflows]))
+	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status), cardRulesOf(status))
 	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
@@ -612,16 +618,16 @@ func accountFromPrefs(prefs map[string]string) Account {
 
 // addItems places each row in the one list it belongs to, deciding each item's trust, and
 // whether its files are checked, with scope, how it asks viewer, the signed-in account, to
-// review it, which of rules applies to its repository, and which of its held runs count,
-// with ignored the workflows the user ignores. The lists partition the rows:
+// review it, which of rules applies to its repository, and what its card says with cards,
+// the user's card rules. The lists partition the rows:
 // one that asks for the user's review, or was pushed to since the user requested changes,
 // is in ReviewRequested, whatever else it is, and one
 // the user opened or is assigned is otherwise in Yours, so no item is in both. Each list
 // then holds the items pinned themselves first, as rows has them, then those pinned with
 // their repository or org, then the rest, each in rows' order.
-func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules, ignored []string) {
+func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules, cards cardRules) {
 	for _, r := range rows {
-		item := r.item(scope, viewer, ignored)
+		item := r.item(scope, viewer, cards)
 		item.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 
 		switch {
@@ -634,6 +640,22 @@ func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rule
 
 	for _, l := range []*List{&s.ReviewRequested, &s.Yours} {
 		slices.SortStableFunc(l.Items, func(a, b Item) int { return cmp.Compare(a.pinRank(), b.pinRank()) })
+	}
+}
+
+// cardRules are the user's settings that decide what a card says of its item beyond its
+// trust and its files: the workflows whose held runs never count (heldruns), and the
+// auto-merge bots whose approval it names (trust.MergeBots).
+type cardRules struct {
+	ignored   []string
+	mergeBots trust.MergeBots
+}
+
+// cardRulesOf reads the card rules from the stored status.
+func cardRulesOf(status map[string]string) cardRules {
+	return cardRules{
+		ignored:   heldruns.Decode(status[heldruns.KeyIgnoredWorkflows]),
+		mergeBots: trust.DecodeMergeBots(status),
 	}
 }
 
@@ -747,6 +769,15 @@ type itemRow struct {
 	SubIssues        SubIssues
 	IssueInfo        storedIssueInfo
 	ClosingPulls     []storedClosingPull
+
+	// ApprovingBots are the bots whose latest review approves a pull request, by login, as
+	// the details last read them: none in a row stored before they were.
+	ApprovingBots []string
+
+	// ReviewTexts counts the latest reviews that say something, which Comments, GitHub's own
+	// count, leaves out: 0 in a row stored before they were counted.
+	ReviewTexts int
+
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 	AutoMerge        string
@@ -805,6 +836,11 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		return itemRow{}, fmt.Errorf("read the pull requests that close issue %d: %w", r.ID, err)
 	}
 
+	approvingBots, err := decodeColumn[string](r.ApprovingBots)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the bots that approved item %d: %w", r.ID, err)
+	}
+
 	stored, err := filesColumns{
 		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
 		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
@@ -825,7 +861,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 
 		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
 		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
-		Deletions: int(store.Deref(r.Deletions)), ChangedFiles: int(store.Deref(r.ChangedFiles)),
+		ReviewTexts: int(store.Deref(r.ReviewTexts)),
+		Deletions:   int(store.Deref(r.Deletions)), ChangedFiles: int(store.Deref(r.ChangedFiles)),
 		Commits: int(store.Deref(r.Commits)), Mergeable: store.Deref(r.Mergeable),
 		ChecksState: store.Deref(r.ChecksState), ChecksPassed: int(store.Deref(r.ChecksPassed)),
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
@@ -839,9 +876,10 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		SubIssues: SubIssues{
 			Total: int(store.Deref(r.SubIssuesTotal)), Completed: int(store.Deref(r.SubIssuesCompleted)),
 		},
-		IssueInfo:    issueInfo,
-		ClosingPulls: closingPulls,
-		ReviewUsers:  reviewUsers, ReviewTeams: reviewTeams,
+		IssueInfo:     issueInfo,
+		ClosingPulls:  closingPulls,
+		ApprovingBots: approvingBots,
+		ReviewUsers:   reviewUsers, ReviewTeams: reviewTeams,
 
 		Stored: stored,
 
@@ -851,9 +889,9 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 }
 
 // item converts a row to its DTO, deciding its trust, and whether its files are
-// checked, with scope, how it asks viewer to review it, and which of its held runs count,
-// with ignored the workflows the user ignores.
-func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
+// checked, with scope, how it asks viewer to review it, and what its card says with cards,
+// the user's card rules.
+func (r *itemRow) item(scope fileScope, viewer string, cards cardRules) Item {
 	isPR := r.Kind == item.KindPR
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 	class := scope.policy.Classify(author, isPR, r.IsCrossRepository)
@@ -876,7 +914,7 @@ func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
-		Details:           r.details(scope.policy, viewer, ignored),
+		Details:           r.details(scope.policy, viewer, cards),
 		Files:             r.checkedFiles(scope, isPR, author),
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
@@ -1045,9 +1083,10 @@ func decodeReasons(raw *string) *snooze.Reasons {
 
 // details converts the row's details, or nil when no refresh has read them, telling whether
 // the pull request asks viewer to review it again after a push, counting its held runs
-// as heldruns.Count does with ignored, the workflows the user ignores, and deciding with
-// policy which of an issue's closing pull requests are trusted.
-func (r *itemRow) details(policy trust.Policy, viewer string, ignored []string) *Details {
+// as heldruns.Count does with the workflows cards ignores, naming the auto-merge bot of
+// cards that approved it, and deciding with policy which of an issue's closing pull
+// requests are trusted.
+func (r *itemRow) details(policy trust.Policy, viewer string, cards cardRules) *Details {
 	if !r.HasDetails {
 		return nil
 	}
@@ -1070,12 +1109,12 @@ func (r *itemRow) details(policy trust.Policy, viewer string, ignored []string) 
 	}
 
 	held := heldruns.Unnamed(r.HeldRuns, r.ChecksAwaiting, r.ChecksAwaitingOnGitHub)
-	awaiting, onGitHub := heldruns.Count(held, r.MergeState, ignored)
+	awaiting, onGitHub := heldruns.Count(held, r.MergeState, cards.ignored)
 
 	return &Details{
 		Labels:       labels,
 		Projects:     projects,
-		Comments:     r.Comments,
+		Comments:     r.Comments + r.ReviewTexts,
 		Additions:    r.Additions,
 		Deletions:    r.Deletions,
 		ChangedFiles: r.ChangedFiles,
@@ -1093,6 +1132,7 @@ func (r *itemRow) details(policy trust.Policy, viewer string, ignored []string) 
 		Issue:        r.IssueInfo.issueInfo(),
 		ClosingPulls: closingPulls(r.ClosingPulls, policy, viewer),
 		AutoMerge:    r.AutoMerge,
+		MergeBot:     cards.mergeBots.Match(r.ApprovingBots),
 		FetchedAt:    formatOptionalTime(r.DetailsFetchedAt),
 
 		PushedSinceReview:    pushed,

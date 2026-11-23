@@ -1,5 +1,6 @@
 import { useId } from 'react'
 
+import { foldBot } from '../../lib/bots'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { resetTrustedBots, setTrustedBots, type Settings } from '../../platform'
 import { quietButtonClass } from '../controls'
@@ -7,17 +8,6 @@ import { Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'
-
-// foldBot writes a bot's login the way the trusted list keeps it: lowercase, without an
-// "app/" prefix or "[bot]" suffix.
-function foldBot(login: string): string {
-  return login
-    .trim()
-    .toLowerCase()
-    .replace(/^app\//, '')
-    .replace(/\[bot\]$/, '')
-    .trim()
-}
 
 // sameList reports whether two lists hold the same logins in the same order.
 function sameList(a: readonly string[], b: readonly string[]): boolean {

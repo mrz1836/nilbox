@@ -17,6 +17,7 @@ import { CardActions, compactOutcomeClass } from './CardActions'
 import { KindMark } from './CardAvatar'
 import { LinkChip } from './CardLinks'
 import { edgeBar, FilterText, PinGlyph, TriageTag, UnreadDot } from './CardParts'
+import { MergeBotIcon } from './MergeBotChip'
 import { CardStory } from './CardStory'
 import { IssueGrade, IssueTrack } from './IssueState'
 import { RiskIcon } from './RiskChip'
@@ -241,6 +242,7 @@ export function CompactRow({
         />
         <span className="shrink-0 text-xs text-muted tabular-nums">#{item.number}</span>
         <LinkChip item={item} compact />
+        <MergeBotIcon item={item} />
         {item.details !== null && <LabelDots labels={item.details.labels} />}
         {isPinned(item) && <PinGlyph item={item} rules={triage?.repoRules} />}
         {unread && <UnreadDot />}

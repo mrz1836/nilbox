@@ -98,6 +98,8 @@
     "cardDensity": "comfortable",
     "cardUnread": true,
     "ignoredWorkflows": [],
+    "mergeBotsOn": false,
+    "mergeBots": [],
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

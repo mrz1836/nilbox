@@ -417,16 +417,17 @@ func storedClosingPullsOf(pulls []github.ClosingPull) []storedClosingPull {
 	return out
 }
 
-// detailsRow converts fetched details to their row.
-func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
+// detailsJSON are a details row's JSON columns, encoded.
+type detailsJSON struct {
+	labels, projects, held, issueInfo, closingPulls, approvingBots string
+}
+
+// encodeDetailsJSON encodes the JSON columns of fetched details: each list as an array,
+// never null.
+func encodeDetailsJSON(d github.ItemDetails) (detailsJSON, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
 	for _, l := range d.Labels {
 		labels = append(labels, storedLabel{Name: l.Name, Color: l.Color})
-	}
-
-	encodedLabels, err := store.EncodeJSON(labels)
-	if err != nil {
-		return queries.UpsertDetailsParams{}, err
 	}
 
 	projects := make([]storedProject, 0, len(d.Projects))
@@ -434,7 +435,38 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		projects = append(projects, storedProjectOf(p))
 	}
 
-	encodedProjects, err := store.EncodeJSON(projects)
+	held := make([]heldruns.Run, 0, len(d.Checks.Held))
+	for _, r := range d.Checks.Held {
+		held = append(held, heldruns.Run(r))
+	}
+
+	var out detailsJSON
+
+	for _, c := range []struct {
+		to    *string
+		value any
+	}{
+		{&out.labels, labels},
+		{&out.projects, projects},
+		{&out.held, held},
+		{&out.issueInfo, storedIssueInfoOf(d.Issue)},
+		{&out.closingPulls, storedClosingPullsOf(d.ClosingPulls)},
+		{&out.approvingBots, d.ApprovingBots},
+	} {
+		encoded, err := store.EncodeJSON(c.value)
+		if err != nil {
+			return detailsJSON{}, err
+		}
+
+		*c.to = encoded
+	}
+
+	return out, nil
+}
+
+// detailsRow converts fetched details to their row.
+func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
+	encoded, err := encodeDetailsJSON(d)
 	if err != nil {
 		return queries.UpsertDetailsParams{}, err
 	}
@@ -444,30 +476,10 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		return queries.UpsertDetailsParams{}, err
 	}
 
-	held := make([]heldruns.Run, 0, len(d.Checks.Held))
-	for _, r := range d.Checks.Held {
-		held = append(held, heldruns.Run(r))
-	}
-
-	encodedHeld, err := store.EncodeJSON(held)
-	if err != nil {
-		return queries.UpsertDetailsParams{}, err
-	}
-
-	encodedIssueInfo, err := store.EncodeJSON(storedIssueInfoOf(d.Issue))
-	if err != nil {
-		return queries.UpsertDetailsParams{}, err
-	}
-
-	encodedClosingPulls, err := store.EncodeJSON(storedClosingPullsOf(d.ClosingPulls))
-	if err != nil {
-		return queries.UpsertDetailsParams{}, err
-	}
-
 	return queries.UpsertDetailsParams{
 		ItemID:                 itemID,
-		Labels:                 encodedLabels,
-		Projects:               encodedProjects,
+		Labels:                 encoded.labels,
+		Projects:               encoded.projects,
 		Comments:               int64(d.Comments),
 		Additions:              int64(d.Additions),
 		Deletions:              int64(d.Deletions),
@@ -484,7 +496,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ChecksSkipped:          int64(d.Checks.Skipped),
 		ChecksAwaiting:         int64(max(d.Checks.Awaiting, 0)),
 		ChecksAwaitingOnGithub: int64(max(d.Checks.AwaitingOnGitHub, 0)),
-		ChecksHeld:             encodedHeld,
+		ChecksHeld:             encoded.held,
 		ReviewDecision:         d.Reviews.Decision,
 		Reviewers:              int64(d.Reviews.Reviewers),
 		Reviewed:               int64(d.Reviews.Reviewed),
@@ -496,8 +508,10 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ReviewTeams:            reviewTeams,
 		AutoMergeMethod:        d.AutoMerge.Method,
 		AutoMergeAt:            autoMergeAt(d.AutoMerge),
-		IssueInfo:              encodedIssueInfo,
-		ClosingPulls:           encodedClosingPulls,
+		IssueInfo:              encoded.issueInfo,
+		ClosingPulls:           encoded.closingPulls,
+		ApprovingBots:          encoded.approvingBots,
+		ReviewTexts:            int64(d.ReviewTexts),
 		FetchedAt:              now,
 	}, nil
 }
@@ -584,7 +598,7 @@ func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) 
 		prefBeyondReviewRequested, prefBeyondAuthored, prefBeyondAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, reporules.PrefPinned, reporules.PrefMuted,
-		heldruns.KeyIgnoredWorkflows,
+		heldruns.KeyIgnoredWorkflows, trust.PrefMergeBotsOn, trust.PrefMergeBots,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("read the inbox status: %w", err)

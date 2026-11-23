@@ -6,8 +6,9 @@
 //   - settings writes the user's settings, among them the clone root and the other
 //     repository locations (clones.root and clones.locations), and the rules that the
 //     trust, snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs,
-//     threadrules, and statusprefs packages declare and decode (trust.*, snooze.*,
-//     files.*, notify.*, branches.*, repos.*: the pinned and muted repositories and orgs,
+//     threadrules, and statusprefs packages declare and decode (trust.*: the trusted bots
+//     and the auto-merge bots, trust.mergeBotsOn and trust.mergeBots; snooze.*, files.*,
+//     notify.*, branches.*, repos.*: the pinned and muted repositories and orgs,
 //     integrations.*, scripts.*: the scripts.magexTargets and scripts.repoFiles switches of
 //     Repo scripts' sources, scripts.lastPage and scripts.lastRepo, where the Scripts tab
 //     and Repo scripts reopen, scripts.releaseSort, the order the Release page lists

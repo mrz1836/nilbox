@@ -438,9 +438,11 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
   is, the author's picture, and the title with its first two labels in their GitHub colors
   (leaving out those you hide in **Settings → Cards**, `size/*` to start with); then one
   sentence of why it's here (**Re-review**, **2 of 14 checks failing**, **Approved · ready to
-  merge**), the repository, author, and age, and a risk chip for an outside contributor or
-  sensitive files. Beside them, a track of the checks, the review, and the merge over a size
-  grade (XS to XL), and your next move with the agent's beside it. Click a card's empty space
+  merge**), the repository, author, and age, a risk chip for an outside contributor or
+  sensitive files, and an **Auto-merge** chip when a bot you list in **Settings → Reviewing**
+  (such as `acme-org-automerge`) approved a pull request it merges itself. Beside them, a track
+  of the checks, the review, and the merge over a size grade (XS to XL), and your next move
+  with the agent's beside it. Click a card's empty space
   for everything else, make the cards one line each in **Settings → Cards**, and open **How to
   read a card** for a numbered guide to every part.
 - **Live signals:** checks still running pulse in yellow (**12/18**), and a card names the item's
@@ -607,6 +609,8 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   own site, such as one a review started, don't count toward where the pull request stands unless
   GitHub reports the merge blocked; the sheet names them quietly with **Open on GitHub**. Runs of
   workflows you ignore (**Ignore this workflow**, or Settings → Reviewing) never count.
+  Settings → Reviewing also lists your auto-merge bots: with the switch on, a pull request one of
+  them approved says so on its card and in the sheet, read from the reviews a refresh already reads.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and a
   draft per pull request that survives closing the sheet.
 - **Your replies, your agent's verdict:** your [review replies](docs/desktop.md#review-replies)

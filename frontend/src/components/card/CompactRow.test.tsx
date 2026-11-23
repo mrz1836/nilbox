@@ -535,6 +535,23 @@ describe('CompactRow', () => {
     expect(shownDots[1]).toHaveStyle({ backgroundColor: '#a2eeef' })
   })
 
+  it('marks a pull request a listed auto-merge bot approved with its icon alone, naming the bot', () => {
+    mountCompact(asked({ details: details({ mergeBot: 'acme-org-automerge' }) }))
+
+    const icon = screen.getByRole('img', { name: 'Auto-merge' })
+    expect(icon).toHaveAttribute(
+      'title',
+      'acme-org-automerge approved this pull request and merges it once its checks pass',
+    )
+    expect(icon).toHaveTextContent('')
+  })
+
+  it('has no auto-merge icon when no listed bot approved', () => {
+    mountCompact(asked())
+
+    expect(screen.queryByRole('img', { name: 'Auto-merge' })).not.toBeInTheDocument()
+  })
+
   it('shows no label dots when every label is hidden', () => {
     compact(
       <ul>

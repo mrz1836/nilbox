@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { SheetBack, SheetStep } from '../../lib/sheet'
 import type { InboxItem, Review } from '../../platform'
+import { MergeBotTag } from '../card/MergeBotChip'
 import { PullRequestIcon } from '../icons'
 import { TrustTag } from '../ItemRow'
 import { SheetHeader } from '../SheetHeader'
@@ -32,7 +33,8 @@ export interface ReviewHeaderProps {
 }
 
 // ReviewHeader is the review sheet's top (SheetHeader): the pull request's title and where
-// it is, who opened it, and which branch merges into which.
+// it is, who opened it, whether a listed auto-merge bot approved it, and which branch merges
+// into which.
 export function ReviewHeader({
   titleId,
   review,
@@ -62,6 +64,7 @@ export function ReviewHeader({
             {repo}#{number} · {author}
           </span>
           {item !== undefined && <TrustTag item={item} />}
+          {item !== undefined && <MergeBotTag item={item} />}
           {review !== null && review.headRef !== '' && (
             <span className="font-mono text-caption">
               {review.headRef} → {review.baseRef}

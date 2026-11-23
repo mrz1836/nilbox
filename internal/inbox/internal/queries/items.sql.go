@@ -644,7 +644,7 @@ SELECT
     d.merge_state, d.review_decision,
     d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
-    d.issue_info, d.closing_pulls,
+    d.issue_info, d.closing_pulls, d.approving_bots, d.review_texts,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at, ls.set_aside_by, ls.pinned_by
@@ -716,6 +716,8 @@ type ListItemsRow struct {
 	AutoMergeMethod        *string
 	IssueInfo              *string
 	ClosingPulls           *string
+	ApprovingBots          *string
+	ReviewTexts            *int64
 	FilesItemID            *int64
 	FilesHeadOID           *string
 	FilesTotal             *int64
@@ -804,6 +806,8 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.AutoMergeMethod,
 			&i.IssueInfo,
 			&i.ClosingPulls,
+			&i.ApprovingBots,
+			&i.ReviewTexts,
 			&i.FilesItemID,
 			&i.FilesHeadOID,
 			&i.FilesTotal,
@@ -844,7 +848,7 @@ SELECT
     d.merge_state, d.review_decision,
     d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
-    d.issue_info, d.closing_pulls,
+    d.issue_info, d.closing_pulls, d.approving_bots, d.review_texts,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
     ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at, ls.set_aside_by, ls.pinned_by
@@ -920,6 +924,8 @@ type ListItemsByIDRow struct {
 	AutoMergeMethod        *string
 	IssueInfo              *string
 	ClosingPulls           *string
+	ApprovingBots          *string
+	ReviewTexts            *int64
 	FilesItemID            *int64
 	FilesHeadOID           *string
 	FilesTotal             *int64
@@ -1017,6 +1023,8 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.AutoMergeMethod,
 			&i.IssueInfo,
 			&i.ClosingPulls,
+			&i.ApprovingBots,
+			&i.ReviewTexts,
 			&i.FilesItemID,
 			&i.FilesHeadOID,
 			&i.FilesTotal,

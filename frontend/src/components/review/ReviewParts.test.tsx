@@ -8,6 +8,7 @@ import {
   agentSession,
   agents,
   closeOffer,
+  details,
   fileCheck,
   item,
   itemResolution,
@@ -565,6 +566,30 @@ describe('ReviewHeader', () => {
       />,
     )
     expect(screen.queryByText(/→ main/)).not.toBeInTheDocument()
+  })
+
+  it('says when a listed auto-merge bot approved the pull request, beside who opened it', () => {
+    const header = (mergeBot: string) => (
+      <ReviewHeader
+        titleId="t"
+        review={null}
+        item={item({ details: details({ mergeBot }) })}
+        position=""
+        onPrev={null}
+        onNext={null}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        checking={false}
+      />
+    )
+    const { rerender } = renderAt(header('acme-org-automerge'))
+
+    expect(
+      screen.getByTitle('acme-org-automerge approved this pull request and merges it once its checks pass'),
+    ).toHaveTextContent('auto-merge')
+
+    rerender(header(''))
+    expect(screen.queryByText('auto-merge')).not.toBeInTheDocument()
   })
 })
 

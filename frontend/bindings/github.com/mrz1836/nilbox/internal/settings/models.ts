@@ -579,6 +579,15 @@ export interface Settings {
     "ignoredWorkflows": string[] | null;
 
     /**
+     * MergeBotsOn is whether a pull request's card says when an auto-merge bot on MergeBots
+     * approved it, so it merges by itself once its checks pass, and MergeBots lists those bots
+     * by login, normalized and sorted, never nil (see KeyMergeBotsOn). The switch starts off and
+     * the list empty.
+     */
+    "mergeBotsOn": boolean;
+    "mergeBots": string[] | null;
+
+    /**
      * MergeMethod is how the review sheet merges a pull request, and BypassOwn whether its
      * button merges the user's own pull request past the rules when an approval from
      * someone else is all it lacks (see KeyBypassOwn).

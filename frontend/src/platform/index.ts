@@ -1111,6 +1111,8 @@ export const {
   SetCardDensity: setCardDensity,
   SetCardUnread: setCardUnread,
   SetIgnoredWorkflows: setIgnoredWorkflows,
+  SetMergeBotsOn: setMergeBotsOn,
+  SetMergeBots: setMergeBots,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,

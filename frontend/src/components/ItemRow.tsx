@@ -17,6 +17,7 @@ import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
 import { LinkChip } from './card/CardLinks'
+import { MergeBotChip, mergeBotOf } from './card/MergeBotChip'
 import { CompactRow } from './card/CompactRow'
 import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag, UnreadDot } from './card/CardParts'
 import { CardPeek } from './card/CardPeek'
@@ -298,7 +299,8 @@ function Byline({
 // pinned, with up to two labels; its second, the story in the edge's color (CardStory: one sentence of why it is
 // here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed, then,
 // muted, where it stands), the byline, then the risk chip, the link to the item GitHub links it to (LinkChip: an
-// issue's fix, or the issue a pull request closes), the ⚡ chip (AutopilotChip), and the worktree chip. The state
+// issue's fix, or the issue a pull request closes), the auto-merge chip (MergeBotChip: a listed bot approved the
+// pull request, so it merges itself once its checks pass), the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
 // it (CardActions, with LaunchControls' card variant), each in a slot of its own: the
@@ -382,6 +384,12 @@ export const ItemRow = memo(function ItemRow({
   const sessionWorking = session?.state === 'starting' || session?.state === 'working'
   const routineStory = step.rule === 'autopilot_needs_you' || (step.rule === 'agent_working' && !sessionWorking)
   const chips: CardChip[] = []
+  const mergeBot = mergeBotOf(item)
+
+  // A listed auto-merge bot's approval comes first: it says the pull request merges itself.
+  if (mergeBot !== '') {
+    chips.push({ key: 'mergebot', words: 'Auto-merge', node: <MergeBotChip bot={mergeBot} /> })
+  }
 
   if (!routineStory) {
     chips.push({ key: 'autopilot', words: 'Autopilot', node: <AutopilotChip item={item} /> })

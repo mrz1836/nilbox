@@ -83,6 +83,8 @@ type Portable struct {
 	CardDensity         *CardDensity         `json:"cardDensity,omitempty"`
 	CardUnread          *bool                `json:"cardUnread,omitempty"`
 	IgnoredWorkflows    *[]string            `json:"ignoredWorkflows,omitempty"`
+	MergeBotsOn         *bool                `json:"mergeBotsOn,omitempty"`
+	MergeBots           *[]string            `json:"mergeBots,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
 	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
 	Autopilot           *PortableAutopilot   `json:"autopilot,omitempty"`
@@ -209,6 +211,7 @@ func portableOf(set Settings) Portable {
 		Theme:       &set.Theme, TextSize: &set.TextSize, Celebrations: &set.Celebrations, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
 		CardDensity: &set.CardDensity, CardUnread: &set.CardUnread, IgnoredWorkflows: &set.IgnoredWorkflows,
+		MergeBotsOn: &set.MergeBotsOn, MergeBots: &set.MergeBots,
 		Integrations: &PortableIntegration{
 			Switches: maps.Clone(ig.Switches), Paths: maps.Clone(ig.Paths), RunsIn: &ig.RunsIn,
 			OfferAfterMerge: &ig.OfferAfterMerge, MagexTargets: &ig.ScriptSources.MagexTargets,
@@ -519,6 +522,10 @@ func (s *Service) portableFields() []portableField {
 			func(_ context.Context, names []string) (map[string]string, error) {
 				return checkIgnoredWorkflows(names)
 			}, nil),
+		boolField("Show auto-merge bots' approvals", tellsNothing, KeyMergeBotsOn,
+			func(p Portable) *bool { return p.MergeBotsOn }),
+		pointerField("Auto-merge bots", tellsNothing, func(p Portable) *[]string { return p.MergeBots },
+			func(_ context.Context, bots []string) (map[string]string, error) { return checkMergeBots(bots) }, nil),
 		pointerField("When a new version is out", tellsUpdates, func(p Portable) *updateprefs.Mode { return p.UpdateMode },
 			func(_ context.Context, m updateprefs.Mode) (map[string]string, error) { return checkUpdateMode(m) },
 			func(m updateprefs.Mode) string { return string(m) }),

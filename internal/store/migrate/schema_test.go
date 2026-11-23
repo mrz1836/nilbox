@@ -236,6 +236,20 @@ func TestSchemaConstraints(t *testing.T) {
 			accepted: `UPDATE item_details SET issue_info = '{"type":"Task"}'`,
 		},
 		{
+			name:     "approving bots that are an object",
+			seed:     seedDetails,
+			refused:  `UPDATE item_details SET approving_bots = '{"login":"acme-org-automerge"}'`,
+			want:     check + "json_valid(approving_bots) AND json_type(approving_bots) = 'array'",
+			accepted: `UPDATE item_details SET approving_bots = '["acme-org-automerge"]'`,
+		},
+		{
+			name:     "a negative count of reviews that say something",
+			seed:     seedDetails,
+			refused:  `UPDATE item_details SET review_texts = -1`,
+			want:     check + "review_texts >= 0",
+			accepted: `UPDATE item_details SET review_texts = 2`,
+		},
+		{
 			name:     "a run by no runner there is",
 			seed:     seedMatch,
 			refused:  run("cron"),

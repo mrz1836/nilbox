@@ -373,6 +373,24 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       ],
     },
     {
+      label: 'Auto-merge bots',
+      keywords: [
+        'automerge',
+        'auto merge',
+        'bot',
+        'GitHub App',
+        'approves',
+        'approved',
+        'dependabot',
+        'merges itself',
+        'chip',
+      ],
+    },
+    {
+      label: 'Show when an auto-merge bot approved a pull request',
+      keywords: ['automerge', 'auto merge', 'bot', 'approved', 'chip', 'card', 'merges after checks'],
+    },
+    {
       label: 'People',
       keywords: ['reviewers', 'assignees', 'assign', 'suggest', 'picker', 'who works', 'collaborators', 'org'],
     },

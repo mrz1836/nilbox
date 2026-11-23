@@ -282,6 +282,89 @@ describe('ReviewingSection', () => {
     expect(onSaved).not.toHaveBeenCalled()
   })
 
+  it('starts the auto-merge bots off, with no bot listed, and turns them on', async () => {
+    const { onSaved } = renderSection()
+    const on = screen.getByRole('switch', { name: 'Show when an auto-merge bot approved a pull request' })
+
+    expect(on).not.toBeChecked()
+    expect(screen.queryByRole('list', { name: 'Auto-merge bots' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText('No bot is listed. Add the login of the bot that approves and merges your pull requests.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Auto-merge bot' })).toHaveAttribute('placeholder', 'acme-org-automerge')
+
+    await userEvent.click(on)
+
+    expect(platform.setMergeBotsOn).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ mergeBotsOn: true }))
+    })
+  })
+
+  it('lists an auto-merge bot as the list keeps it, sorted, and says when it already is', async () => {
+    const { onSaved } = renderSection(settings({ mergeBots: ['example-merger'] }))
+    const input = screen.getByRole('textbox', { name: 'Auto-merge bot' })
+
+    expect(input).toHaveAccessibleDescription(
+      'Use the login GitHub shows for the bot, with or without [bot]. Only the bot’s latest review counts, and only ' +
+        'when GitHub reports its author as a bot, so a person with a similar login never does.',
+    )
+
+    await userEvent.type(input, 'App/Example-Merger[bot]')
+    await userEvent.click(screen.getByRole('button', { name: 'Add bot' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('example-merger is already listed.')
+    expect(platform.setMergeBots).not.toHaveBeenCalled()
+
+    await userEvent.clear(input)
+    await userEvent.type(input, ' Acme-Org-Automerge[bot] ')
+    await userEvent.click(screen.getByRole('button', { name: 'Add bot' }))
+
+    expect(platform.setMergeBots).toHaveBeenCalledWith(['acme-org-automerge', 'example-merger'])
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ mergeBots: ['acme-org-automerge', 'example-merger'] }))
+    })
+    expect(input).toHaveValue('')
+  })
+
+  it('refuses a blank auto-merge bot without asking the backend', async () => {
+    renderSection()
+
+    // A doubled bracket types one.
+    await userEvent.type(screen.getByRole('textbox', { name: 'Auto-merge bot' }), '[[bot]')
+    await userEvent.click(screen.getByRole('button', { name: 'Add bot' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a bot’s login, such as acme-org-automerge.')
+    expect(platform.setMergeBots).not.toHaveBeenCalled()
+  })
+
+  it('stops showing an auto-merge bot', async () => {
+    const { onSaved } = renderSection(settings({ mergeBots: ['acme-org-automerge', 'example-merger'] }))
+
+    await userEvent.click(
+      within(screen.getByRole('list', { name: 'Auto-merge bots' })).getByRole('button', {
+        name: 'Stop showing acme-org-automerge’s approvals',
+      }),
+    )
+
+    expect(platform.setMergeBots).toHaveBeenCalledWith(['example-merger'])
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ mergeBots: ['example-merger'] }))
+    })
+  })
+
+  it('shows an auto-merge bot the backend refused', async () => {
+    platform.setMergeBots.mockRejectedValue(new Error('not a bot login: "acme org"'))
+    const { onSaved } = renderSection()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Auto-merge bot' }), 'acme org')
+    await userEvent.click(screen.getByRole('button', { name: 'Add bot' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('not a bot login')
+    expect(screen.queryByRole('list', { name: 'Auto-merge bots' })).not.toBeInTheDocument()
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
   it('says how many people the app learned, and forgets them all once the user confirms', async () => {
     renderSection()
 

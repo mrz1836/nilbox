@@ -86,8 +86,9 @@ INSERT INTO item_details (
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, checks_awaiting,
     checks_awaiting_on_github, checks_held,
     review_decision, reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
-    review_users, review_teams, auto_merge_method, auto_merge_at, issue_info, closing_pulls, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    review_users, review_teams, auto_merge_method, auto_merge_at, issue_info, closing_pulls, approving_bots,
+    review_texts, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -121,6 +122,8 @@ ON CONFLICT (item_id) DO UPDATE SET
     auto_merge_at = excluded.auto_merge_at,
     issue_info = excluded.issue_info,
     closing_pulls = excluded.closing_pulls,
+    approving_bots = excluded.approving_bots,
+    review_texts = excluded.review_texts,
     fetched_at = excluded.fetched_at
 `
 
@@ -158,6 +161,8 @@ type UpsertDetailsParams struct {
 	AutoMergeAt            *time.Time
 	IssueInfo              string
 	ClosingPulls           string
+	ApprovingBots          string
+	ReviewTexts            int64
 	FetchedAt              time.Time
 }
 
@@ -198,6 +203,8 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 		arg.AutoMergeAt,
 		arg.IssueInfo,
 		arg.ClosingPulls,
+		arg.ApprovingBots,
+		arg.ReviewTexts,
 		arg.FetchedAt,
 	)
 	return err

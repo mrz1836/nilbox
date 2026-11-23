@@ -137,8 +137,9 @@ export interface Details {
     "closingPulls": ClosingPull[] | null;
 
     /**
-     * Comments counts the conversation's comments, review comments included for a pull
-     * request.
+     * Comments counts what people wrote in the conversation: its comments and, for a pull
+     * request, its review comments and the latest reviews that say something, as the review
+     * sheet counts them.
      */
     "comments": number;
     "additions": number;
@@ -158,6 +159,14 @@ export interface Details {
      * REBASE), and "" while auto-merge is off and for an issue.
      */
     "autoMerge": string;
+
+    /**
+     * MergeBot is the listed auto-merge bot (trust.MergeBots) whose latest review approves
+     * this pull request, so it merges by itself once its checks pass: the first one listed
+     * when more than one did. It is "" when the setting is off, no listed bot approved, and
+     * for an issue.
+     */
+    "mergeBot": string;
 
     /**
      * FetchedAt is when the details were read, as RFC 3339.

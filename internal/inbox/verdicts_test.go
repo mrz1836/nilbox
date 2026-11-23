@@ -434,5 +434,5 @@ func TestAnIssueHoldsNoVerdict(t *testing.T) {
 	assert.Equal(t, ViewerVerdictNone, viewerVerdict(github.ReviewStateDismissed))
 
 	row := itemRow{Kind: item.KindIssue, HasDetails: true, ViewerReviewState: github.ReviewStateChangesRequested}
-	assert.Equal(t, ViewerVerdictNone, row.details(trust.NewPolicy(nil), octoUser, nil).ViewerVerdict, "only a pull request is reviewed")
+	assert.Equal(t, ViewerVerdictNone, row.details(trust.NewPolicy(nil), octoUser, cardRules{}).ViewerVerdict, "only a pull request is reviewed")
 }

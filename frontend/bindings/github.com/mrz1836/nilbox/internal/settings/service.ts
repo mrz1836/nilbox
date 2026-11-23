@@ -544,6 +544,25 @@ export function SetMenuBar(on: boolean): $CancellablePromise<$models.Settings> {
 }
 
 /**
+ * SetMergeBots stores the user's auto-merge bots, and returns the settings with them. Each
+ * login may be written as GitHub shows it ("acme-org-automerge", "acme-org-automerge[bot]",
+ * or "app/acme-org-automerge"); the list is stored normalized and sorted, and may be empty.
+ * A login that is not a bot's, or a list of more than 100, is refused, and nothing is
+ * stored.
+ */
+export function SetMergeBots(bots: string[] | null): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2188411721, bots);
+}
+
+/**
+ * SetMergeBotsOn stores whether a pull request's card says when a listed auto-merge bot
+ * approved it, and returns the settings with it.
+ */
+export function SetMergeBotsOn(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2996965908, on);
+}
+
+/**
  * SetMergeMethod stores how the review sheet merges: MergeMethodRepo, MergeMethodSquash,
  * MergeMethodMerge, or MergeMethodRebase, and returns the settings with it.
  */

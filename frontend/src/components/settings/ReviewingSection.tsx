@@ -1,15 +1,18 @@
 import { useId, useState } from 'react'
 
+import { foldBot } from '../../lib/bots'
 import { attempt } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { snoozeLength } from '../../lib/triage'
 import { useQuery } from '../../lib/useQuery'
-import { useSettingsSave } from '../../lib/useSettingsSave'
+import { useSettingsSave, type SettingsSave } from '../../lib/useSettingsSave'
 import {
   forgetPeople,
   peopleSummary,
   setBypassOwn,
   setIgnoredWorkflows,
+  setMergeBots,
+  setMergeBotsOn,
   setMergeMethod,
   setNudgeAfterHours,
   setNudgeSnooze,
@@ -167,6 +170,100 @@ function People() {
   )
 }
 
+// MergeBots holds the auto-merge bots: the switch that has a pull request's card say when a
+// bot on the list approved it, so it merges by itself once its checks pass, and the list,
+// each change stored as it is made. The app ships no bot's name; the user lists their own.
+function MergeBots({ settings, save }: Pick<SettingsSave, 'settings' | 'save'>) {
+  const id = useId()
+  const [onError, setOnError] = useState('')
+  // Every change of the list runs through one action: one at a time, with the list's
+  // controls held while it runs.
+  const { draft, setDraft, refusal, refuse, store: change, busy } = useListChange(save)
+
+  const bots = settings.mergeBots
+  const listError = refusal.draft === draft ? refusal.message : ''
+
+  const chooseOn = async (mergeBotsOn: boolean) => {
+    setOnError('')
+
+    const result = await save({ mergeBotsOn }, () => setMergeBotsOn(mergeBotsOn))
+
+    setOnError(result.ok ? '' : result.error)
+  }
+
+  // store replaces the auto-merge bots, kept sorted as they are stored.
+  const store = (next: string[], then?: () => void) => {
+    const sorted = [...next].sort()
+
+    change({ shows: { mergeBots: sorted }, call: () => setMergeBots(sorted), then })
+  }
+
+  const add = () => {
+    const login = foldBot(draft)
+
+    if (login === '') {
+      refuse('Enter a bot’s login, such as acme-org-automerge.')
+
+      return
+    }
+
+    if (bots.includes(login)) {
+      refuse(`${login} is already listed.`)
+
+      return
+    }
+
+    store([...bots, login], () => {
+      setDraft('')
+    })
+  }
+
+  return (
+    <section aria-labelledby={`${id}-merge-bots`} className="flex flex-col gap-3">
+      <SectionIntro id={`${id}-merge-bots`} title="Auto-merge bots">
+        Bots that approve a pull request and merge it themselves once its checks pass, such as an org’s own GitHub App.
+        When one on the list approved a pull request, its card says <em>Auto-merge</em>, so you can tell it apart from
+        one that needs you.
+      </SectionIntro>
+      <Group>
+        <SwitchRow
+          label="Show when an auto-merge bot approved a pull request"
+          controlId={`${id}-merge-bots-on`}
+          description="The card, its compact row, and the review sheet name the bot. It costs no extra GitHub request: the refresh already reads each pull request’s latest reviews."
+          error={onError}
+          checked={settings.mergeBotsOn}
+          onChange={(on) => {
+            void chooseOn(on)
+          }}
+        />
+      </Group>
+      <StringListEditor
+        label="Auto-merge bots"
+        items={bots}
+        empty="No bot is listed. Add the login of the bot that approves and merges your pull requests."
+        removeLabel={(bot) => `Stop showing ${bot}’s approvals`}
+        onRemove={(bot) => {
+          store(bots.filter((b) => b !== bot))
+        }}
+        inputLabel="Auto-merge bot"
+        placeholder="acme-org-automerge"
+        submitLabel="Add bot"
+        draft={draft}
+        onDraftChange={setDraft}
+        onAdd={add}
+        error={listError}
+        describedBy={`${id}-merge-bots-note`}
+        busy={busy}
+      />
+      <Note id={`${id}-merge-bots-note`}>
+        Use the login GitHub shows for the bot, with or without <code className="font-mono">[bot]</code>. Only the bot’s
+        latest review counts, and only when GitHub reports its author as a bot, so a person with a similar login never
+        does.
+      </Note>
+    </section>
+  )
+}
+
 export interface ReviewingSectionProps extends SectionProps {
   // onManageReplies opens the review replies in the Prompts tab, from the nudges' note;
   // without it the note names the place alone.
@@ -177,8 +274,9 @@ export interface ReviewingSectionProps extends SectionProps {
 // merges the user's own pull request past the rules when an approval from someone else is
 // all it lacks, when a pull request waiting on its author offers a nudge and whether a
 // nudge snoozes it, each saved as soon as it is chosen, the workflows whose held runs never
-// count (Ignored workflows), each change stored as it is made, the people the app learned,
-// which it forgets on request, and points at where the review replies are kept.
+// count (Ignored workflows), each change stored as it is made, the auto-merge bots whose
+// approval a card names, the people the app learned, which it forgets on request, and
+// points at where the review replies are kept.
 export function ReviewingSection({ settings: stored, onSaved, onManageReplies }: ReviewingSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
@@ -376,6 +474,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
         />
         <Note id={`${id}-names`}>A name matches a workflow’s whole name, case and all.</Note>
       </section>
+      <MergeBots settings={settings} save={save} />
       <People />
       <SectionIntro title="Review replies">
         Reply templates for approvals, requests for changes, comments, and nudges live in{' '}

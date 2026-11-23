@@ -132,6 +132,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetIgnoredWorkflows": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetIgnoredWorkflows(ctx, nil)
 		},
+		"settings.Service.SetMergeBotsOn": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetMergeBotsOn(ctx, true)
+		},
+		"settings.Service.SetMergeBots": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetMergeBots(ctx, nil)
+		},
 		"settings.Service.SetCardUnread": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCardUnread(ctx, false)
 		},

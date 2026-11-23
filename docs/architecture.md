@@ -711,6 +711,35 @@ requests, and a pull request's card finds the listed issues that name it, so a p
 request's own read asks for nothing. A trusted fix turns an issue's story to **Fix in
 progress** or **Fix merged** (`nextStep`); an untrusted one only links.
 
+**Auto-merge bots.** Many orgs run a GitHub App of their own (such as `acme-org-automerge`)
+that approves a bot's pull request and merges it once its checks pass. The fragment's
+`latestReviews(first: 50) { nodes { state body author { __typename login } } }` reads each
+latest review's author with its type, scalars GitHub's point formula doesn't count, so the
+read costs no request and no point more. `github.ItemDetails.ApprovingBots` lists the bots whose
+latest review is `APPROVED`, by login, lower-cased (a person whose login looks like a bot's,
+a bot that only commented, and a dismissed approval never count), and the inbox stores them
+as `item_details.approving_bots` (migration `0114_approving_bots`; a row stored before it
+reads `[]` until the next details read). The match happens as the snapshot is built: the
+`trust` package declares the setting, `trust.mergeBotsOn` (off by default) and
+`trust.mergeBots` (empty; no build ships a name), which settings alone writes
+(`SetMergeBotsOn`, `SetMergeBots`, normalized as the trusted bots are, in `Portable`), and
+`trust.MergeBots.Match` names the first listed bot that approved as `Details.MergeBot`. Both
+keys are in the snapshot's `settingsKey`, so a change builds the next snapshot from what is
+stored and asks GitHub nothing. The card shows an **Auto-merge** chip first among its chips
+(`MergeBotChip`), the compact row its icon, and the review sheet a tag beside the trust tag;
+`nextStep` and the state track are left alone, since the bot usually turns on GitHub's own
+auto-merge too, which the track already shows.
+
+**A card's comment count.** GitHub's `totalCommentsCount` counts a pull request's comments
+and its review comments, but not a review's own text, such as a bot's note as it approves,
+which the review sheet's Comments tab counts (`commentCount`). The same `latestReviews` read
+takes each review's `body` (text, no point more), and `ItemDetails.ReviewTexts` counts the
+latest reviews that say something, a pending draft left out. The inbox stores it apart, as
+`item_details.review_texts` (migration `0115_review_texts`), and adds it to `comments` only
+as the snapshot is built (`Details.Comments`), so `comments` stays GitHub's own count, the
+one a snooze's wake on comments compares. It counts one review per reviewer, the latest, so a
+reviewer's earlier reviews with text count only in the sheet. The text itself is never kept.
+
 **Reviewers.** The review sheet's reviewer edit asks everyone it adds with one REST request
 and takes every request it drops off with one more (`RequestReviewers`, `POST
 .../requested_reviewers`, and `RemoveReviewRequests`, `DELETE` at the same path), each through

@@ -284,6 +284,13 @@ type Settings struct {
 	// never nil.
 	IgnoredWorkflows []string `json:"ignoredWorkflows"`
 
+	// MergeBotsOn is whether a pull request's card says when an auto-merge bot on MergeBots
+	// approved it, so it merges by itself once its checks pass, and MergeBots lists those bots
+	// by login, normalized and sorted, never nil (see KeyMergeBotsOn). The switch starts off and
+	// the list empty.
+	MergeBotsOn bool     `json:"mergeBotsOn"`
+	MergeBots   []string `json:"mergeBots"`
+
 	// MergeMethod is how the review sheet merges a pull request, and BypassOwn whether its
 	// button merges the user's own pull request past the rules when an approval from
 	// someone else is all it lacks (see KeyBypassOwn).
@@ -792,6 +799,7 @@ func (s *Service) checkCloneRoot(root string) (map[string]string, error) {
 // fromStored builds Settings from stored values, falling back to the defaults.
 func fromStored(stored map[string]string) Settings {
 	rawBots, hasBots := stored[KeyTrustedBots]
+	mergeBots := trust.DecodeMergeBots(stored)
 
 	out := Settings{
 		DefaultAgent:        DefaultAgent,
@@ -838,6 +846,8 @@ func fromStored(stored map[string]string) Settings {
 		CardDensity:          cardDensities().decode(stored[KeyCardDensity]),
 		CardUnread:           prefval.Bool(stored[KeyCardUnread], DefaultCardUnread),
 		IgnoredWorkflows:     heldruns.Decode(stored[KeyIgnoredWorkflows]),
+		MergeBotsOn:          mergeBots.On,
+		MergeBots:            mergeBots.Bots,
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		BypassOwn:            prefval.Bool(stored[KeyBypassOwn], DefaultBypassOwn),
 		NudgeAfterHours:      decodeNudgeAfterHours(stored[KeyNudgeAfterHours]),
@@ -970,7 +980,7 @@ func settingKeys() []string {
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyCelebrations, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyBypassOwn, KeyNudgeAfterHours, KeyNudgeSnooze, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, KeyWatchPushes, updateprefs.KeyMode,
-		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows,
+		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows, KeyMergeBotsOn, KeyMergeBots,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),
 			autopilotprefs.Keys()...)...)...)

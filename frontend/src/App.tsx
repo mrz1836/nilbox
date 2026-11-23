@@ -176,9 +176,16 @@ function PageLoading() {
 
 // inboxKey is the part of the settings the stored inbox shows (internal/inbox's
 // settingsKey): the trusted bots decide each card's trust, the sensitive-file settings what
-// each card points out, and the ignored workflows which held runs each card counts.
+// each card points out, the ignored workflows which held runs each card counts, and the
+// auto-merge bots whether a pull request's card names one that approved it.
 function inboxKey(settings: Settings): string {
-  return JSON.stringify([settings.trustedBots, settings.sensitiveFiles, settings.ignoredWorkflows])
+  return JSON.stringify([
+    settings.trustedBots,
+    settings.sensitiveFiles,
+    settings.ignoredWorkflows,
+    settings.mergeBotsOn,
+    settings.mergeBots,
+  ])
 }
 
 // cleanedToast tells what an automatic sweep cleaned up, in the background: it waits for a

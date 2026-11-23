@@ -13,6 +13,12 @@
 //
 // A bot is matched by both its type and its login, so a person whose login resembles a
 // bot's never borrows its trust.
+//
+// The package also keeps the user's auto-merge bots (MergeBots, off and empty until the
+// user fills them in): bots, such as an org's own GitHub App, that approve a pull request
+// and merge it once its checks pass. Listing one trusts nothing: a pull request's card only
+// says that a listed bot's latest review approved it, the bot matched by its type and its
+// login as a trusted bot is.
 package trust
 
 import (
@@ -140,6 +146,12 @@ func (p Policy) Trusted(a Author, isPR, crossRepo bool) bool {
 // duplicates are removed, and the list is sorted. A login GitHub could not have issued is
 // an ErrInvalidBot.
 func NormalizeBots(logins []string) ([]string, error) {
+	return normalizeBots(logins, ErrTooManyBots)
+}
+
+// normalizeBots cleans a list of bot logins as NormalizeBots does, refusing one over maxBots
+// with tooMany.
+func normalizeBots(logins []string, tooMany error) ([]string, error) {
 	out := make([]string, 0, len(logins))
 
 	for _, login := range logins {
@@ -158,7 +170,7 @@ func NormalizeBots(logins []string) ([]string, error) {
 	}
 
 	if len(out) > maxBots {
-		return nil, fmt.Errorf("%w: at most %d", ErrTooManyBots, maxBots)
+		return nil, fmt.Errorf("%w: at most %d", tooMany, maxBots)
 	}
 
 	slices.Sort(out)

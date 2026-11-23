@@ -529,6 +529,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setCardDensity: (cardDensity) => stored({ cardDensity }),
     setCardUnread: (cardUnread) => stored({ cardUnread }),
     setIgnoredWorkflows: (ignoredWorkflows) => stored({ ignoredWorkflows: ignoredWorkflows ?? [] }),
+    setMergeBotsOn: (mergeBotsOn) => stored({ mergeBotsOn }),
+    setMergeBots: (mergeBots) => stored({ mergeBots: mergeBots ?? [] }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),

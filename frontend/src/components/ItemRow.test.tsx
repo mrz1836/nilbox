@@ -613,6 +613,38 @@ describe('ItemRow chips', () => {
     expect(shown(worktree({ agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' }))).toBeNull()
   })
 
+  it('marks a pull request a listed auto-merge bot approved, first among the chips, naming the bot', () => {
+    const rows: AutopilotRows = { names: new Map(), chips: new Map([[1, autopilotMatch()]]) }
+    const { unmount } = renderAt(
+      <AutopilotRowsContext value={rows}>
+        <ul>
+          <ItemRow
+            item={asked({ details: details({ mergeBot: 'acme-org-automerge' }) })}
+            launch={null}
+            worktree={worktree({ dirty: true, dirtyCount: 2 })}
+          />
+        </ul>
+      </AutopilotRowsContext>,
+    )
+
+    const chip = screen.getByTitle('acme-org-automerge approved this pull request and merges it once its checks pass')
+    expect(chip).toHaveTextContent('Auto-merge')
+    expect(chip).toHaveClass('text-success')
+    expect(screen.getByText('Auto-merge')).toHaveClass('@max-3xl:sr-only')
+    const routine = screen.getByRole('button', { name: /^Autopilot: Snoozed/ })
+    expect(chip.compareDocumentPosition(routine) & Node.DOCUMENT_POSITION_FOLLOWING, 'before the routine’s chip').toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(screen.queryByText('2 changes'), 'the third chip folds').not.toBeInTheDocument()
+    expect(screen.getByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent('+1')
+    unmount()
+
+    mountCard(asked())
+
+    expect(screen.queryByText('Auto-merge')).not.toBeInTheDocument()
+    expect(screen.queryByTitle(/merges it once its checks pass/)).not.toBeInTheDocument()
+  })
+
   it('shows a routine’s chip, except when the story already is the routine’s', () => {
     const rows: AutopilotRows = { names: new Map(), chips: new Map([[1, autopilotMatch()]]) }
     const { unmount } = renderAt(

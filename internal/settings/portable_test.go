@@ -119,6 +119,8 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) {
 			return svc.SetIgnoredWorkflows(ctx, []string{"Auto-merge Trigger", "Deploy Preview"})
 		},
+		func() (Settings, error) { return svc.SetMergeBotsOn(ctx, true) },
+		func() (Settings, error) { return svc.SetMergeBots(ctx, []string{"acme-org-automerge"}) },
 		func() (Settings, error) {
 			return svc.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOff)
 		},

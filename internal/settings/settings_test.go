@@ -106,6 +106,7 @@ func TestPrefDefaults(t *testing.T) {
 		CardDensity:         CardComfortable,
 		CardUnread:          true,
 		IgnoredWorkflows:    []string{},
+		MergeBots:           []string{},
 		MergeMethod:         DefaultMergeMethod,
 		NudgeAfterHours:     DefaultNudgeAfterHours,
 		ReviewTab:           DefaultReviewTab,
@@ -277,6 +278,8 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetCardDensity(t.Context(), CardCompact)))
 	require.NoError(t, testutil.ErrOf(svc.SetCardUnread(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetIgnoredWorkflows(t.Context(), []string{"Auto-merge Trigger"})))
+	require.NoError(t, testutil.ErrOf(svc.SetMergeBotsOn(t.Context(), true)))
+	require.NoError(t, testutil.ErrOf(svc.SetMergeBots(t.Context(), []string{"acme-org-automerge[bot]"})))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -311,6 +314,8 @@ func TestSettersPersist(t *testing.T) {
 		CardDensity:         CardCompact,
 		CardUnread:          false,
 		IgnoredWorkflows:    []string{"Auto-merge Trigger"},
+		MergeBotsOn:         true,
+		MergeBots:           []string{"acme-org-automerge"},
 		MergeMethod:         DefaultMergeMethod,
 		NudgeAfterHours:     DefaultNudgeAfterHours,
 		ReviewTab:           DefaultReviewTab,
@@ -669,6 +674,15 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			"ignored workflows", func() (Settings, error) { return svc.SetIgnoredWorkflows(ctx, []string{"Auto-merge Trigger"}) },
 			func(s Settings) any { return s.IgnoredWorkflows },
 			[]string{"Auto-merge Trigger"},
+		},
+		{
+			"auto-merge bots on", func() (Settings, error) { return svc.SetMergeBotsOn(ctx, true) },
+			func(s Settings) any { return s.MergeBotsOn }, true,
+		},
+		{
+			"auto-merge bots", func() (Settings, error) { return svc.SetMergeBots(ctx, []string{"app/acme-org-automerge"}) },
+			func(s Settings) any { return s.MergeBots },
+			[]string{"acme-org-automerge"},
 		},
 		{
 			"worktree cleanup", func() (Settings, error) { return svc.SetWorktreeAutoCleanup(ctx, false) },

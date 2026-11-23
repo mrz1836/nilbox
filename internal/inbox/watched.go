@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -54,11 +53,10 @@ func (s *Service) ItemsByID(ctx context.Context, ids []int64) ([]Item, error) {
 		return out, fmt.Errorf("read the items: %w", err)
 	}
 
-	scope, rules, ignored := s.scopes.scope(status), reporules.Decode(status),
-		heldruns.Decode(status[heldruns.KeyIgnoredWorkflows])
+	scope, rules, cards := s.scopes.scope(status), reporules.Decode(status), cardRulesOf(status)
 
 	for _, r := range rows {
-		it := r.item(scope, status[prefViewer], ignored)
+		it := r.item(scope, status[prefViewer], cards)
 		it.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 		out = append(out, it)
 	}

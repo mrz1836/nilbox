@@ -129,7 +129,7 @@ fragment DetailFields on Node {
         }
       }
     }
-    latestReviews(first: 50) { nodes { state author { login } } }
+    latestReviews(first: 50) { nodes { state body author { __typename login } } }
     statusCheckRollup {
       state
       contexts {
@@ -312,6 +312,17 @@ type ItemDetails struct {
 	// they merge, in GitHub's order (see closingPullsField); nil when none do, and for a
 	// pull request.
 	ClosingPulls []ClosingPull
+
+	// ApprovingBots are the bots (GitHub Apps) whose latest review approves a pull request, by
+	// login as GraphQL gives an app's slug (without "[bot]"), lower-cased, each once, in
+	// GitHub's order. A person is never one, whatever their login. For a pull request GitHub
+	// answered for it is never nil, empty when no bot approved; for an issue it is nil.
+	ApprovingBots []string
+
+	// ReviewTexts counts a pull request's latest reviews, one per reviewer, that say
+	// something: a review's own text, which GitHub's count of its comments (Comments) leaves
+	// out. A pending review, the viewer's unsent draft, never counts. It is zero for an issue.
+	ReviewTexts int
 
 	// Repo is the item's repository, read whole, when DetailOptions.Repository asked for it;
 	// nil otherwise.
@@ -773,6 +784,7 @@ type graphQLRequests struct {
 type graphQLReviews struct {
 	Nodes []*struct {
 		State  string        `json:"state"`
+		Body   string        `json:"body"`
 		Author *graphQLActor `json:"author"`
 	} `json:"nodes"`
 }
@@ -826,6 +838,8 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			Reviews:        n.reviews(author),
 			ReviewRequests: n.ReviewRequests.requests(),
 			AutoMerge:      n.AutoMergeRequest.autoMerge(),
+			ApprovingBots:  n.LatestReviews.approvingBots(),
+			ReviewTexts:    n.LatestReviews.saying(),
 		}, true
 	default:
 		return "", ItemDetails{}, false
@@ -1215,6 +1229,41 @@ func (q graphQLReviews) reviewers(author string, r *Reviews) map[string]bool {
 	}
 
 	return out
+}
+
+// approvingBots lists the bots whose latest review approves the pull request (see
+// ItemDetails.ApprovingBots): by login, lower-cased, each once, in GitHub's order. A
+// person whose login looks like a bot's is never one, nor a bot whose approval was
+// dismissed or that only commented.
+func (q graphQLReviews) approvingBots() []string {
+	out := []string{}
+
+	for _, rev := range q.Nodes {
+		if rev == nil || rev.State != reviewApproved || rev.Author == nil || rev.Author.TypeName != typeBot {
+			continue
+		}
+
+		if login := strings.ToLower(rev.Author.Login); login != "" && !slices.Contains(out, login) {
+			out = append(out, login)
+		}
+	}
+
+	return out
+}
+
+// saying counts the latest reviews that say something (see ItemDetails.ReviewTexts): any
+// but a pending one whose text isn't blank, the pull request's author's own and a dismissed
+// review's included, as the review sheet's conversation counts them.
+func (q graphQLReviews) saying() int {
+	n := 0
+
+	for _, rev := range q.Nodes {
+		if rev != nil && rev.State != ReviewStatePending && strings.TrimSpace(rev.Body) != "" {
+			n++
+		}
+	}
+
+	return n
 }
 
 // reviewerKey identifies a reviewer: a team by its slug, anyone else by login, ignoring
