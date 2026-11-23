@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -119,6 +120,7 @@ type gatherRig struct {
 	locks     *clonelock.Set
 	ssh       *sshFake
 	shellRead bool
+	clock     *testutil.Clock
 }
 
 // newGatherRig builds a gatherRig in a fresh folder, or skips the test without git.
@@ -127,6 +129,7 @@ func newGatherRig(t *testing.T) *gatherRig {
 
 	r := &gatherRig{
 		env: testutil.Git(t), root: testutil.RealTempDir(t), locks: clonelock.New(), ssh: &sshFake{}, shellRead: true,
+		clock: testutil.NewClock(testNow()),
 	}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
@@ -160,6 +163,7 @@ func (r *gatherRig) gatherer() *Gatherer {
 		},
 		Runner: r.ssh.runner,
 		Home:   r.root,
+		Clock:  r.clock,
 	})
 }
 
@@ -248,6 +252,36 @@ func TestGatherNamesTheChecksThatFailed(t *testing.T) {
 	assert.Equal(t, "coverage/project is failing on "+r.second[:shortOIDLen], got.Text)
 	assert.Equal(t, []Fix{FixView, FixCheckAgain}, got.Fixes)
 	assert.True(t, o.Ready, "failing checks only warn")
+}
+
+func TestGatherNamesTheChecksThatNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	r := newGatherRig(t)
+	queued := []QueuedCheck{{Name: ".github/dependabot.yml", URL: "https://github.com/acme-org/sdk/runs/7"}}
+	status := r.github.statuses[name("sdk").Key()]
+	status.Checks, status.Queued, status.QueuedChecks = ChecksPending, 1, queued
+	status.HeadAt = testNow().Add(-time.Hour)
+	r.github.statuses[name("sdk").Key()] = status
+
+	f := r.gather(t, Choice{RunsIn: integrationprefs.RunsInApp})
+	assert.Equal(t, ChecksPending, f.Repo.Checks, "a run queued an hour is still young")
+	assert.Zero(t, f.Repo.Stuck)
+
+	r.clock.Advance(time.Hour + time.Minute)
+
+	f = r.gather(t, Choice{RunsIn: integrationprefs.RunsInApp})
+	assert.Equal(t, ChecksStuck, f.Repo.Checks, "the sheet works the checks out with its clock")
+	assert.Equal(t, 1, f.Repo.Stuck)
+	assert.Equal(t, queued, f.Repo.Queued)
+
+	o := Decide(f)
+	got, ok := checkOf(o, CheckChecks)
+	require.True(t, ok)
+	assert.Equal(t, CheckWarn, got.State)
+	assert.Equal(t, ".github/dependabot.yml never started on "+r.second[:shortOIDLen]+"; the other checks passed", got.Text)
+	assert.Equal(t, "https://github.com/acme-org/sdk/runs/7", got.Link)
+	assert.True(t, o.Ready, "a check that never started only warns")
 }
 
 func TestGatherFindsWhatMatters(t *testing.T) {

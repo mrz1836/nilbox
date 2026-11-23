@@ -102,12 +102,14 @@ export interface Candidate {
 
     /**
      * DefaultBranch, Headline, HeadAt, and Checks describe the default branch's newest
-     * commit; HeadAt is RFC 3339, or "".
+     * commit; HeadAt is RFC 3339, or "". Stuck, when Checks is ChecksStuck, counts that
+     * commit's check runs that never started, and is 0 otherwise.
      */
     "defaultBranch": string;
     "headline": string;
     "headAt": string;
     "checks": Checks;
+    "stuck": number;
 
     /**
      * Clone is the clone's state, for the unreleased group only, or nil.
@@ -290,9 +292,10 @@ export const CheckState = {
 } as const;
 
 /**
- * Checks is the rollup state of the checks on a commit, as GitHub reports it.
+ * Checks is the rollup state of the checks on a commit, as GitHub reports it, or
+ * ChecksStuck, which Release works out from it (checksAt).
  */
-export type Checks = "" | "SUCCESS" | "PENDING" | "EXPECTED" | "FAILURE" | "ERROR";
+export type Checks = "" | "SUCCESS" | "PENDING" | "EXPECTED" | "FAILURE" | "ERROR" | "STUCK";
 
 /**
  * The values of Checks, by the names of their Go constants.
@@ -307,6 +310,14 @@ export const Checks = {
     ChecksExpected: "EXPECTED",
     ChecksFailure: "FAILURE",
     ChecksError: "ERROR",
+
+    /**
+     * ChecksStuck is never GitHub's own: its rollup is PENDING only for check runs it
+     * queued and never started, on a commit more than followChecksFor old, while every
+     * other check finished and none failed (checksAt). The page reads it as passed, with
+     * a warning that names them.
+     */
+    ChecksStuck: "STUCK",
 } as const;
 
 /**

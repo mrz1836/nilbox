@@ -358,6 +358,11 @@ type Check struct {
 	// URL is the check's page, "" when it has none.
 	URL string
 
+	// RunURL is a check run's own page on GitHub, which only the release read asks for
+	// (FetchRepoReleaseStatus); "" otherwise. URL, its details page, can be the page of the
+	// app that ran it instead.
+	RunURL string
+
 	// Required reports a check the base branch requires; false off a pull request, where
 	// GitHub isn't asked.
 	Required bool
@@ -387,6 +392,9 @@ type UnrunSuite struct {
 // SuiteAwaitsApproval is the conclusion of a suite whose run waits for a maintainer's
 // approval, as a fork's first workflow runs do.
 const SuiteAwaitsApproval = "ACTION_REQUIRED"
+
+// CheckRunQueued is a check run's state while GitHub has queued it and not yet started it.
+const CheckRunQueued = "QUEUED"
 
 // Where a check is counted.
 const (
@@ -684,6 +692,7 @@ type graphQLCheck struct {
 	Conclusion string `json:"conclusion"`
 	Status     string `json:"status"`
 	DetailsURL string `json:"detailsUrl"`
+	RunURL     string `json:"url"`
 	IsRequired bool   `json:"isRequired"`
 	CheckSuite *struct {
 		ID          string `json:"id"`
@@ -1022,7 +1031,8 @@ func (c *graphQLCheck) check() (Check, bool) {
 		}
 
 		check := Check{
-			Kind: CheckKindRun, Name: c.Name, State: state, Outcome: counted.word(), URL: c.DetailsURL, Required: c.IsRequired,
+			Kind: CheckKindRun, Name: c.Name, State: state, Outcome: counted.word(), URL: c.DetailsURL, RunURL: c.RunURL,
+			Required: c.IsRequired,
 		}
 
 		if s := c.CheckSuite; s != nil && s.WorkflowRun != nil && s.WorkflowRun.Workflow != nil {

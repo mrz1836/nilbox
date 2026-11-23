@@ -136,7 +136,7 @@ func TestLatestReleasesAdaptsGitHubsAnswer(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	releases := latestReleases{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
+		tokens: fakeTokens(),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 
@@ -344,7 +344,7 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
+		tokens: fakeTokens(),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
@@ -398,7 +398,7 @@ func TestReleaseGitHubNamesTheSheetsFailedChecks(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
+		tokens: fakeTokens(),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
@@ -409,15 +409,62 @@ func TestReleaseGitHubNamesTheSheetsFailedChecks(t *testing.T) {
 	assert.Equal(t, release.RepoStatus{
 		Permission: "WRITE", DefaultBranch: "master", HeadOID: "c2",
 		HeadAt: time.Date(2026, 11, 10, 4, 0, 0, 0, time.UTC), Headline: "Fix retries",
-		Checks:  release.ChecksFailure,
-		Failing: []release.FailedCheck{{Name: "Test"}, {Name: "coverage/project", Status: true}},
-		Tags:    []release.Tag{},
+		Checks:       release.ChecksFailure,
+		Failing:      []release.FailedCheck{{Name: "Test"}, {Name: "coverage/project", Status: true}},
+		QueuedChecks: []release.QueuedCheck{},
+		Tags:         []release.Tag{},
 	}, status, "only what failed, a commit status marked as one")
 	assert.Equal(t, int32(1), requests.Load(), "one query reads the status and its checks")
 
 	_, found, err = gh.RepoStatus(t.Context(), repo.Name{Owner: boundOwner, Repo: "deleted-repo"})
 	require.NoError(t, err)
 	assert.False(t, found, "a repository GitHub can't find isn't found")
+}
+
+func TestReleaseGitHubReadsTheChecksThatNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":{"r0":{"isArchived":false,"viewerPermission":"WRITE",
+			"defaultBranchRef":{"name":"master","target":{"oid":"c2","messageHeadline":"Fix retries",
+			"committedDate":"2026-11-10T04:00:00Z","statusCheckRollup":{"state":"PENDING",
+			"counts":{"checkRunCountsByState":[{"state":"QUEUED","count":2},{"state":"IN_PROGRESS","count":1},
+			{"state":"SUCCESS","count":4}],"statusContextCountsByState":[{"state":"PENDING","count":1}]},
+			"contexts":{"nodes":[
+			{"__typename":"CheckRun","name":"Lint","status":"COMPLETED","conclusion":"SUCCESS",
+				"url":"https://github.com/acme-org/sdk/runs/1"},
+			{"__typename":"CheckRun","name":".github/dependabot.yml","status":"QUEUED","conclusion":null,
+				"detailsUrl":"https://dependabot.example.com","url":"https://github.com/acme-org/sdk/runs/2"},
+			{"__typename":"CheckRun","name":"Bench","status":"IN_PROGRESS","conclusion":null,
+				"url":"https://github.com/acme-org/sdk/runs/3"},
+			{"__typename":"CheckRun","name":"Deploy","status":"QUEUED","conclusion":null},
+			{"__typename":"StatusContext","context":"coverage/project","state":"PENDING"}]}}}},
+			"refs":{"nodes":[]}},"rateLimit":{"cost":1}}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	gh := releaseGitHub{
+		tokens: fakeTokens(),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
+
+	listed, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, nil)
+	require.NoError(t, err)
+	require.Contains(t, listed, sdk.Key())
+	assert.Equal(t, 2, listed[sdk.Key()].Queued, "the list counts the runs never started")
+	assert.Equal(t, 2, listed[sdk.Key()].Running, "and the other checks unfinished")
+	assert.Nil(t, listed[sdk.Key()].QueuedChecks, "but names none of them")
+
+	status, found, err := gh.RepoStatus(t.Context(), sdk)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 2, status.Queued)
+	assert.Equal(t, 2, status.Running)
+	assert.Equal(t, []release.QueuedCheck{
+		{Name: ".github/dependabot.yml", URL: "https://github.com/acme-org/sdk/runs/2"},
+		{Name: "Deploy"},
+	}, status.QueuedChecks, "the sheet names each with its own run's page, never the app's")
 }
 
 func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
@@ -522,7 +569,7 @@ func TestReleaseGitHubReadsTheWorkflowAndTheBudgetCountsEveryPoll(t *testing.T) 
 	// stand-in.
 	c.client.BaseURL, c.client.HTTP = srv.URL, srv.Client()
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
+		tokens: fakeTokens(),
 		client: c.client,
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}

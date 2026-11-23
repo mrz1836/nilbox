@@ -49,14 +49,25 @@ const (
 // releaseStatusFragment is what the status query reads of each repository, with what the
 // rollup adds to its state (releaseChecksFields, or nothing) and releaseTagsMax in place of
 // its verbs: whether it is archived, the viewer's access, the default branch and its newest
-// commit with that commit's check rollup, and the newest tags by commit date, each with what
-// it points at and, for an annotated tag, what the tag object points at.
+// commit with that commit's check rollup and how many of its checks are in each state, and
+// the newest tags by commit date, each with what it points at and, for an annotated tag,
+// what the tag object points at. The counts are read under their own alias, so the read of
+// one repository can list the checks too (releaseChecksFields); they cost no point more.
 const releaseStatusFragment = `
 fragment ReleaseStatusFields on Repository {
   isArchived viewerPermission
   defaultBranchRef {
     name
-    target { oid ... on Commit { committedDate messageHeadline statusCheckRollup { state%s } } }
+    target {
+      oid
+      ... on Commit {
+        committedDate messageHeadline
+        statusCheckRollup {
+          state
+          counts: contexts { checkRunCountsByState { state count } statusContextCountsByState { state count } }%s
+        }
+      }
+    }
   }
   refs(refPrefix: "refs/tags/", first: %d, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
     nodes { name target { __typename oid ... on Tag { target { __typename oid } } } }
@@ -65,16 +76,17 @@ fragment ReleaseStatusFields on Repository {
 `
 
 // releaseChecksFields is what the read of one repository adds to its newest commit's
-// rollup, with releaseChecksMax in place of its verb: each check run, with the workflow it
-// belongs to, and each commit status, with its page. GitHub counts one connection more,
-// which stays within the query's one point.
-const releaseChecksFields = ` contexts(first: %d) {
-      nodes {
-        __typename
-        ... on CheckRun { name conclusion status detailsUrl checkSuite { workflowRun { workflow { name } } } }
-        ... on StatusContext { context state targetUrl }
-      }
-    }`
+// rollup, with releaseChecksMax in place of its verb: each check run, with its own page on
+// GitHub and the workflow it belongs to, and each commit status, with its page. GitHub
+// counts one connection more, which stays within the query's one point.
+const releaseChecksFields = `
+          contexts(first: %d) {
+            nodes {
+              __typename
+              ... on CheckRun { name conclusion status detailsUrl url checkSuite { workflowRun { workflow { name } } } }
+              ... on StatusContext { context state targetUrl }
+            }
+          }`
 
 // releaseCompareFragment is what the compare query reads of a comparison, with
 // releaseCommitsMax in place of its verb: how far the head is ahead, and its newest
@@ -108,6 +120,13 @@ type ReleaseStatus struct {
 	// HeadChecks is the rollup state of Head's checks and statuses: SUCCESS, PENDING,
 	// FAILURE, ERROR, or EXPECTED, and "" when it has none.
 	HeadChecks string
+
+	// HeadQueued counts Head's check runs that GitHub queued and never started
+	// (CheckRunQueued), and HeadRunning its other checks and statuses that haven't finished:
+	// a check run in progress, waiting, or pending, a commit status pending or expected, and
+	// one in a state this build doesn't know.
+	HeadQueued  int
+	HeadRunning int
 
 	// HeadCheckList is each of Head's check runs and commit statuses, at most 100, which
 	// only FetchRepoReleaseStatus reads; FetchReleaseStatus leaves it nil.
@@ -169,7 +188,8 @@ type ReleaseCommit struct {
 
 // FetchReleaseStatus reads, for each repository, what a release needs to know before it
 // compares anything: whether it is archived, the viewer's access, the default branch and
-// its newest commit, and its newest tags. The answers are keyed by each repository's Key,
+// its newest commit, with its checks' rollup state and how many of them haven't finished,
+// and its newest tags. The answers are keyed by each repository's Key,
 // and a repository named twice is asked about once. A repository GitHub can't resolve, or
 // won't show the token, is left out; any other error fails the whole call. The
 // repositories are asked about 15 to a query, at most four queries at a time, each costing
@@ -480,7 +500,8 @@ type releaseCommit struct {
 	MessageHeadline   string    `json:"messageHeadline"`
 	CommittedDate     time.Time `json:"committedDate"`
 	StatusCheckRollup *struct {
-		State    string `json:"state"`
+		State    string               `json:"state"`
+		Counts   graphQLContextCounts `json:"counts"`
 		Contexts struct {
 			Nodes []*graphQLCheck `json:"nodes"`
 		} `json:"contexts"`
@@ -520,6 +541,7 @@ func (r *releaseStatusRepo) status(checks bool) (ReleaseStatus, bool) {
 	if ref := r.DefaultBranchRef; ref != nil {
 		out.DefaultBranch = ref.Name
 		out.Head, out.HeadChecks = ref.Target.commit(), ref.Target.checks()
+		out.HeadQueued, out.HeadRunning = ref.Target.unfinished()
 
 		if checks {
 			out.HeadCheckList = ref.Target.checkList()
@@ -551,6 +573,35 @@ func (n *releaseCommit) checks() string {
 	}
 
 	return n.StatusCheckRollup.State
+}
+
+// unfinished counts the commit's checks that haven't finished, from its rollup's counts:
+// queued, its check runs GitHub queued and never started, and running, the rest of those
+// counted as pending (checkRunOutcome, statusOutcome), which takes in a state this build
+// doesn't know. Both are zero when it has no checks.
+func (n *releaseCommit) unfinished() (queued, running int) {
+	if n == nil || n.StatusCheckRollup == nil {
+		return 0, 0
+	}
+
+	counts := n.StatusCheckRollup.Counts
+
+	for _, s := range counts.CheckRunCountsByState {
+		switch {
+		case s.State == CheckRunQueued:
+			queued += s.Count
+		case checkRunOutcome(s.State) == outcomePending:
+			running += s.Count
+		}
+	}
+
+	for _, s := range counts.StatusContextCountsByState {
+		if statusOutcome(s.State) == outcomePending {
+			running += s.Count
+		}
+	}
+
+	return queued, running
 }
 
 // checkList converts each of the commit's check runs and commit statuses, skipping nulls

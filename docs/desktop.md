@@ -1349,9 +1349,12 @@ the age join them there. From the left:
   while the checks on its newest commit fail, amber while your clone stops a release (below), a
   grey pulse while the checks run, green once they passed with nothing in the way, and muted
   when the commit has no checks, which never reads as ready. A row both failing and blocked
-  shows red.
-- **The checks** on the default branch's newest commit, as an icon (✓ passed, a pulsing dot
-  while they run, ✗ failing, or a ring for none), its words in its tooltip.
+  shows red. Checks that are done but for a run GitHub queued and never started, two hours
+  after the commit (as an app's check GitHub never runs, which the Actions page doesn't
+  list), read as passed: green, without the pulse.
+- **The checks** on the default branch's newest commit, as an icon (✓ passed, an amber ✓ when
+  they passed but a run never started, *checks passed, 1 never started*, a pulsing dot while
+  they run, ✗ failing, or a ring for none), its words in its tooltip.
 - **The repository:** its owner, muted, and its name, cut short with the whole in its tooltip.
   A pinned repository has a pin after its name, so the names still line up, and its tooltip
   says which rule pins it and where to unpin it.
@@ -1401,7 +1404,12 @@ Unmute itself unmutes, never a click on the row.
   workflow passed. A failing line names what failed (*codecov/project is failing on 4ce994b*;
   past three, two and a count), read in the same query as the rest, and **View on GitHub** opens
   the commit's checks, or the commit itself when a commit status failed, since the checks page
-  lists none. A failing or running line offers **Check again**, which reads GitHub afresh.
+  lists none. A check run GitHub still has only queued two hours after the commit, with every
+  other check done and none failing, never started: the line warns and names it
+  (*.github/dependabot.yml never started on 4ce994b; the other checks passed*), and **View on
+  GitHub** opens that run's own page, or the commit's checks when more than one never started.
+  A running line's **View on GitHub** opens the commit's checks. A failing, stuck, or running
+  line offers **Check again**, which reads GitHub afresh.
 - **What's in it:** the newest commits since the newest version, from GitHub (up to 10, three
   shown until you ask for the rest, with GitHub's comparison for any past those), each linked
   to its commit.

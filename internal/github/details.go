@@ -809,11 +809,15 @@ type graphQLReviews struct {
 
 // graphQLRollup is the head commit's combined check result.
 type graphQLRollup struct {
-	State    string `json:"state"`
-	Contexts struct {
-		CheckRunCountsByState      []graphQLStateCount `json:"checkRunCountsByState"`
-		StatusContextCountsByState []graphQLStateCount `json:"statusContextCountsByState"`
-	} `json:"contexts"`
+	State    string               `json:"state"`
+	Contexts graphQLContextCounts `json:"contexts"`
+}
+
+// graphQLContextCounts is how many of a rollup's check runs, and of its commit statuses, are
+// in each state.
+type graphQLContextCounts struct {
+	CheckRunCountsByState      []graphQLStateCount `json:"checkRunCountsByState"`
+	StatusContextCountsByState []graphQLStateCount `json:"statusContextCountsByState"`
 }
 
 // graphQLStateCount is how many checks are in one state.

@@ -208,8 +208,9 @@ func TestFetchReleaseStatusReadsEachRepository(t *testing.T) {
 		assert.Contains(t, query, `r4: repository(owner: "acme-org", name: "single-sign-on") { ...ReleaseStatusFields }`)
 		assert.Contains(t, query, "fragment ReleaseStatusFields on Repository {")
 		assert.Contains(t, query, "isArchived viewerPermission")
-		assert.Contains(t, query, "statusCheckRollup { state }", "the list reads the rollup's state alone")
-		assert.NotContains(t, query, "contexts(")
+		assert.Contains(t, query, "counts: contexts { checkRunCountsByState { state count } "+
+			"statusContextCountsByState { state count } }", "the list reads the rollup's state and its counts")
+		assert.NotContains(t, query, "contexts(", "but never lists the checks")
 		assert.Contains(t, query, `refs(refPrefix: "refs/tags/", first: 20, orderBy: {field: TAG_COMMIT_DATE, direction: DESC})`)
 		assert.Contains(t, query, "... on Tag { target { __typename oid } }", "an annotated tag is peeled to what it marks")
 		assert.Contains(t, query, "rateLimit { cost }", "the query reports its cost")
@@ -269,9 +270,11 @@ const repoReleaseStatusBody = `{
           "messageHeadline": "Add the release page", "statusCheckRollup": {"state": "FAILURE", "contexts": {"nodes": [
             {"__typename": "CheckRun", "name": "Lint", "status": "COMPLETED", "conclusion": "SUCCESS",
               "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/1/job/2",
+              "url": "https://github.com/acme-org/example-repo/runs/2",
               "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}},
             {"__typename": "CheckRun", "name": "Test", "status": "COMPLETED", "conclusion": "TIMED_OUT",
               "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/1/job/3",
+              "url": "https://github.com/acme-org/example-repo/runs/3",
               "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}},
             {"__typename": "StatusContext", "context": "coverage/project", "state": "FAILURE",
               "targetUrl": "https://coverage.example.com/acme-org/example-repo"},
@@ -297,7 +300,9 @@ func TestFetchRepoReleaseStatusListsTheHeadsChecks(t *testing.T) {
 		assert.True(t, strings.HasPrefix(query, "query ReleaseStatus {"), "a query, never a mutation")
 		assert.Equal(t, 1, releaseAliases(query))
 		assert.Contains(t, query, `r0: repository(owner: "acme-org", name: "example-repo") { ...ReleaseStatusFields }`)
-		assert.Contains(t, query, "statusCheckRollup { state contexts(first: 100) {")
+		assert.Contains(t, query, "counts: contexts { checkRunCountsByState", "the counts, under their own alias")
+		assert.Contains(t, query, "contexts(first: 100) {")
+		assert.Contains(t, query, "... on CheckRun { name conclusion status detailsUrl url ", "a run's own page is read")
 		assert.Contains(t, query, "... on StatusContext { context state targetUrl }", "a commit status is read too")
 		assert.Contains(t, query, "rateLimit { cost }", "the query reports its cost")
 
@@ -315,17 +320,145 @@ func TestFetchRepoReleaseStatusListsTheHeadsChecks(t *testing.T) {
 	assert.Equal(t, []Check{
 		{
 			Kind: CheckKindRun, Name: "Lint", Workflow: "CI", State: "SUCCESS", Outcome: CheckPassed,
-			URL: "https://github.com/acme-org/example-repo/actions/runs/1/job/2",
+			URL:    "https://github.com/acme-org/example-repo/actions/runs/1/job/2",
+			RunURL: "https://github.com/acme-org/example-repo/runs/2",
 		},
 		{
 			Kind: CheckKindRun, Name: "Test", Workflow: "CI", State: "TIMED_OUT", Outcome: CheckFailed,
-			URL: "https://github.com/acme-org/example-repo/actions/runs/1/job/3",
+			URL:    "https://github.com/acme-org/example-repo/actions/runs/1/job/3",
+			RunURL: "https://github.com/acme-org/example-repo/runs/3",
 		},
 		{
 			Kind: CheckKindStatus, Name: "coverage/project", State: "FAILURE", Outcome: CheckFailed,
 			URL: "https://coverage.example.com/acme-org/example-repo",
 		},
 	}, got.HeadCheckList, "a null node and one of an unknown type are skipped")
+}
+
+// stuckReleaseStatusBody answers the read of one repository whose rollup GitHub keeps
+// PENDING for one check run alone: every Actions check finished, passed or skipped, and so
+// did both coverage statuses, but Dependabot's config check, which no workflow runs, was
+// queued and never started. Its details page is the app's own site, and its url the run's
+// page on GitHub.
+const stuckReleaseStatusBody = `{
+  "data": {
+    "r0": {
+      "isArchived": false,
+      "viewerPermission": "ADMIN",
+      "defaultBranchRef": {
+        "name": "master",
+        "target": {"oid": "4444444444444444444444444444444444444444", "committedDate": "2026-11-22T03:27:41Z",
+          "messageHeadline": "Bump the actions group", "statusCheckRollup": {"state": "PENDING",
+          "counts": {
+            "checkRunCountsByState": [{"state": "QUEUED", "count": 1}, {"state": "SKIPPED", "count": 2},
+              {"state": "SUCCESS", "count": 18}],
+            "statusContextCountsByState": [{"state": "SUCCESS", "count": 2}]
+          },
+          "contexts": {"nodes": [
+            {"__typename": "CheckRun", "name": "All Tests Passed", "status": "COMPLETED", "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/5/job/6",
+              "url": "https://github.com/acme-org/example-repo/runs/6",
+              "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}},
+            {"__typename": "CheckRun", "name": ".github/dependabot.yml", "status": "QUEUED", "conclusion": null,
+              "detailsUrl": "https://dependabot-api.githubapp.com",
+              "url": "https://github.com/acme-org/example-repo/runs/7", "checkSuite": {"workflowRun": null}},
+            {"__typename": "StatusContext", "context": "codecov/project", "state": "SUCCESS",
+              "targetUrl": "https://coverage.example.com/acme-org/example-repo"}
+          ]}}}
+      },
+      "refs": {"nodes": []}
+    },
+    "rateLimit": {"cost": 1}
+  }
+}`
+
+func TestFetchRepoReleaseStatusReadsACheckRunNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, stuckReleaseStatusBody)
+	})
+
+	got, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+		repo.Name{Owner: filesOwner, Repo: exampleRepo})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, "PENDING", got.HeadChecks)
+	assert.Equal(t, 1, got.HeadQueued, "the one run never started")
+	assert.Zero(t, got.HeadRunning, "and nothing else is unfinished")
+	require.Len(t, got.HeadCheckList, 3)
+	assert.Equal(t, Check{
+		Kind: CheckKindRun, Name: ".github/dependabot.yml", State: CheckRunQueued, Outcome: CheckPending,
+		URL: "https://dependabot-api.githubapp.com", RunURL: "https://github.com/acme-org/example-repo/runs/7",
+	}, got.HeadCheckList[1], "a run's own page on GitHub, apart from its details page")
+	assert.Empty(t, got.HeadCheckList[2].RunURL, "a commit status has no run page")
+}
+
+func TestFetchReleaseStatusCountsTheUnfinishedChecks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		rollup  string
+		queued  int
+		running int
+	}{
+		{name: "no rollup", rollup: `null`},
+		{name: "no counts", rollup: `{"state": "SUCCESS"}`},
+		{
+			name: "every check finished",
+			rollup: `{"state": "FAILURE", "counts": {"checkRunCountsByState": [{"state": "SUCCESS", "count": 3},
+				{"state": "NEUTRAL", "count": 1}, {"state": "SKIPPED", "count": 1}, {"state": "FAILURE", "count": 1},
+				{"state": "TIMED_OUT", "count": 1}, {"state": "STARTUP_FAILURE", "count": 1}],
+				"statusContextCountsByState": [{"state": "SUCCESS", "count": 1}, {"state": "ERROR", "count": 1},
+				{"state": "FAILURE", "count": 1}]}}`,
+		},
+		{
+			name: "one run never started",
+			rollup: `{"state": "PENDING", "counts": {"checkRunCountsByState": [{"state": "QUEUED", "count": 1},
+				{"state": "SUCCESS", "count": 18}], "statusContextCountsByState": [{"state": "SUCCESS", "count": 2}]}}`,
+			queued: 1,
+		},
+		{
+			name: "runs queued and running",
+			rollup: `{"state": "PENDING", "counts": {"checkRunCountsByState": [{"state": "QUEUED", "count": 2},
+				{"state": "IN_PROGRESS", "count": 1}, {"state": "WAITING", "count": 1}, {"state": "PENDING", "count": 1}]}}`,
+			queued: 2, running: 3,
+		},
+		{
+			name: "statuses pending and expected",
+			rollup: `{"state": "PENDING", "counts": {"statusContextCountsByState": [{"state": "PENDING", "count": 1},
+				{"state": "EXPECTED", "count": 1}]}}`,
+			running: 2,
+		},
+		{
+			name: "states this build doesn't know count as running",
+			rollup: `{"state": "PENDING", "counts": {"checkRunCountsByState": [{"state": "SOMETHING_NEW", "count": 1}],
+				"statusContextCountsByState": [{"state": "SOMETHING_NEW", "count": 1}]}}`,
+			running: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = fmt.Fprintf(w, `{"data": {"r0": {"viewerPermission": "WRITE", "defaultBranchRef": {"name": "main",
+					"target": {"oid": "7777777777777777777777777777777777777777", "statusCheckRollup": %s}},
+					"refs": {"nodes": []}}, "rateLimit": {"cost": 1}}}`, tt.rollup)
+			})
+
+			name := repo.Name{Owner: filesOwner, Repo: exampleRepo}
+
+			got, err := client.FetchReleaseStatus(t.Context(), NewToken(fakeToken), []repo.Name{name}, nil)
+			require.NoError(t, err)
+			require.Contains(t, got, name.Key())
+			assert.Equal(t, tt.queued, got[name.Key()].HeadQueued, "queued")
+			assert.Equal(t, tt.running, got[name.Key()].HeadRunning, "running")
+		})
+	}
 }
 
 func TestFetchRepoReleaseStatusWithoutChecksOrRepository(t *testing.T) {

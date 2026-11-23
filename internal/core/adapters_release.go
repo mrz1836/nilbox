@@ -106,7 +106,7 @@ func (r releaseGitHub) ReleaseStatus(
 }
 
 // RepoStatus is the release sheet's read of one repository: round one, with its newest
-// commit's failed checks, in the same query.
+// commit's failed checks and its check runs never started, in the same query.
 func (r releaseGitHub) RepoStatus(ctx context.Context, name repo.Name) (release.RepoStatus, bool, error) {
 	type answer struct {
 		status github.ReleaseStatus
@@ -128,6 +128,7 @@ func (r releaseGitHub) RepoStatus(ctx context.Context, name repo.Name) (release.
 
 	out := releaseRepoStatus(got.status)
 	out.Failing = failedChecks(got.status.HeadCheckList)
+	out.QueuedChecks = queuedChecks(got.status.HeadCheckList)
 
 	return out, true, nil
 }
@@ -142,9 +143,23 @@ func releaseRepoStatus(st github.ReleaseStatus) release.RepoStatus {
 	return release.RepoStatus{
 		Archived: st.Archived, Permission: st.ViewerPermission, DefaultBranch: st.DefaultBranch,
 		HeadOID: st.Head.OID, HeadAt: st.Head.CommittedAt, Headline: st.Head.Headline,
-		Checks: release.Checks(st.HeadChecks),
-		Tags:   tags,
+		Checks: release.Checks(st.HeadChecks), Queued: st.HeadQueued, Running: st.HeadRunning,
+		Tags: tags,
 	}
+}
+
+// queuedChecks are the check runs GitHub queued and never started among a commit's, in
+// GitHub's order, each with its own page on GitHub.
+func queuedChecks(checks []github.Check) []release.QueuedCheck {
+	out := []release.QueuedCheck{}
+
+	for _, c := range checks {
+		if c.Kind == github.CheckKindRun && c.State == github.CheckRunQueued {
+			out = append(out, release.QueuedCheck{Name: c.Name, URL: c.RunURL})
+		}
+	}
+
+	return out
 }
 
 // failedChecks are the checks that failed among a commit's, in GitHub's order.

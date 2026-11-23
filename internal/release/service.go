@@ -266,7 +266,7 @@ func NewService(cfg Config) *Service {
 		s.git = cfg.Git
 		s.gatherer = NewGatherer(GatherConfig{
 			Git: cfg.Git, GitHub: cfg.GitHub, Origins: cfg.Origins, Tools: cfg.Tools, Locks: cfg.Locks, Env: s.env,
-			Runner: cfg.Runner, Home: cfg.Home,
+			Runner: cfg.Runner, Home: cfg.Home, Clock: s.clock,
 		})
 	}
 
@@ -558,17 +558,18 @@ func (s *Service) askGitHub(
 	return statuses, compares, nil
 }
 
-// candidates works out each listed clone's row from GitHub's answers, its folder written
-// with ~ for home.
+// candidates works out each listed clone's row from GitHub's answers, as of now, its folder
+// written with ~ for home.
 func (s *Service) candidates(listed []clone, statuses map[string]RepoStatus, compares map[string]Compare) []Candidate {
 	out := make([]Candidate, 0, len(listed))
+	now := s.clock.Now()
 
 	for _, c := range listed {
 		key := c.origin.Key()
 		status, found := statuses[key]
 		since, compared := compares[key]
 
-		cand := candidateFor(c, status, found, since, compared)
+		cand := candidateFor(c, status, found, since, compared, now)
 		cand.Dir = paths.Tilde(c.dir, s.home)
 		out = append(out, cand)
 	}

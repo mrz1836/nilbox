@@ -36,7 +36,9 @@ const (
 	// followChecksFor is how long after its newest commit a repository's checks are
 	// followed. A commit older than this whose checks still read running, as when a required
 	// check is never reported and the rollup stays EXPECTED, isn't followed, so it can't
-	// spend the budget for good; Read GitHub again still reads it.
+	// spend the budget for good; Read GitHub again still reads it. It is also when a check
+	// run GitHub still has only queued reads as never started (checksAt): a row still
+	// running when last read within it is read once more after it (followsChecks).
 	followChecksFor = 2 * time.Hour
 
 	// followChecksJob names the follow's rounds in log entries.
@@ -110,9 +112,11 @@ func (s *Service) followChecks(ctx context.Context) error {
 }
 
 // landFollowed replaces the rows of the repositories keys, read again as rows, in the last
-// list, and stamps them read now. Only when a row the page shows changed does it keep the
-// list for the next start and tell the window. No refresh or patch ran since the rows were
-// picked (startReading), so the list is the one they were taken from.
+// list, and stamps them read now. The rows land even when the page would show them as
+// they were, since the follow asks when each was worked out (followsChecks), but only when
+// a row the page shows changed does it keep the list for the next start and tell the
+// window. No refresh or patch ran since the rows were picked (startReading), so the list
+// is the one they were taken from.
 func (s *Service) landFollowed(ctx context.Context, root string, keys map[string]bool, rows []Candidate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,16 +131,17 @@ func (s *Service) landFollowed(ctx context.Context, root string, keys map[string
 		}
 	}
 
-	if sameRows(before, rows) {
-		return
-	}
-
 	list := s.last
 	list.Repos = slices.DeleteFunc(slices.Clone(s.last.Repos), func(c Candidate) bool { return keys[c.origin.Key()] })
 	list.Repos = append(list.Repos, rows...)
 	sortCandidates(list.Repos)
 
 	s.last = list
+
+	if sameRows(before, rows) {
+		return
+	}
+
 	s.keep(context.WithoutCancel(ctx), list, root)
 	s.events.Emit(event.ReleasesUpdated{})
 }
@@ -200,13 +205,36 @@ func (s *Service) followable(c Candidate, now time.Time) (time.Time, bool) {
 
 // followsChecks reports whether c's row is one whose checks are followed at now: GitHub
 // was asked about it, its newest commit's checks are running (pending, or expected and not
-// yet reported), and that commit is no older than followChecksFor.
+// yet reported), and that commit is no older than followChecksFor. A pending row worked
+// out while its commit was no older than that is followed once more after it: that read
+// is the first that can find a check run never started (checksAt), and its row, stuck or
+// still pending, was worked out later, so it isn't followed again.
 func followsChecks(c Candidate, now time.Time) bool {
-	if c.unread() || (c.Checks != ChecksPending && c.Checks != ChecksExpected) {
+	if c.unread() || (c.Checks != ChecksPending && c.Checks != ChecksExpected) || c.headAt.IsZero() {
 		return false
 	}
 
-	return !c.headAt.IsZero() && now.Sub(c.headAt) <= followChecksFor
+	if now.Sub(c.headAt) <= followChecksFor {
+		return true
+	}
+
+	return c.Checks == ChecksPending && !c.workedAt.IsZero() && c.workedAt.Sub(c.headAt) <= followChecksFor
+}
+
+// checksAt is how the page reads, at now, the checks of the newest commit s describes:
+// ChecksStuck when GitHub's rollup is PENDING only for check runs it queued and never
+// started, on a commit more than followChecksFor old, and GitHub's own state otherwise. A
+// PENDING rollup means nothing failed, since a failure makes it FAILURE; a run still only
+// queued that long after its commit, as an app's check GitHub never starts, would read as
+// running until the next commit. Any other check that hasn't finished, one in a state
+// Release doesn't know among them, leaves it PENDING, so nothing really running is hidden.
+func checksAt(s RepoStatus, now time.Time) Checks {
+	if s.Checks != ChecksPending || s.Queued == 0 || s.Running != 0 || s.HeadAt.IsZero() ||
+		now.Sub(s.HeadAt) <= followChecksFor {
+		return s.Checks
+	}
+
+	return ChecksStuck
 }
 
 // sameRows reports whether a and b would show the same on the page: their rows as the

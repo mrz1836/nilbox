@@ -328,6 +328,8 @@ export type Readiness = 'failing' | 'blocked' | 'running' | 'ready' | 'none'
 // readiness reads a repository's readiness from its checks and its clone, the first that
 // applies: failing checks, a clone note that blocks, running checks, passed checks, and
 // then none. A clone that is failing and blocked reads as failing, the louder of the two.
+// Checks stuck on runs that never started read as passed: nothing failed, and nothing
+// still runs.
 export function readiness(c: Pick<ReleaseCandidate, 'checks' | 'clone' | 'defaultBranch'>): Readiness {
   const { checks } = c
 
@@ -344,6 +346,7 @@ export function readiness(c: Pick<ReleaseCandidate, 'checks' | 'clone' | 'defaul
     case 'EXPECTED':
       return 'running'
     case 'SUCCESS':
+    case 'STUCK':
       return 'ready'
     case '':
       return 'none'
@@ -374,11 +377,14 @@ export function readinessCounts(
     .filter((c) => c.count > 0)
 }
 
-// commitChecksText says how the checks on a commit went, as words beside their icon.
-export function commitChecksText(checks: CommitChecks): string {
+// commitChecksText says how the checks on a commit went, as words beside their icon, with
+// stuck, how many of its check runs never started when they are stuck.
+export function commitChecksText(checks: CommitChecks, stuck = 0): string {
   switch (checks) {
     case 'SUCCESS':
       return 'checks passed'
+    case 'STUCK':
+      return `checks passed, ${formatCount(Math.max(stuck, 1))} never started`
     case 'PENDING':
     case 'EXPECTED':
       return 'checks running'

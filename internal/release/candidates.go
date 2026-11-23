@@ -46,7 +46,8 @@ func readOnlyPermissions() []string {
 	return []string{"READ", "TRIAGE", "NONE"}
 }
 
-// Checks is the rollup state of the checks on a commit, as GitHub reports it.
+// Checks is the rollup state of the checks on a commit, as GitHub reports it, or
+// ChecksStuck, which Release works out from it (checksAt).
 type Checks string
 
 // The checks' states; ChecksNone is a commit without checks.
@@ -57,6 +58,12 @@ const (
 	ChecksExpected Checks = "EXPECTED"
 	ChecksFailure  Checks = "FAILURE"
 	ChecksError    Checks = "ERROR"
+
+	// ChecksStuck is never GitHub's own: its rollup is PENDING only for check runs it
+	// queued and never started, on a commit more than followChecksFor old, while every
+	// other check finished and none failed (checksAt). The page reads it as passed, with
+	// a warning that names them.
+	ChecksStuck Checks = "STUCK"
 )
 
 // RepoStatus is what GitHub says about a repository, round one of the candidates: core
@@ -75,12 +82,29 @@ type RepoStatus struct {
 	Headline      string
 	Checks        Checks
 
-	// Failing are the newest commit's checks that failed, in GitHub's order, which only
-	// GitHub.RepoStatus reads; nil from ReleaseStatus.
-	Failing []FailedCheck
+	// Queued counts the newest commit's check runs GitHub queued and never started, and
+	// Running its other checks that haven't finished, a state Release doesn't know among
+	// them: what checksAt works ChecksStuck out from.
+	Queued  int
+	Running int
+
+	// Failing are the newest commit's checks that failed, and QueuedChecks its check runs
+	// queued and never started, each in GitHub's order, which only GitHub.RepoStatus reads;
+	// nil from ReleaseStatus.
+	Failing      []FailedCheck
+	QueuedChecks []QueuedCheck
 
 	// Tags are the newest tags by commit date, each with the commit it points at.
 	Tags []Tag
+}
+
+// QueuedCheck is a check run GitHub queued on a commit and never started.
+type QueuedCheck struct {
+	// Name is the check run's name.
+	Name string
+
+	// URL is the run's own page on GitHub, or "" when GitHub gave none.
+	URL string
 }
 
 // FailedCheck is a check run or commit status that failed on a commit.
@@ -150,20 +174,25 @@ type Candidate struct {
 	Commits []Commit `json:"commits"`
 
 	// DefaultBranch, Headline, HeadAt, and Checks describe the default branch's newest
-	// commit; HeadAt is RFC 3339, or "".
+	// commit; HeadAt is RFC 3339, or "". Stuck, when Checks is ChecksStuck, counts that
+	// commit's check runs that never started, and is 0 otherwise.
 	DefaultBranch string `json:"defaultBranch"`
 	Headline      string `json:"headline"`
 	HeadAt        string `json:"headAt"`
 	Checks        Checks `json:"checks"`
+	Stuck         int    `json:"stuck"`
 
 	// Clone is the clone's state, for the unreleased group only, or nil.
 	Clone *CloneState `json:"clone"`
 
 	// dir is the clone's absolute folder, origin its repository, and headAt the newest
-	// commit's time, for sorting.
-	dir    string
-	origin repo.Name
-	headAt time.Time
+	// commit's time, for sorting. workedAt is when the row was worked out from GitHub's
+	// answer (candidateFor), which the checks' follow asks of a row still running; zero for
+	// a row kept from a past start.
+	dir      string
+	origin   repo.Name
+	headAt   time.Time
+	workedAt time.Time
 }
 
 // CloneState is what a clone's read-only checks found, for the Release page's row: the
@@ -185,14 +214,18 @@ type clone struct {
 	origin repo.Name
 }
 
-// candidateFor works out where a clone's repository is listed from GitHub's status,
+// candidateFor works out at now where a clone's repository is listed from GitHub's status,
 // and, when it has a version, the comparison with it. compared reports whether the
 // comparison was asked for and answered.
-func candidateFor(c clone, status RepoStatus, found bool, since Compare, compared bool) Candidate {
+func candidateFor(c clone, status RepoStatus, found bool, since Compare, compared bool, now time.Time) Candidate {
 	out := Candidate{
 		Repo: c.origin.String(), dir: c.dir, origin: c.origin, Commits: []Commit{},
-		DefaultBranch: status.DefaultBranch, Headline: status.Headline, Checks: status.Checks,
-		headAt: status.HeadAt,
+		DefaultBranch: status.DefaultBranch, Headline: status.Headline, Checks: checksAt(status, now),
+		headAt: status.HeadAt, workedAt: now,
+	}
+
+	if out.Checks == ChecksStuck {
+		out.Stuck = status.Queued
 	}
 
 	if !status.HeadAt.IsZero() {
