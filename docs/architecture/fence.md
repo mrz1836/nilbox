@@ -1,5 +1,7 @@
 # internal/fence
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/fence`](../../internal/fence) · Guide: [Fences: what a background agent may do](../guide/autopilot/fences.md), [What Autopilot never does](../guide/autopilot/never-does.md)
+
 `internal/fence/` keeps an unattended agent run inside what its routine's tools preset promises
 (`Preset`: `readOnly`, `githubTasks`, `editTest`, `editTestPush`, `profile`, the catalog's own
 words, which core converts as they are), whichever agent runs it. Each agent's spec in

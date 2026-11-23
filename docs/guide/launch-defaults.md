@@ -1,5 +1,7 @@
 # Launch defaults
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md)
+
 **Settings → Repositories → Launch defaults** sets what launches use for an org's repositories,
 or for one repository: the coding agent; a profile, a model, and extra flags for each agent; the
 default prompt for pull requests, for issues, and for each situation a pull request can be in
@@ -52,19 +54,20 @@ next layer's first word as its value. Each agent reserves its own flags:
   session, without the launch's sandbox. Other overrides, such as `-c model_verbosity=low`, and
   `-p` (a Codex config profile) are fine.
 
-**A situation's prompt.** A launch for the situation an inbox card names, a pull request whose
-checks fail, that conflicts with its base, that a reviewer asked to change, or that you're asked
-to review again, takes the repository's prompt for that situation, else its org's, else the
-app's, and with none of those set, the pull request's prompt as above; the settings that prompt
-brings follow it. So an org's prompt for pull requests doesn't beat the app's prompt for a
-situation: a review prompt is the wrong one to fix checks with, and an org that wants its own
-sets its own for the situation. The app's prompt for each starts on its starter (Fix checks,
-Resolve conflicts, Address review, Re-review). **Settings → Launching** sets it in **Prompt when
-checks fail**, **Prompt when it has conflicts**, **Prompt when changes are requested**, and
-**Prompt when you're asked to review again**, where **Same as pull requests** leaves that
-situation the pull request's prompt. The form above has the same four, each **Inherit** naming
-what it inherits: the org's prompt for the situation, else the app's, else *same as pull
-requests*.
+## A situation's prompt
+
+A launch for the situation an inbox card names, a pull request whose checks fail, that conflicts
+with its base, that a reviewer asked to change, or that you're asked to review again, takes the
+repository's prompt for that situation, else its org's, else the app's, and with none of those set,
+the pull request's prompt as above; the settings that prompt brings follow it. So an org's prompt
+for pull requests doesn't beat the app's prompt for a situation: a review prompt is the wrong one to
+fix checks with, and an org that wants its own sets its own for the situation. The app's prompt for
+each starts on its starter (Fix checks, Resolve conflicts, Address review, Re-review). **Settings →
+Launching** sets it in **Prompt when checks fail**, **Prompt when it has conflicts**, **Prompt when
+changes are requested**, and **Prompt when you're asked to review again**, where **Same as pull
+requests** leaves that situation the pull request's prompt. The form above has the same four, each
+**Inherit** naming what it inherits: the org's prompt for the situation, else the app's, else *same
+as pull requests*.
 
 A default that no longer makes sense, such as a profile that was removed or an agent this
 version doesn't know, is skipped with a warning in the launch menu. The outside-contributor rule

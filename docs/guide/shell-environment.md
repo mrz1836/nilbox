@@ -1,5 +1,7 @@
 # Your shell's environment
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [Shared building blocks](../architecture/shared-building-blocks.md)
+
 An app started from the Finder, the Dock, or `open` gets only what launchd hands it: about
 nine variables, a `PATH` of `/usr/bin:/bin:/usr/sbin:/sbin`, and launchd's own ssh agent. Your
 terminal has much more: Homebrew, `~/.local/bin`, `~/go/bin`, the ssh agent or signing setup

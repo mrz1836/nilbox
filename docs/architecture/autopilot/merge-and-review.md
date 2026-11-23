@@ -1,6 +1,6 @@
 # Merge it and Post the agent's review
 
-What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's review*.
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Merge it and Post the agent's review](../../guide/autopilot/merge-and-post-review.md)
 
 - **The seam.** Both are GitHub writes of their own (`catalog.DispatchMerge`,
   `DispatchReview`), registered beside the GitHub step over the same `GitHubActions`

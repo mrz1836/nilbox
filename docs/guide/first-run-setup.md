@@ -1,5 +1,7 @@
 # First-run setup
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/setup`](../architecture/setup.md)
+
 On a fresh database, as on a new install, after a [reset](starting-over.md), or in a
 [sandbox](../development/build-targets.md#a-sandbox-on-fresh-data), the app opens on its setup, over the whole window: a few
 steps that take you from the first launch to a filled inbox and a working agent launch. An

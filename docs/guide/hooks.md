@@ -1,12 +1,14 @@
 # Hooks
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/hooks`](../architecture/hooks.md)
+
 **Hooks** lists every clone in the [repository locations](launching-a-session.md#repository-locations) with a
 go-pre-commit config inside it (a `.github/env/*.env` file, or `.github/.env.base`), installs and
 updates go-pre-commit's `pre-commit` hook in them, and runs the checks. The app itself never
 writes a hook or fixes a file: go-pre-commit does, when you click a button that says what will
 change. The page never asks GitHub, so it works offline and signed out.
 
-**The page.**
+## The page
 
 - **Groups:** **Needs attention** (no `pre-commit` hook yet, go-pre-commit's from an older release,
   one that isn't executable, another tool's, or one in a hooks folder other repositories share),

@@ -1,5 +1,7 @@
 # Deps
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/manifests`](../architecture/manifests.md), [The Scripts tab's pages (frontend)](../architecture/frontend/scripts-pages.md)
+
 **Deps** lists every clone in the [repository locations](launching-a-session.md#repository-locations) whose `origin`
 is on GitHub, with each Go module's `go.mod` and each JavaScript package's `package.json` in it
 and how long ago their dependencies last changed, and upgrades any of them with a coding agent
@@ -7,7 +9,7 @@ that works in a fresh worktree and opens a pull request. The page reads your clo
 history alone: it never asks GitHub or a package registry what is out of date, so it works
 offline and signed out, and finding what is outdated is the agent's job.
 
-**The page.**
+## The page
 
 - **What it reads:** each clone at its origin's default branch as the clone last fetched it,
   such as `origin/main`, so a clone that is behind, or on another branch, still shows what is on
@@ -155,7 +157,7 @@ can't tell of the repository (below); then, in the launch options' sections:
 Only one sheet or dialog is open over the tab at a time: a release the app opens for you, or a
 run it shows you, takes the Upgrade dialog's place.
 
-**After it starts:**
+## After it starts
 
 1. Your terminal opens with the agent in the new worktree. It reads the repository's own rules
    and its recent pull requests, upgrades the Go modules (with `magex deps:update` where the

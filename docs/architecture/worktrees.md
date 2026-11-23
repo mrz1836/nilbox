@@ -1,49 +1,51 @@
 # internal/worktrees
 
-The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
-every agent, under `<the clone's folder>/.<slug>/worktrees/<clone>/`, so in a location as in
-the clone root), records them in `internal/worklog`, checks every record against git on each
-listing and sweep (a record whose clone's folder is gone too, as on a drive unplugged, is
-kept), and removes
-them safely. A listing runs git only in the clones worth listing (`worthListing`): one whose
-common git folder registers a linked worktree or can't be read, and one a record names, read
-without git by `linkedWorktrees`, which the sweep's count shares. A pull request's worktree
-fetches its head, and, on every Ensure, made or found, its base into the remote-tracking ref
-(`fetchBase`, the default branch's own fetch: best-effort, a notice when it fails, never a
-checkout or a local branch moved), so an agent has a fresh base to rebase onto or compare
-with. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
-scripts' pull, below, fetches only as `git pull` itself does), and nothing the app runs
-changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails
-the build otherwise. There are two exceptions, each on the user's click. A tool the user
-turned on: a release's magex switches to the branch, pulls, tags, and pushes the tag
-(`internal/release`), and the app only starts it and checks afterwards where the tag and the
-clone are. And Repo scripts' **Pull**: a fast-forward-only pull of the branch a clone is on
-from the branch it follows on origin (never a merge or a rebase), held to
-`internal/scripts/pull.go`, whose one pull argv the guard parses and holds to an exact list
-of literal words (`--ff-only`, `--refmap=`, and `--no-verify-signatures` among them),
-with no other option anywhere in the file and no other verb it bans. Every git command
-there runs with a hooks folder's hooks, the file system monitor, and submodule recursion
-off (`gitread.Hardening`, which the worktrees' `hardening` and the pull share), since a
-worktree holds a pull request's own files, and a pull request's worktree is made only at
-the head whose files the launch checked; a clone's own config-named hooks refuse every
-command that could fire one (below). With core's `Guard`, the worktree service's own
-commands on a clone or its worktrees are guarded too (`git.do`): the reads (`readOnly`:
-listing the worktrees and branches, resolving a ref, counting commits or listing those not
-on GitHub, an ancestor's check, and a commit's time, the logs with `--no-show-signature`
-and `--no-mailmap`), which run no
-filter or hook but could read an object a partial clone lacks, run with gitread's
-`ReadEnv` (no transport, no lazy fetch, no optional lock, no replace ref), so a promisor
-remote the clone names is never asked; every other (a status, which runs a file's clean
-filter, a removal, a prune, an unlock, and a branch's deletion, which fires
-reference-transaction) runs with gitread's `LocalSetup` for its folder, worked out once
-per operation and one folder at a time (`localCache`, a `flight.Group` per folder):
-every filter driver of the clone's own off, Git LFS's too, no optional lock, no replace
-ref, no transport, and refused before git runs, with a `guardError` worded for the
-window, when the clone's own config holds a setting gitread refuses. A removal, whose
-own status runs inside the worktree, weighs the worktree's config too (its
-`config.worktree`), and runs with the filters both define off. Such a worktree shows the
-refusal as its `Error`, which also takes away its removal (`CanRemove`), so no sweep or
-cleanup removes it, and a removal fails with the same words. `create.go`'s one fetch argv (`fetchArgs`:
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/worktrees`](../../internal/worktrees) · Guide: [Launching a session](../guide/launching-a-session.md), [The Worktrees view](../guide/worktrees-view.md)
+
+The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by every
+agent, under `<the clone's folder>/.<slug>/worktrees/<clone>/`, so in a location as in the clone
+root), records them in `internal/worklog`, checks every record against git on each listing and sweep
+(a record whose clone's folder is gone too, as on a drive unplugged, is kept), and removes them
+safely. A listing runs git only in the clones worth listing (`worthListing`): one whose common git
+folder registers a linked worktree or can't be read, and one a record names, read without git by
+`linkedWorktrees`, which the sweep's count shares. A pull request's worktree fetches its head, and,
+on every Ensure, made or found, its base into the remote-tracking ref (`fetchBase`, the default
+branch's own fetch: best-effort, a notice when it fails, never a checkout or a local branch moved),
+so an agent has a fresh base to rebase onto or compare with.
+
+Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo scripts' pull, in
+[internal/scripts](scripts.md), fetches only as `git pull` itself does), and nothing the app runs
+changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails the
+build otherwise. There are two exceptions, each on the user's click. A tool the user turned on: a
+release's magex switches to the branch, pulls, tags, and pushes the tag (`internal/release`), and
+the app only starts it and checks afterwards where the tag and the clone are. And Repo scripts'
+**Pull**: a fast-forward-only pull of the branch a clone is on from the branch it follows on origin
+(never a merge or a rebase), held to `internal/scripts/pull.go`, whose one pull argv the guard
+parses and holds to an exact list of literal words (`--ff-only`, `--refmap=`, and
+`--no-verify-signatures` among them), with no other option anywhere in the file and no other verb it
+bans. Every git command there runs with a hooks folder's hooks, the file system monitor, and
+submodule recursion off (`gitread.Hardening`, which the worktrees' `hardening` and the pull share),
+since a worktree holds a pull request's own files, and a pull request's worktree is made only at the
+head whose files the launch checked; a clone's own config-named hooks refuse every command that
+could fire one (below).
+
+With core's `Guard`, the worktree service's own commands on a clone or its worktrees are guarded too
+(`git.do`): the reads (`readOnly`: listing the worktrees and branches, resolving a ref, counting
+commits or listing those not on GitHub, an ancestor's check, and a commit's time, the logs with
+`--no-show-signature` and `--no-mailmap`), which run no filter or hook but could read an object a
+partial clone lacks, run with gitread's `ReadEnv` (no transport, no lazy fetch, no optional lock, no
+replace ref), so a promisor remote the clone names is never asked; every other (a status, which runs
+a file's clean filter, a removal, a prune, an unlock, and a branch's deletion, which fires
+reference-transaction) runs with gitread's `LocalSetup` for its folder, worked out once per
+operation and one folder at a time (`localCache`, a `flight.Group` per folder): every filter driver
+of the clone's own off, Git LFS's too, no optional lock, no replace ref, no transport, and refused
+before git runs, with a `guardError` worded for the window, when the clone's own config holds a
+setting gitread refuses. A removal, whose own status runs inside the worktree, weighs the worktree's
+config too (its `config.worktree`), and runs with the filters both define off. Such a worktree shows
+the refusal as its `Error`, which also takes away its removal (`CanRemove`), so no sweep or cleanup
+removes it, and a removal fails with the same words.
+
+`create.go`'s one fetch argv (`fetchArgs`:
 `fetch --no-tags --refmap= --upload-pack=git-upload-pack <remote> <refspec>`, so it moves
 only the ref its refspec names, never one the clone's own `remote.<name>.fetch` maps,
 which the repoguard test holds to exactly those words), its `ls-remote --symref` (with
@@ -62,32 +64,33 @@ setup's environment, which holds every setting (`GIT_CONFIG_COUNT`), `GIT_DIR`, 
 `GIT_WORK_TREE`, and the setup's own git, through `Config.GitWith`, core's runner with an
 environment of its own. Core gives the worktrees gitread's `GitFinder` as their `Finder`,
 so every other worktree command runs that same git: one clone is never handled by two
-git builds. A clone whose own config holds a setting gitread refuses (a hook, a filter,
-`core.worktree`, an include, ...), a remote helper, or a rerouted remote is refused
-before git runs (a `guardError` holding gitread's), in `gitread.Message`'s words as a
-sentence, naming the settings or the remote or saying why the setup couldn't be worked
-out (a config git can't read, no git), which the launch's error shows; a fetch that
-failed after the clone's own ssh command, password program, or credential helpers were
-set aside says which (`gitread.SetAsideNote`, a `gitread.SetAsideError` in the chain).
-The launcher
-reaches the `Maker` through its
-`WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
-with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
--d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
-otherwise only through `internal/worktrees/branches.go`, when the user
-ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
-GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
-`HEAD` keeps it. The one exception is the cleanup of merged branches: a branch kept only
-for its commits not on GitHub (`MergedBranch.Unpushed`) can be deleted there anyway, but
-only once the user asks for such branches to be offered, ticks it (never ticked to start
-with), and confirms a second dialog naming each and what it holds; pinned to the commit
-shown, whose result names that commit. A branch checked out, protected, or a remote's
-default never is. Every job that changes a clone holds that clone's lock from
-`internal/clonelock`, one `Set` that core builds and hands to each, keyed by
-`paths.Resolved`. Lock `act` before a clone's lock, never after. Worktree changes wait only
-for one another. A run (a release, checks, a script) is never waited for: a launch or a
-click fails at once with a sentence naming the run, and the sweep and a listing's
-forgetting of a record skip the clone until next time.
+git builds.
+
+A clone whose own config holds a setting gitread refuses (a hook, a filter, `core.worktree`, an
+include, ...), a remote helper, or a rerouted remote is refused before git runs (a `guardError`
+holding gitread's), in `gitread.Message`'s words as a sentence, naming the settings or the remote or
+saying why the setup couldn't be worked out (a config git can't read, no git), which the launch's
+error shows; a fetch that failed after the clone's own ssh command, password program, or credential
+helpers were set aside says which (`gitread.SetAsideNote`, a `gitread.SetAsideError` in the chain).
+The launcher reaches the `Maker` through its `WorktreeMaker` interface; no agent's own `--worktree`
+flag is used.
+
+A branch is deleted only with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests
+ban `git branch -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't
+check, and otherwise only through `internal/worktrees/branches.go`, when the user ticked it (or, for
+the automatic cleanup, the user's rules pick it), every commit on it is on GitHub, and neither the
+user's protected patterns (`internal/branchrules`) nor a remote's `HEAD` keeps it. The one exception
+is the cleanup of merged branches: a branch kept only for its commits not on GitHub
+(`MergedBranch.Unpushed`) can be deleted there anyway, but only once the user asks for such branches
+to be offered, ticks it (never ticked to start with), and confirms a second dialog naming each and
+what it holds; pinned to the commit shown, whose result names that commit. A branch checked out,
+protected, or a remote's default never is.
+
+Every job that changes a clone holds that clone's lock from `internal/clonelock`, one `Set` that
+core builds and hands to each, keyed by `paths.Resolved`. Lock `act` before a clone's lock, never
+after. Worktree changes wait only for one another. A run (a release, checks, a script) is never
+waited for: a launch or a click fails at once with a sentence naming the run, and the sweep and a
+listing's forgetting of a record skip the clone until next time.
 
 A listing reads each worktree's status once (`status --porcelain=v1 -z
 --untracked-files=all`, read by `readStatus`): every file it names counts toward the row's
@@ -98,98 +101,100 @@ only counted, so a worktree with tens of thousands of untracked files costs litt
 than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
 read. Keeping them runs no git of its own.
 
-**Linking a worktree to its item.** A worktree is linked to its pull request or issue by its
-record, by the name of the folder the app or Claude Code made it in (`pr-<n>`, `issue-<n>`),
-or by an item's own branch (`worktree-pr-<n>`): `Worktree.LinkedBy` is `name` then. A linked
-worktree with none of these, on a local branch pushed to one of the clone's GitHub remotes,
-is linked by that branch (`branch`, `branchlink.go`): through the remote-tracking branch of
-the same name, its upstream's remote's first when it follows one by that name (an upstream
-of another name is the branch it started from, its base, not its head), then origin's, then
-the other remotes' by name. A remote's default branch, a detached HEAD, and a remote that
-isn't on GitHub never link. Of the pull requests whose head branch has that name in that
-same repository (`headRepository`), so a fork's branch of the same name never does, it links
-to the open one, when there is one, else to the one updated last, merged or closed. Each clone's refs are read once a listing (`refsArgs`:
-`for-each-ref` over `refs/heads/` and `refs/remotes/`, each with its commit, upstream,
-symbolic target, and worktree, a read with `ReadEnv`), and the branches a removal offers are
-judged from the same read (`markRepo`), so linking by branch runs no git of its own; a clone
-whose refs can't be read links nothing by branch and offers no branch. A remote's name may
-hold a slash, so a remote-tracking branch is the branch of the clone's remote, of every one
-it names with a URL (`localrepos.LocalRepo.Names`, from the same config read as its GitHub
-remotes), whose name is the longest that begins it (`withOwners`):
-`refs/remotes/origin/mirror/main` is a remote called `origin/mirror`'s `main`, never
-origin's `mirror/main`, and a branch of a remote the clone doesn't name is no one's. So is a
-remote's HEAD: `refs/remotes/origin/mirror/HEAD` names the default branch of the remote
-called `origin/mirror`, once the clone names that remote, which nothing links through nor
-looks for copies on. GitHub is asked in the
-listing's request for the items' states: `github.FetchLinkStates` adds one aliased
-`repository { pullRequests(headRefName: ..., states: [OPEN, MERGED, CLOSED], first: 20,
-orderBy: UPDATED_AT DESC) }` per branch to the states query, at most fifty of each a request,
-so branches beside items cost no request, and branches alone one (twenty pull requests a
-branch, so the repository's own isn't lost behind forks' of a branch of the same name
-updated since, still one point a request). The answer is kept in
-memory by repository, branch, and the commit the clone saw it at (`headCache`): the next
-listing asks about that pull request by number with the items, and about the branch only
-once it moves, or, at most every `headRecheck` (10 minutes), while no pull request heads it
-or the one that does is done (one opened since, or a branch reused for another, with or
-without a push). A pull request GitHub no longer answers as that branch's is forgotten, and
-the branch asked about again. A worktree linked by its branch is never recorded as its
-item's (`adopt`), so a launch on the item never resumes it; it offers no pull request's
-branch with its removal (`BranchPullRequest` stays `name`'s); and the sweep removes it only
-when the app or Claude Code made it (`Managed`) and, as always, its HEAD is the merged pull
-request's head.
+## Linking a worktree to its item
 
-**A task's worktree** (`task.go`). A repository's launch asks for a worktree for a task on the
-repository itself rather than an item's (`EnsureRequest.Task`: its base name, `deps-<YYYYMMDD>`,
-with no kind, number, base, or head, `checkSubject`). It is made new every time, as an issue's
-is, from the repository's default branch as just fetched, through the default branch's fetch
-and `git worktree add --no-track -b worktree-<name>`, so no new argv (`Ensured.Task` is the
-name taken, and `DefaultBranch` the branch it starts from, or, for `Plan`, which asks no
-remote, the request's or the one the clone last learned from its remote's HEAD), and it is
-never resumed, adopted, attached, or recorded: one reused could build on commits a merged pull
-request already took, and a record names an item, so it would link the worktree by name and
-keep its branch from relating it to its pull request.
-Its name is the first free one of the base, then `<base>-2` up to `<base>-99` (`freeTaskName`;
-past those, `ErrNoTaskName`, worded): a name is taken while anything is at its managed path, or
-may be, as when the path can't be looked at; while git has a worktree at that path or on its
-branch, its folder there or gone; while the clone has that local branch; and while it has a
-remote-tracking branch of that name on any remote, so one left from an earlier task, pushed and
-since merged, never relates the new worktree to the old pull request. `Plan` says the name it
-would take now, asking no remote, and `Ensure` takes the first free one as it makes the
-worktree. Calls for a task never share a run (no `calls` grouping, which would hand two quick
-launches one worktree): the clone's lock runs them one after the other, so a second the same day
-takes the next name. It is made only from the clone's own folder, the main worktree git lists
-first (`ErrNotMainWorktree`), so it sits beside the clone's other managed worktrees, where a
-listing and the sweep find it as the app's (`Managed`, `OwnBranch`). One its launch made but
-couldn't start a session in is taken away again by `Maker.Discard`, as `Remove` takes one away
-(refused while a session works there or it holds changes, its branch deleted only while nothing
-on it would be lost), so the next launch takes its name back. Once its session pushes the
-branch under its own name (`git push -u <remote> HEAD`) and opens a pull request, a listing
-links it by that branch (`branch`, above), and the sweep removes it once that pull request
-merges with its HEAD as the head, as for any worktree the app made and a pushed branch links.
-The limit: a fetch of the user's own that prunes the remote-tracking branch, as after GitHub
-deletes the merged branch, before a listing sees the merge leaves the worktree linked to
-nothing, and it is then removed by hand.
+A worktree is linked to its pull request or issue by its record, by the name of the folder the app
+or Claude Code made it in (`pr-<n>`, `issue-<n>`), or by an item's own branch (`worktree-pr-<n>`):
+`Worktree.LinkedBy` is `name` then. A linked worktree with none of these, on a local branch pushed
+to one of the clone's GitHub remotes, is linked by that branch (`branch`, `branchlink.go`): through
+the remote-tracking branch of the same name, its upstream's remote's first when it follows one by
+that name (an upstream of another name is the branch it started from, its base, not its head), then
+origin's, then the other remotes' by name. A remote's default branch, a detached HEAD, and a remote
+that isn't on GitHub never link. Of the pull requests whose head branch has that name in that same
+repository (`headRepository`), so a fork's branch of the same name never does, it links to the open
+one, when there is one, else to the one updated last, merged or closed. Each clone's refs are read
+once a listing (`refsArgs`: `for-each-ref` over `refs/heads/` and `refs/remotes/`, each with its
+commit, upstream, symbolic target, and worktree, a read with `ReadEnv`), and the branches a removal
+offers are judged from the same read (`markRepo`), so linking by branch runs no git of its own; a
+clone whose refs can't be read links nothing by branch and offers no branch. A remote's name may
+hold a slash, so a remote-tracking branch is the branch of the clone's remote, of every one it names
+with a URL (`localrepos.LocalRepo.Names`, from the same config read as its GitHub remotes), whose
+name is the longest that begins it (`withOwners`): `refs/remotes/origin/mirror/main` is a remote
+called `origin/mirror`'s `main`, never origin's `mirror/main`, and a branch of a remote the clone
+doesn't name is no one's. So is a remote's HEAD: `refs/remotes/origin/mirror/HEAD` names the default
+branch of the remote called `origin/mirror`, once the clone names that remote, which nothing links
+through nor looks for copies on. GitHub is asked in the listing's request for the items' states:
+`github.FetchLinkStates` adds one aliased `repository { pullRequests(headRefName: ..., states:
+[OPEN, MERGED, CLOSED], first: 20, orderBy: UPDATED_AT DESC) }` per branch to the states query, at
+most fifty of each a request, so branches beside items cost no request, and branches alone one
+(twenty pull requests a branch, so the repository's own isn't lost behind forks' of a branch of the
+same name updated since, still one point a request). The answer is kept in memory by repository,
+branch, and the commit the clone saw it at (`headCache`): the next listing asks about that pull
+request by number with the items, and about the branch only once it moves, or, at most every
+`headRecheck` (10 minutes), while no pull request heads it or the one that does is done (one opened
+since, or a branch reused for another, with or without a push). A pull request GitHub no longer
+answers as that branch's is forgotten, and the branch asked about again. A worktree linked by its
+branch is never recorded as its item's (`adopt`), so a launch on the item never resumes it; it
+offers no pull request's branch with its removal (`BranchPullRequest` stays `name`'s); and the sweep
+removes it only when the app or Claude Code made it (`Managed`) and, as always, its HEAD is the
+merged pull request's head.
 
-**Copies of a worktree's commits** (`copies.go`). A coding agent's sub-session works in a
-worktree of its own, on a branch no one pushes, and the session that started it copies its
-commits (a cherry-pick or a rebase) onto its own branch and pushes that. A copy keeps the
-commit's change (git's patch ID), author, author time, and subject, but not its commit ID,
-so the original counts as not on GitHub (`Unpushed` counts by ID, and keeps doing so). Each
-listing compares the commits not on GitHub (U) of every linked worktree that has any with
-the commits on the clone's pushed branches: the remote-tracking branches of its GitHub
-remotes, each remote's default branch aside. Per clone, one log reads U of every worktree
-with at most 200, with each commit's parents, author time, author email, and subject
-(`copyUnpushedArgs`: `log --no-show-signature --no-mailmap --max-count=10000
---format=%H%x00%P%x00%at%x00%ae%x00%s <HEAD>... --not --remotes`, with `--ignore-missing` and
-the commit they were made at from GitHub when they have one, one log per such commit), each
-worktree's own U then walked by its parents within it; and one more log reads the pushed
-commits not in the default branch whose commit time is at most a day before the oldest of
-those author times (`copyCandidatesArgs`: `log ... --no-merges --source --max-count=20000
---format=%H%x00%S%x00%at%x00%ae%x00%s --since=@<seconds> --remotes --not
-refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later). When that
-log reaches its cap, only the worktrees that need its window (the oldest) can't be compared,
-and one more log, from the next oldest worktree's window, serves the rest, so one worktree
-left for months never keeps its clone's others from being compared. A pushed commit with a
+## A task's worktree (`task.go`)
+
+A repository's launch asks for a worktree for a task on the repository itself rather than an item's
+(`EnsureRequest.Task`: its base name, `deps-<YYYYMMDD>`, with no kind, number, base, or head,
+`checkSubject`). It is made new every time, as an issue's is, from the repository's default branch
+as just fetched, through the default branch's fetch and `git worktree add --no-track -b
+worktree-<name>`, so no new argv (`Ensured.Task` is the name taken, and `DefaultBranch` the branch
+it starts from, or, for `Plan`, which asks no remote, the request's or the one the clone last
+learned from its remote's HEAD), and it is never resumed, adopted, attached, or recorded: one reused
+could build on commits a merged pull request already took, and a record names an item, so it would
+link the worktree by name and keep its branch from relating it to its pull request. Its name is the
+first free one of the base, then `<base>-2` up to `<base>-99` (`freeTaskName`; past those,
+`ErrNoTaskName`, worded): a name is taken while anything is at its managed path, or may be, as when
+the path can't be looked at; while git has a worktree at that path or on its branch, its folder
+there or gone; while the clone has that local branch; and while it has a remote-tracking branch of
+that name on any remote, so one left from an earlier task, pushed and since merged, never relates
+the new worktree to the old pull request. `Plan` says the name it would take now, asking no remote,
+and `Ensure` takes the first free one as it makes the worktree. Calls for a task never share a run
+(no `calls` grouping, which would hand two quick launches one worktree): the clone's lock runs them
+one after the other, so a second the same day takes the next name. It is made only from the clone's
+own folder, the main worktree git lists first (`ErrNotMainWorktree`), so it sits beside the clone's
+other managed worktrees, where a listing and the sweep find it as the app's (`Managed`,
+`OwnBranch`). One its launch made but couldn't start a session in is taken away again by
+`Maker.Discard`, as `Remove` takes one away (refused while a session works there or it holds
+changes, its branch deleted only while nothing on it would be lost), so the next launch takes its
+name back. Once its session pushes the branch under its own name (`git push -u <remote> HEAD`) and
+opens a pull request, a listing links it by that branch (`branch`, above), and the sweep removes it
+once that pull request merges with its HEAD as the head, as for any worktree the app made and a
+pushed branch links. The limit: a fetch of the user's own that prunes the remote-tracking branch, as
+after GitHub deletes the merged branch, before a listing sees the merge leaves the worktree linked
+to nothing, and it is then removed by hand.
+
+## Copies of a worktree's commits (`copies.go`)
+
+A coding agent's sub-session works in a worktree of its own, on a branch no one pushes, and the
+session that started it copies its commits (a cherry-pick or a rebase) onto its own branch and
+pushes that. A copy keeps the commit's change (git's patch ID), author, author time, and subject,
+but not its commit ID, so the original counts as not on GitHub (`Unpushed` counts by ID, and keeps
+doing so).
+
+Each listing compares the commits not on GitHub (U) of every linked worktree that has any with the
+commits on the clone's pushed branches: the remote-tracking branches of its GitHub remotes, each
+remote's default branch aside. Per clone, one log reads U of every worktree with at most 200, with
+each commit's parents, author time, author email, and subject (`copyUnpushedArgs`: `log
+--no-show-signature --no-mailmap --max-count=10000 --format=%H%x00%P%x00%at%x00%ae%x00%s <HEAD>...
+--not --remotes`, with `--ignore-missing` and the commit they were made at from GitHub when they
+have one, one log per such commit), each worktree's own U then walked by its parents within it; and
+one more log reads the pushed commits not in the default branch whose commit time is at most a day
+before the oldest of those author times (`copyCandidatesArgs`: `log ... --no-merges --source
+--max-count=20000 --format=%H%x00%S%x00%at%x00%ae%x00%s --since=@<seconds> --remotes --not
+refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later). When that log
+reaches its cap, only the worktrees that need its window (the oldest) can't be compared, and one
+more log, from the next oldest worktree's window, serves the rest, so one worktree left for months
+never keeps its clone's others from being compared.
+
+A pushed commit with a
 commit's author time, email, and subject is its likely copy. The log credits each pushed
 commit to one ref only (`--source`), often the lowest of a stack of branches, or a remote's
 HEAD, so the pushed branches it credits with likely copies, most first and at most three,
@@ -197,115 +202,113 @@ only order the comparisons: for each, one `rev-list --left-right --no-merges
 <tip>...<HEAD>` (`copySidesArgs`, commit IDs only) lists the commits the branch has that
 HEAD hasn't (`<`) and back (`>`), and every likely copy on the branch's side is one there,
 whatever ref the log credited it to, so a branch built on another counts the copies the two
-share, even those of a default branch no copy is looked for on. No
-patch ID decides anything: git's leave out every space inside a changed line, a hunk's
-position, and the mark of a missing last newline, so a copy that was only re-indented, or
-lost a space from a string, would pass, though in Python, YAML, a Makefile, or a string
-literal that is a change. So each pair is compared byte for byte (`copypatch.go`): the changes of the commit and its likely
-copies are read in one more log for the comparison (`copyPatchesArgs`: `log
---no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-ext-diff --no-textconv
---no-color --no-renames --full-index --unified=3 --format=%x00%H <commit>...`, a read) and
-compared whole but for a text file's blob IDs (its `index` line keeps only its mode) and the
-line numbers of each hunk's `@@` header (and the text git adds after it): spaces, context
-lines, `\ No newline at end of file`, modes, and file headers all count. A binary file's
-change is the same only when its blobs before and after are, its `index` line whole. An
-empty change, one that doesn't read as git's per-file diffs, or one git left out is no
-copy's, and a log that fails leaves the worktree not copied, with why. A verdict on a pair
-of commits is kept in memory for good (`copyCache.pairs`), as commits never change. A
-commit with a likely copy there whose change is the same has an identical copy; one with
-likely copies there whose changes differ an edited copy, which never counts (an edited
-change isn't the commit's); any other none. A copy made on a moved base whose context lines
-differ is edited too. A worktree each of
-whose commits has an identical copy on one branch is fully copied onto it, and links to that
-branch's pull request, asked about as a branch link is, when nothing else links it
-(`LinkCopy`); the pull request of the branch a worktree copied only in part is asked about
-the same way, without linking it. `Worktree.Copies` says what was found: the branch (`ref`,
-as in `origin/feature-x`, and `branch`, its name on its remote as `withOwners` works it out,
-`main` for `origin/mirror/main` of a remote called `origin/mirror`, or `''` when no remote
-the clone names is its), how many commits (`count`), and how many have an identical copy,
-an edited one, or none, with `note` saying why they couldn't be compared, or why identical
-copies on several branches don't count; `pr` is the number of the pull request the copies
-went into (the one `ref`'s branch heads, or, when `recorded`, the one the record names; 0
-when none is known), and `gone` says `ref`'s remote-tracking branch is gone, as it can be
-only when `recorded`. Its zero value means there was nothing to compare with. Each read is a read (`readOnly`, with `ReadEnv`, so an object a partial clone lacks
-fails it rather than being fetched), and the allowlist holds each to its exact words: commit
-IDs, a remote-tracking branch, and a whole number of seconds. Anything that goes wrong leaves
-the worktree not fully copied and never fails the listing: git refusing a read, or warning
-on its way (its answer may then be wrong), a log
-reaching its cap, more than 200 commits, a merge among U, a count that changed meanwhile,
-or a comparison that leaves a commit out. What a comparison found is kept in memory
-(`copyCache`) by the worktree's HEAD, the commit it was made at from GitHub, its clone's
-GitHub remotes, and every remote-tracking branch and where it points
-(`cloneRefs.fingerprint`), so a listing after which nothing of those changed runs no git to
-compare, and a worktree that is gone is forgotten, as is every worktree of a clone the
-window's listing, which lists every clone with a linked worktree, didn't list (the cache
-starts over, too, past 4,096 worktrees); git that couldn't be run at all is tried again next
-time. `Details` marks each of its commits not on GitHub with its copy
-(`UnpushedCommit.Copy`, `identical` or `edited`, and `CopyOID`): what the listing found,
-when one read of the clone's refs and one of its remotes say nothing changed since (the
-listing's key: its HEAD, the commit it was made at, the GitHub remotes and every remote's
-name, and the refs' fingerprint), or else a comparison of its own; none when the refs or the
-remotes can't be read. `Details.Copies` (`CopyComparison`) says how that
-went, so a blank mark is never mistaken for an unknown one: `compared` is true when the
-comparison ran to completion (the pushed commits read, every branch holding likely copies
-compared and confirmed byte for byte), or there was no pushed branch to compare with;
-`ref` is the branch compared with, `""` when no pushed commit was a likely copy of any, and
-`branch` its name on its remote, as `Copies.branch` says it;
-`identical` and `edited` count the commits; and `note` says why it couldn't run. So
-`compared` with `identical` at 0 means no copy is on a pushed branch now (the branch was
-deleted, or force-pushed without them), while `compared` false means only that this is
-unknown. It reads no copy record, so a worktree its record vouches for
-(`Worktree.Copies.recorded`) may compare with nothing; its zero value is for a worktree
-with nothing not on GitHub.
+share, even those of a default branch no copy is looked for on.
 
-**The copy record** (`copyrecords.go`, migration `0109_worktree_copies`). A worktree fully
-copied onto a branch stays so only while the branch is there: a squash merge leaves the
-copies out of the default branch, and deleting the branch leaves them on no remote-tracking
-branch. The pull request keeps them (GitHub keeps every pull request's head commit), so when
-a listing finds a worktree fully copied onto a branch whose pull request it knows, it records
-that pull request in `worklog` (`worklog.Copy`, the `worktree_copies` table, one row per
-worktree by its resolved directory): the worktree's HEAD, the branch, the pull request, the
-commits not on GitHub, and `copy_tip`, the branch's commit, which moves on with the branch
-while it still holds every copy, so it is most likely the pull request's last head. A record
-that already says all a new one would isn't written again. Each listing checks the records
-against the worktrees it listed, as the launch records are: one whose worktree is gone (or
-its folder), or whose HEAD isn't the record's, is dropped, and so is one whose clone is gone
-from a folder that is still there; one whose clone wasn't listed, or couldn't be, is kept.
-Removing a worktree drops its record too. The worklog store stamps a record's
-`created_at` (kept while the HEAD is the same) and `updated_at` with its own clock.
+No patch ID decides anything: git's leave out every space inside a changed line, a hunk's position,
+and the mark of a missing last newline, so a copy that was only re-indented, or lost a space from a
+string, would pass, though in Python, YAML, a Makefile, or a string literal that is a change. So
+each pair is compared byte for byte (`copypatch.go`): the changes of the commit and its likely
+copies are read in one more log for the comparison (`copyPatchesArgs`: `log --no-show-signature
+--no-mailmap --no-walk=unsorted --root -p --no-ext-diff --no-textconv --no-color --no-renames
+--full-index --unified=3 --format=%x00%H <commit>...`, a read) and compared whole but for a text
+file's blob IDs (its `index` line keeps only its mode) and the line numbers of each hunk's `@@`
+header (and the text git adds after it): spaces, context lines, `\ No newline at end of file`,
+modes, and file headers all count. A binary file's change is the same only when its blobs before and
+after are, its `index` line whole. An empty change, one that doesn't read as git's per-file diffs,
+or one git left out is no copy's, and a log that fails leaves the worktree not copied, with why. A
+verdict on a pair of commits is kept in memory for good (`copyCache.pairs`), as commits never
+change. A commit with a likely copy there whose change is the same has an identical copy; one with
+likely copies there whose changes differ an edited copy, which never counts (an edited change isn't
+the commit's); any other none. A copy made on a moved base whose context lines differ is edited too.
 
-**Copied work counts as on GitHub** (`copyjudge.go`). `OnGitHub` is `Unpushed == 0`, or HEAD
-being the linked pull request's head, or the worktree's copies counting (`copyState`), while
-`Unpushed` keeps the count by commit ID. They count when this listing found every commit not
-on GitHub with an identical copy on one pushed branch of a GitHub remote: on GitHub as that
-branch. Or when the copy record holds, and either its branch is gone or its pull request
-merged: the record describes the worktree (HEAD is the record's); it covers every commit the worktree has that isn't on
-GitHub, each being one whose identical copy the record vouches for or on the record's branch
-commit by ID (`judgeCoverage`: no git when this listing's comparison read those commits and
-all are the record's, else one `log` per record branch commit, `copyUnpushedArgs` with that
-commit after `--remotes` and `--ignore-missing`, kept in memory by the worktree's HEAD, the
-remote-tracking branches, and the record; this is what keeps the commits a worktree started
-from on a branch since squash-merged covered, while a commit of another branch deleted
-unmerged is never vouched for); the record's pull request was read in this listing's request
-(asked by number, with the items, only for a covering record); and that pull request's head
-is the record's `copy_tip` or has it (`prHolds`: `merge-base --is-ancestor`, which a commit
-the clone lacks fails; a yes kept for good, a no while the remote-tracking branches are the
-same). `Copies.Recorded` says so then, with `Identical` at `Count`, and a worktree nothing
-else links is linked to that pull request (`LinkCopy`). A merged pull request vouches
-whatever became of its branch, deleted or force-pushed without the copies; while it is
-open and its branch is there, only the copies this listing finds on the branch count, so a
-branch force-pushed without them makes them count for nothing. A record that covers less
-than the worktree holds links nothing. `stageOf` is unchanged: a merged or closed item,
-on GitHub, and clean is finished. The record's pull request merging with every copy
-(`copyState.merged`: the record holds, and its merged pull request's head has `copy_tip`) is
-what the cleanup waits for: `autoCleanable` takes a worktree whose work is on GitHub only as
-copies only then, and one linked by its copies only when that is the pull request it is
-linked to, and only when the app or Claude Code made it; never while the pull request is
-open, and never by a branch's name. Its own branch, and a pull request's branch it has
-checked out, are deletable then too (`headSafety`), still subject to the protected patterns,
-a remote's default branch, and the conditional `update-ref -d`; while the pull request is
-open, their reason says the commits are on GitHub only as copies in a pull request that
-hasn't merged with them.
+A worktree each of whose commits has an identical copy on one branch is fully copied onto it, and
+links to that branch's pull request, asked about as a branch link is, when nothing else links it
+(`LinkCopy`); the pull request of the branch a worktree copied only in part is asked about the same
+way, without linking it. `Worktree.Copies` says what was found: the branch (`ref`, as in
+`origin/feature-x`, and `branch`, its name on its remote as `withOwners` works it out, `main` for
+`origin/mirror/main` of a remote called `origin/mirror`, or `''` when no remote the clone names is
+its), how many commits (`count`), and how many have an identical copy, an edited one, or none, with
+`note` saying why they couldn't be compared, or why identical copies on several branches don't
+count; `pr` is the number of the pull request the copies went into (the one `ref`'s branch heads,
+or, when `recorded`, the one the record names; 0 when none is known), and `gone` says `ref`'s
+remote-tracking branch is gone, as it can be only when `recorded`. Its zero value means there was
+nothing to compare with.
+
+Each read is a read (`readOnly`, with `ReadEnv`, so an object a partial clone lacks fails it rather
+than being fetched), and the allowlist holds each to its exact words: commit IDs, a remote-tracking
+branch, and a whole number of seconds. Anything that goes wrong leaves the worktree not fully copied
+and never fails the listing: git refusing a read, or warning on its way (its answer may then be
+wrong), a log reaching its cap, more than 200 commits, a merge among U, a count that changed
+meanwhile, or a comparison that leaves a commit out. What a comparison found is kept in memory
+(`copyCache`) by the worktree's HEAD, the commit it was made at from GitHub, its clone's GitHub
+remotes, and every remote-tracking branch and where it points (`cloneRefs.fingerprint`), so a
+listing after which nothing of those changed runs no git to compare, and a worktree that is gone is
+forgotten, as is every worktree of a clone the window's listing, which lists every clone with a
+linked worktree, didn't list (the cache starts over, too, past 4,096 worktrees); git that couldn't
+be run at all is tried again next time.
+
+`Details` marks each of its commits not on GitHub with its copy (`UnpushedCommit.Copy`, `identical`
+or `edited`, and `CopyOID`): what the listing found, when one read of the clone's refs and one of
+its remotes say nothing changed since (the listing's key: its HEAD, the commit it was made at, the
+GitHub remotes and every remote's name, and the refs' fingerprint), or else a comparison of its own;
+none when the refs or the remotes can't be read. `Details.Copies` (`CopyComparison`) says how that
+went, so a blank mark is never mistaken for an unknown one: `compared` is true when the comparison
+ran to completion (the pushed commits read, every branch holding likely copies compared and
+confirmed byte for byte), or there was no pushed branch to compare with; `ref` is the branch
+compared with, `""` when no pushed commit was a likely copy of any, and `branch` its name on its
+remote, as `Copies.branch` says it; `identical` and `edited` count the commits; and `note` says why
+it couldn't run. So `compared` with `identical` at 0 means no copy is on a pushed branch now (the
+branch was deleted, or force-pushed without them), while `compared` false means only that this is
+unknown. It reads no copy record, so a worktree its record vouches for (`Worktree.Copies.recorded`)
+may compare with nothing; its zero value is for a worktree with nothing not on GitHub.
+
+## The copy record (`copyrecords.go`, migration `0109_worktree_copies`)
+
+A worktree fully copied onto a branch stays so only while the branch is there: a squash merge leaves
+the copies out of the default branch, and deleting the branch leaves them on no remote-tracking
+branch. The pull request keeps them (GitHub keeps every pull request's head commit), so when a
+listing finds a worktree fully copied onto a branch whose pull request it knows, it records that
+pull request in `worklog` (`worklog.Copy`, the `worktree_copies` table, one row per worktree by its
+resolved directory): the worktree's HEAD, the branch, the pull request, the commits not on GitHub,
+and `copy_tip`, the branch's commit, which moves on with the branch while it still holds every copy,
+so it is most likely the pull request's last head. A record that already says all a new one would
+isn't written again. Each listing checks the records against the worktrees it listed, as the launch
+records are: one whose worktree is gone (or its folder), or whose HEAD isn't the record's, is
+dropped, and so is one whose clone is gone from a folder that is still there; one whose clone wasn't
+listed, or couldn't be, is kept. Removing a worktree drops its record too. The worklog store stamps
+a record's `created_at` (kept while the HEAD is the same) and `updated_at` with its own clock.
+
+## Copied work counts as on GitHub (`copyjudge.go`)
+
+`OnGitHub` is `Unpushed == 0`, or HEAD being the linked pull request's head, or the worktree's
+copies counting (`copyState`), while `Unpushed` keeps the count by commit ID. They count when this
+listing found every commit not on GitHub with an identical copy on one pushed branch of a GitHub
+remote: on GitHub as that branch. Or when the copy record holds, and either its branch is gone or
+its pull request merged: the record describes the worktree (HEAD is the record's); it covers every
+commit the worktree has that isn't on GitHub, each being one whose identical copy the record vouches
+for or on the record's branch commit by ID (`judgeCoverage`: no git when this listing's comparison
+read those commits and all are the record's, else one `log` per record branch commit,
+`copyUnpushedArgs` with that commit after `--remotes` and `--ignore-missing`, kept in memory by the
+worktree's HEAD, the remote-tracking branches, and the record; this is what keeps the commits a
+worktree started from on a branch since squash-merged covered, while a commit of another branch
+deleted unmerged is never vouched for); the record's pull request was read in this listing's request
+(asked by number, with the items, only for a covering record); and that pull request's head is the
+record's `copy_tip` or has it (`prHolds`: `merge-base --is-ancestor`, which a commit the clone lacks
+fails; a yes kept for good, a no while the remote-tracking branches are the same). `Copies.Recorded`
+says so then, with `Identical` at `Count`, and a worktree nothing else links is linked to that pull
+request (`LinkCopy`). A merged pull request vouches whatever became of its branch, deleted or
+force-pushed without the copies; while it is open and its branch is there, only the copies this
+listing finds on the branch count, so a branch force-pushed without them makes them count for
+nothing. A record that covers less than the worktree holds links nothing. `stageOf` is unchanged: a
+merged or closed item, on GitHub, and clean is finished. The record's pull request merging with
+every copy (`copyState.merged`: the record holds, and its merged pull request's head has `copy_tip`)
+is what the cleanup waits for: `autoCleanable` takes a worktree whose work is on GitHub only as
+copies only then, and one linked by its copies only when that is the pull request it is linked to,
+and only when the app or Claude Code made it; never while the pull request is open, and never by a
+branch's name. Its own branch, and a pull request's branch it has checked out, are deletable then
+too (`headSafety`), still subject to the protected patterns, a remote's default branch, and the
+conditional `update-ref -d`; while the pull request is open, their reason says the commits are on
+GitHub only as copies in a pull request that hasn't merged with them.
 
 The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
 window calls when the drawer first opens. It first checks the request as the removals do

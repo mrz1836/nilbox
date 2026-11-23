@@ -1,5 +1,7 @@
 # Publishing a release
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Packaging a release](packaging-a-release.md), [Rehearsing an update](rehearsing-an-update.md)
+
 Each release is built, signed, and published by
 [`desktop-release.yml`](../../.github/workflows/desktop-release.yml) on macOS runners. It is the one
 workflow that may use macOS: a repository test (`TestNoMacOSRunners`) holds every other to
@@ -11,8 +13,9 @@ test (`TestGoFortressReadsEnableRelease`) fails while that line is set but GoFor
 GoFortress would publish a tag's release before its files exist, and an immutable release
 could never get them.
 
-**Before the first tag** (and to set it all up again). Keep the keys in a folder outside the
-repository that only you can read, such as `~/release-keys`.
+## Before the first tag (and to set it all up again)
+
+Keep the keys in a folder outside the repository that only you can read, such as `~/release-keys`.
 
 1. **The release key** signs each release's update manifest. Every installed copy trusts the
    public half its build pins, and nothing else.
@@ -80,7 +83,7 @@ repository that only you can read, such as `~/release-keys`.
 7. Recommended: under Settings → Actions → General, require actions to be pinned to a
    full-length commit SHA, as every workflow here pins them.
 
-**How to release.**
+## How to release
 
 1. Merge to `master`.
 2. Tag it from the app's own [Release](../guide/release.md) page, or with `magex version:bump bump=patch
@@ -148,15 +151,16 @@ repository that only you can read, such as `~/release-keys`.
 
 `GH_TOKEN` reaches only the steps that run `gh`, never one that runs magex, mage, Go, or pnpm.
 
-**Trying again.** Use Actions' **Re-run failed jobs** on the Desktop release run. It keeps the
-tag, the workflow as the tag holds it, and the secrets, so the workflow needs no manual trigger.
-A failed build builds again; a failed publish job waits for GoFortress, signs again, reuses the
-draft it left, and replaces its files; once the release is published, a re-run finds it, says
-an earlier attempt published it, and only checks the latest release. The unsigned bundle the
-publish job signs is kept for 7 days; after that, use **Re-run all jobs**, which builds it
-again.
+## Trying again
 
-**When something goes wrong.**
+Use Actions' **Re-run failed jobs** on the Desktop release run. It keeps the tag, the workflow as
+the tag holds it, and the secrets, so the workflow needs no manual trigger. A failed build builds
+again; a failed publish job waits for GoFortress, signs again, reuses the draft it left, and
+replaces its files; once the release is published, a re-run finds it, says an earlier attempt
+published it, and only checks the latest release. The unsigned bundle the publish job signs is kept
+for 7 days; after that, use **Re-run all jobs**, which builds it again.
+
+## When something goes wrong
 
 - **GoFortress failed on the tag:** nothing was published. Fix it or re-run it, and once it is
   green, **Re-run failed jobs** on Desktop release. A broken tag is fixed forward with a new tag;
@@ -171,7 +175,7 @@ again.
   release's older version, which offers no update.
 - **The release key leaked or was lost, or the certificate expired:** see below.
 
-**Replacing the release key or the certificate.**
+## Replacing the release key or the certificate
 
 - **The release key** (lost, leaked, or only suspected): installed copies trust only the key
   their build pins, and a release's manifest must verify with the key of the build being

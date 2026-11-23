@@ -1,5 +1,7 @@
 # internal/pushwatch
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/pushwatch`](../../internal/pushwatch) · Guide: [The window](../guide/window.md)
+
 `internal/pushwatch` notices a push made on this Mac to a pull request the inbox lists, so
 its card catches up at once rather than at the next refresh. Git runs no hook after a push,
 but a push that lands moves the clone's own `refs/remotes/origin/<branch>` to the commit it

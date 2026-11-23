@@ -1,23 +1,25 @@
 # Schedules, the digest, the script step, and a routine's week
 
-What the user sees is in `docs/desktop.md`'s [Building a routine](../../guide/autopilot/building-a-routine.md)
-and [Testing a routine](../../guide/autopilot/testing-a-routine.md).
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Building a routine](../../guide/autopilot/building-a-routine.md), [Testing a routine](../../guide/autopilot/testing-a-routine.md)
 
-**Schedules.** On a schedule (`catalog.EventSchedule`, `spec.Schedule`) is a state the
-evaluator decides from the moment it is given, as every trigger is: it holds from the
-schedule's time of day, in that moment's own location, to the end of a day it is due (every
-day, a weekday, or the week's day), under the fire key `schedule:<local date>`. So it needs
-nothing of its own in the engine: the 1-minute tick runs a cycle, which reaches the time; a
-time the Mac slept through holds when it wakes (the sim's `Sleep` jumps with no tick, then the
-first cycle fires it), and only that day; daylight saving and a new time zone keep the time of
-day (`time.Date` in the clock's location; the sim's `Clock.Travel`), and a clock set back after
-it fired finds the day's key recorded. The scenarios in `sim/schedule_test.go` hold each case.
-`Schedule.Style` (`catalog.ScheduleStyles`: `each`, written as none, or `digest`) says how
-it tells of what it matched; `spec.Validate` holds a digest's Notify me to the first step, so
-the matches a time makes, which run their first step in the cycle that records them, tell
-together.
+## Schedules
 
-**The digest** (`digest.go`). As a cycle ends, `tellNotices` takes out the Notify me jobs of a
+On a schedule (`catalog.EventSchedule`, `spec.Schedule`) is a state the evaluator decides from the
+moment it is given, as every trigger is: it holds from the schedule's time of day, in that moment's
+own location, to the end of a day it is due (every day, a weekday, or the week's day), under the
+fire key `schedule:<local date>`. So it needs nothing of its own in the engine: the 1-minute tick
+runs a cycle, which reaches the time; a time the Mac slept through holds when it wakes (the sim's
+`Sleep` jumps with no tick, then the first cycle fires it), and only that day; daylight saving and a
+new time zone keep the time of day (`time.Date` in the clock's location; the sim's `Clock.Travel`),
+and a clock set back after it fired finds the day's key recorded. The scenarios in
+`sim/schedule_test.go` hold each case. `Schedule.Style` (`catalog.ScheduleStyles`: `each`, written
+as none, or `digest`) says how it tells of what it matched; `spec.Validate` holds a digest's Notify
+me to the first step, so the matches a time makes, which run their first step in the cycle that
+records them, tell together.
+
+## The digest (`digest.go`)
+
+As a cycle ends, `tellNotices` takes out the Notify me jobs of a
 digest routine's matches (`pass.digests`; a manual run's tells on its own) and hands each
 routine's as one job carrying a `Digest` to the notices dispatcher (`dispatchDigest`: one
 `Dispatch`, its answer applied to each match, so each step is done once the notice is told).
@@ -61,35 +63,38 @@ so (`renamedWords`), since an ID a routine brought from another Mac (an export, 
 name another script here; the builder offers it to be picked again. After a restart, `Alive` reads the run engine's record
 of the run's `script_run_id` and tells the engine an end it didn't hear.
 
-**Run on the matches now** (`runon.go`). The bound `RunOnMatches(id, items)` is a command on the
-loop: for each item the saved routine matches now and would run on (`TestItem.RunsNow`: no
-record of its occurrence, a record that closed before it ran, or a baseline), it records the
-routine's own match for that occurrence, approved, or opens that record again approved, so the
-routine never runs on the occurrence twice and an Ask first routine doesn't ask again; every
-other limit still holds it. A routine that is off, broken, or another account's is refused,
-and so is a list longer than a test's.
+## Run on the matches now (`runon.go`)
 
-**A routine's week** (`stats.go`). The bound `Stats(id)` reads the routine's runs started in
-the last seven days with their matches' steps (`ListRoutineWeekRuns`) and counts, in Go
-(`weekStats`), its agents' runs and its scripts', the fixes (an agent's run whose verdict
-passed, or whose match's Wait for the checks after its pushed step passed, once per match),
-merges, reviews posted, and GitHub actions GitHub took (each by the kind of the step its run
-ran), and what the runs reported spending: the dollars, how many runs reported one, and how
-many of those an estimate (`cost_estimated`, which a subscription's sign-in reports as the
-API's price; the window says *about* for every figure), and the tokens. A run that never
-started counts nowhere. A run in the terminal reports neither, and its session's tokens are
-the session panel's (`internal/sessions`' `Usage`, from the agent's own files). A background
-run's session reads its run's instead: `Usage` asks its `RunTokens` (core's
-`backgroundTokens`, over `Engine.BackgroundTokens`, by the run engine's run through the
-index `0016` adds on `script_run_id`), which the runner keeps current (`Engine.RunUsage`),
-never the transcript, and marks them `FromRun`.
+The bound `RunOnMatches(id, items)` is a command on the loop: for each item the saved routine
+matches now and would run on (`TestItem.RunsNow`: no record of its occurrence, a record that closed
+before it ran, or a baseline), it records the routine's own match for that occurrence, approved, or
+opens that record again approved, so the routine never runs on the occurrence twice and an Ask first
+routine doesn't ask again; every other limit still holds it. A routine that is off, broken, or
+another account's is refused, and so is a list longer than a test's.
 
-**The cycle's reads.** A cycle takes each routine's matches by occurrence and what it first saw
-of each item from the ledger's keys the engine keeps in memory, reads the items each leaves
-alone and its resets of the tries in two reads (`readLedger`, which Run on the matches now
-shares), indexes each routine's last closed match by item once (`lastClosed`, which the
-evaluator's history reads), and keeps its own state only when it changed beyond the last cycle
-(`keepCycle`). `BenchmarkEngineCycle` measures it
+## A routine's week (`stats.go`)
+
+The bound `Stats(id)` reads the routine's runs started in the last seven days with their matches'
+steps (`ListRoutineWeekRuns`) and counts, in Go (`weekStats`), its agents' runs and its scripts',
+the fixes (an agent's run whose verdict passed, or whose match's Wait for the checks after its
+pushed step passed, once per match), merges, reviews posted, and GitHub actions GitHub took (each by
+the kind of the step its run ran), and what the runs reported spending: the dollars, how many runs
+reported one, and how many of those an estimate (`cost_estimated`, which a subscription's sign-in
+reports as the API's price; the window says *about* for every figure), and the tokens. A run that
+never started counts nowhere. A run in the terminal reports neither, and its session's tokens are
+the session panel's (`internal/sessions`' `Usage`, from the agent's own files). A background run's
+session reads its run's instead: `Usage` asks its `RunTokens` (core's `backgroundTokens`, over
+`Engine.BackgroundTokens`, by the run engine's run through the index `0016` adds on
+`script_run_id`), which the runner keeps current (`Engine.RunUsage`), never the transcript, and
+marks them `FromRun`.
+
+## The cycle's reads
+
+A cycle takes each routine's matches by occurrence and what it first saw of each item from the
+ledger's keys the engine keeps in memory, reads the items each leaves alone and its resets of the
+tries in two reads (`readLedger`, which Run on the matches now shares), indexes each routine's last
+closed match by item once (`lastClosed`, which the evaluator's history reads), and keeps its own
+state only when it changed beyond the last cycle (`keepCycle`). `BenchmarkEngineCycle` measures it
 ([performance.md](../../performance.md#the-engines-cycle)).
 
 **The ledger's keys in memory** (`ledgerindex.go`, `ledgerIndex`, the engine's ledger's `index`,

@@ -1,5 +1,7 @@
 # Settings → Autopilot
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [The routines, kept](../../architecture/autopilot/routines-kept.md)
+
 This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings → Labs**.
 
 | Setting | Default | What it does |

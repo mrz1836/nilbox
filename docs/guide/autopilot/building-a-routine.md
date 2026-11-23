@@ -1,5 +1,7 @@
 # Building a routine
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Schedules, the digest, the script step, and a routine's week](../../architecture/autopilot/schedules.md), [The searches, and the builder's reads of the inbox](../../architecture/autopilot/searches.md), [`internal/autopilot/draft`](../../architecture/autopilot/draft.md), [The Autopilot tab](../../architecture/autopilot/autopilot-tab.md)
+
 The builder is the routine itself, laid out top to bottom in the order it runs, each part edited
 in place. **New routine** (or **Start from scratch** on the empty tab) starts one on your
 account's pull requests, telling you when their checks fail, named "New routine", in the mode
@@ -97,23 +99,25 @@ you have.
   default), and its own **Daily budget**, in dollars or tokens (off), each at its default until
   set; Settings → Autopilot's limits and daily cap still hold over every routine together.
 
-**Problems and warnings.** What keeps a routine from being saved shows where it is, in red: a
-search with no scope, a regex that doesn't compile, a prompt your library doesn't have or that
-isn't for the items' kind, a trigger that doesn't fit what it watches, a second agent step. The
-footer counts them (*Fix 2 problems to save.*). Warnings, in amber, never block saving: a search
-that matches more than 100 items checks only the newest 100; most of what it watches isn't in
-your inbox, so a snooze or a pin won't change what you see; an owner none of your items
-came from, since GitHub answers a name it doesn't know with nothing; and, on Autopilot, a
-terminal run or the profile's own permissions. As you edit, the last reading stays until the
-next arrives, so nothing blinks out. A problem at a place no part shows, as an imported
-routine can hold, is listed at the top.
+## Problems and warnings
 
-**Saving.** **Save** (or ⌘S, with Caps Lock on too, and never while a dialog or a sheet is open)
-stores the routine once nothing keeps it; **Discard** puts back what was saved, and why a save
-failed shows in the footer. Saving a change to what a routine that is on watches, fires on,
-checks, or fires once per asks the [question](README.md) first, *3 pull requests match right
-now.* **Run on them too** · **Only what changes from now on**, and asks nothing only when nothing
-matches, nothing waits to be told, and everything it watches was read; otherwise it asks all
-the same (*2 items may match right now.*, *Not everything it watches could be read right
-now.*). Leaving a routine with unsaved changes for another, Activity, or a new one asks first;
-your draft survives switching tabs.
+What keeps a routine from being saved shows where it is, in red: a search with no scope, a regex
+that doesn't compile, a prompt your library doesn't have or that isn't for the items' kind, a
+trigger that doesn't fit what it watches, a second agent step. The footer counts them (*Fix 2
+problems to save.*). Warnings, in amber, never block saving: a search that matches more than 100
+items checks only the newest 100; most of what it watches isn't in your inbox, so a snooze or a pin
+won't change what you see; an owner none of your items came from, since GitHub answers a name it
+doesn't know with nothing; and, on Autopilot, a terminal run or the profile's own permissions. As
+you edit, the last reading stays until the next arrives, so nothing blinks out. A problem at a place
+no part shows, as an imported routine can hold, is listed at the top.
+
+## Saving
+
+**Save** (or ⌘S, with Caps Lock on too, and never while a dialog or a sheet is open) stores the
+routine once nothing keeps it; **Discard** puts back what was saved, and why a save failed shows in
+the footer. Saving a change to what a routine that is on watches, fires on, checks, or fires once
+per asks the [question](README.md) first, *3 pull requests match right now.* **Run on them too** ·
+**Only what changes from now on**, and asks nothing only when nothing matches, nothing waits to be
+told, and everything it watches was read; otherwise it asks all the same (*2 items may match right
+now.*, *Not everything it watches could be read right now.*). Leaving a routine with unsaved changes
+for another, Activity, or a new one asks first; your draft survives switching tabs.

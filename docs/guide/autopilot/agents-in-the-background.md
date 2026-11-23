@@ -1,5 +1,7 @@
 # Agents in the background
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Agents in the background](../../architecture/autopilot/agents-in-the-background.md), [Codex in the background](../../architecture/autopilot/codex-in-the-background.md), [`internal/agentrun/stream`](../../architecture/agentrun/stream.md)
+
 A routine's **Run a coding agent** step, **In the background**, runs the agent headless in the
 item's own worktree, with no terminal opened, held in by the step's fence: its tools preset
 ([Fences](fences.md)), its budget, and its time limit. Claude Code
@@ -7,13 +9,13 @@ and Codex both run there. A preset the step's agent can't keep (Codex's GitHub t
 offered for it, and the builder says why; one an inherited agent can't keep, for the item's
 repository, leaves the start not ready.
 
-- **Planned as a click's launch.** The same agent, profile, model, effort, and prompt as a
-  terminal run, and the same checks right before the start ([above](agents-in-your-terminal.md)),
-  with the same holds: agent files in a pull request you didn't open wait for your OK, a
-  session in the worktree queues the start, and uncommitted changes wait for your OK. The
-  worktree is always the item's, made at the head the routine decided on, and one at another
-  head waits for you. The prompt's **.Unattended** is true. An outside contributor's item runs
-  read only whatever the fence says.
+- **Planned as a click's launch.** The same agent, profile, model, effort, and prompt as a terminal
+  run, and the same checks right before the start ([Agents in your
+  terminal](agents-in-your-terminal.md)), with the same holds: agent files in a pull request you
+  didn't open wait for your OK, a session in the worktree queues the start, and uncommitted changes
+  wait for your OK. The worktree is always the item's, made at the head the routine decided on, and
+  one at another head waits for you. The prompt's **.Unattended** is true. An outside contributor's
+  item runs read only whatever the fence says.
 - **What it runs with.** Your login shell's environment, with the profile's own (the default
   profile's config folder is never named, and no API key signs the agent in unless **Use an API
   key when one is set** is on), without the variables an agent session sets for itself; no permission

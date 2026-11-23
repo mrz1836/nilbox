@@ -1,5 +1,7 @@
 # internal/brand
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/brand`](../../internal/brand) · See also: [Build targets](../development/build-targets.md)
+
 `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
 enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
 the frontend theme tokens (`frontend/src/generated/theme.css`, whose `@theme` block resets

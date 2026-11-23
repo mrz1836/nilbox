@@ -1,5 +1,7 @@
 # The inspector
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [`internal/devtools`](../architecture/devtools.md), [Build targets](build-targets.md)
+
 A build from source carries an inspector, so you, or an agent helping you, can look inside the
 app while it runs, from the terminal: Nilbox Dev (`magex app:build`, `app:run`, `app:fresh`)
 and `magex app:dev` alike. A release never does, nor a rehearsal: magex compiles it in only with

@@ -1,5 +1,7 @@
 # internal/reporules
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/reporules`](../../internal/reporules) · Guide: [Snooze, dismiss, and pin](../guide/snooze-dismiss-pin.md)
+
 `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
 `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
 settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

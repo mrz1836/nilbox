@@ -1,5 +1,7 @@
 # Packaging a release
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Publishing a release](publishing-a-release.md)
+
 `magex app:package` builds the files a GitHub release of the app attaches, on a Mac, into
 `bin/release/<version>/`:
 
@@ -36,9 +38,11 @@ that doesn't match the app's fails here, never in a user's hands. Last, it check
 `magex app:verify` does and prints each one's size. While no release key is pinned, it refuses
 with "no release key pinned yet".
 
-**In two halves.** `app:package` is `magex app:buildRelease`, then `magex app:signRelease`, in
-one target, and each half also runs on its own, which is how the release workflow keeps every
-secret away from the build's tools.
+## In two halves
+
+`app:package` is `magex app:buildRelease`, then `magex app:signRelease`, in one target, and each
+half also runs on its own, which is how the release workflow keeps every secret away from the
+build's tools.
 
 - `app:buildRelease` reads `RELEASE_VERSION` alone. It checks the version, the tag, and the
   working tree as `app:package` does, refuses while no release key is pinned, and builds the
@@ -52,22 +56,26 @@ secret away from the build's tools.
   as it was, sets the modes before signing as after (a build artifact keeps none), and builds
   the other files as `app:package` does.
 
-**The keychain search list.** `codesign` finds an identity only in a keychain on the user's
-search list, even one named with `--keychain`. With `CODESIGN_KEYCHAIN` set, the target puts
-that keychain first on the list once the bundle is built, while it signs, and puts the list
-back exactly as it was when it ends, fails, or is interrupted. On Control-C the target then stops as the build's tools do and
-cleans up after itself; on `SIGTERM` or `SIGHUP` it ends at once, and the next run clears what
-it left in the release's folder. It never looks for the identity with `security find-identity
--v`, which counts a self-signed identity as not valid though it signs.
+## The keychain search list
 
-**The release key.** `magex app:keygen out=<folder>` writes a new Ed25519 private key to
-`<folder>/release.key` (PKCS#8 PEM, readable by you alone) and prints only its public half, in
-base64, to pin as `update.ReleaseKey`. It refuses a folder inside the repository, comparing
-folders as files, so another case of the repository's name, a link, or a firmlink doesn't get
-past it, and never overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and
-`*.p12` out all the same. Keep the private key backed up: without it, no install can verify an
-update again. Setting releases up from the start, and replacing the key or the certificate,
-are in [Publishing a release](publishing-a-release.md).
+`codesign` finds an identity only in a keychain on the user's search list, even one named with
+`--keychain`. With `CODESIGN_KEYCHAIN` set, the target puts that keychain first on the list once the
+bundle is built, while it signs, and puts the list back exactly as it was when it ends, fails, or is
+interrupted. On Control-C the target then stops as the build's tools do and cleans up after itself;
+on `SIGTERM` or `SIGHUP` it ends at once, and the next run clears what it left in the release's
+folder. It never looks for the identity with `security find-identity -v`, which counts a self-signed
+identity as not valid though it signs.
+
+## The release key
+
+`magex app:keygen out=<folder>` writes a new Ed25519 private key to `<folder>/release.key` (PKCS#8
+PEM, readable by you alone) and prints only its public half, in base64, to pin as
+`update.ReleaseKey`. It refuses a folder inside the repository, comparing folders as files, so
+another case of the repository's name, a link, or a firmlink doesn't get past it, and never
+overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and `*.p12` out all the same. Keep
+the private key backed up: without it, no install can verify an update again. Setting releases up
+from the start, and replacing the key or the certificate, are in [Publishing a
+release](publishing-a-release.md).
 
 `magex app:verify dir=<folder>` checks a release's folder as the app will: its
 `manifest-darwin.json` (at most 16 KiB, no field the format lacks, every field in form, for

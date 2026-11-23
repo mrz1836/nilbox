@@ -1,5 +1,7 @@
 # Data location
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/store`](../architecture/store.md), [`cmd/nilbox`](../architecture/cmd/nilbox.md)
+
 The app keeps its database, launch files, and logs in one directory, created on first start
 and readable only by you:
 
@@ -32,15 +34,17 @@ stored there, nor anywhere else: the app borrows the token from `gh auth token` 
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
 
-**Logs.** The app logs to `logs/nilbox.log` in the same directory, one JSON record per line,
-and writes the same records as text to stderr, which you see when you start the binary from a
-terminal (`"bin/Nilbox Dev.app/Contents/MacOS/nilbox"` for a build from source, quoted for its
-space). When the file would pass 5 MB it is renamed to `nilbox.log.1`, the earlier `nilbox.log.1` becomes `nilbox.log.2`, and the oldest is
-deleted, so at most three files (about 15 MB) are kept. The log keeps Info records and up;
-start the binary with `--debug`, or with `NILBOX_DEBUG=1` in its environment, to keep Debug
-records too. A log file that can't be written never stops the app: it logs to stderr alone and
-says why there. The startup timing lines go to `logs/timing.log`. Neither file holds your
-GitHub token.
+## Logs
+
+The app logs to `logs/nilbox.log` in the same directory, one JSON record per line, and writes the
+same records as text to stderr, which you see when you start the binary from a terminal
+(`"bin/Nilbox Dev.app/Contents/MacOS/nilbox"` for a build from source, quoted for its space). When
+the file would pass 5 MB it is renamed to `nilbox.log.1`, the earlier `nilbox.log.1` becomes
+`nilbox.log.2`, and the oldest is deleted, so at most three files (about 15 MB) are kept. The log
+keeps Info records and up; start the binary with `--debug`, or with `NILBOX_DEBUG=1` in its
+environment, to keep Debug records too. A log file that can't be written never stops the app: it
+logs to stderr alone and says why there. The startup timing lines go to `logs/timing.log`. Neither
+file holds your GitHub token.
 
 If the database can't be read at startup, because the file is damaged, isn't a database, or
 wasn't set up by this app's migrations, the app renames it (with its `-wal` and `-shm` files)
@@ -57,6 +61,8 @@ that is still running, or one that can't be written, is never moved. Like anythi
 stops the app from starting, it is shown in an error dialog, which says what to do where that
 is known, and the app quits once you dismiss it.
 
-**Another data folder.** Started with `--data-dir=<absolute path>`, the app keeps everything,
-its logs included, in that folder instead, and never touches the directory above. It is how
-the [sandbox](../development/build-targets.md#a-sandbox-on-fresh-data) runs; a relative path is refused.
+## Another data folder
+
+Started with `--data-dir=<absolute path>`, the app keeps everything, its logs included, in that
+folder instead, and never touches the directory above. It is how the
+[sandbox](../development/build-targets.md#a-sandbox-on-fresh-data) runs; a relative path is refused.

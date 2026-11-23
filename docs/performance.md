@@ -1,5 +1,7 @@
 # Performance
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [`internal/budget` and `internal/github`](architecture/budget-and-github.md)
+
 The first milestone set five targets before any further feature work: a fast cold start, a
 fast inbox refresh, a fast agent launch, a small app, and a small share of the GitHub API
 budget. This page records what was measured, on what, and how, so anyone can reproduce the

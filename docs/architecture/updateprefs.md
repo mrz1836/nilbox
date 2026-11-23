@@ -1,5 +1,7 @@
 # internal/updateprefs
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/updateprefs`](../../internal/updateprefs) · Guide: [Updates](../guide/updates.md)
+
 `internal/updateprefs/` declares the update setting, `update.mode` (`Mode`: `download`, the
 default, "Download it and tell me"; `notify`, "Just tell me"; `off`, "Don't check"), which
 settings alone writes (`SetUpdateMode`, emitting the Go-only `event.UpdatesChanged`) and

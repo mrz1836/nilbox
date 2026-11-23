@@ -1,5 +1,7 @@
 # Export and import
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Easy mode: templates, from an item, why, export and import, graduating](../../architecture/autopilot/easy-mode.md), [The routines, kept](../../architecture/autopilot/routines-kept.md)
+
 **Export…** on a routine's **⋯** menu, or **Export every routine…** under the routines, saves
 them to a file you choose, in the export format ([backup files](../../backup-files.md)), with the text
 of the prompts they run by nickname unless you untick **Include the text of the prompts they

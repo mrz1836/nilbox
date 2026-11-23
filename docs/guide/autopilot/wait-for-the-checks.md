@@ -1,5 +1,7 @@
 # Closing the loop: Wait for the checks
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Verify, tries, the loop guard, and profile fallback](../../architecture/autopilot/verify-and-tries.md)
+
 **Wait for the checks** follows an agent's push in the background: it comes after the agent
 step (*only if it pushed*, as **+ Add a step** sets it), and its match is *Checking* until the
 checks on the run's own commit say how they came out. Nothing is read twice: the checks
@@ -30,17 +32,20 @@ checks). A step whose Only if doesn't hold is skipped, and the next one runs, so
 passes, merge; if it still fails, tell me* is two steps. An unknown or overtaken verdict holds
 neither.
 
-**Tries.** A routine's runs on an item count as its tries (**Tries per item**, 2), across
-occurrences: a fix that still fails puts a new commit at the head, which the routine fires on
-again after **Wait between tries**, until the last try, which says it gave up. A Dependabot
-rebase is a new occurrence, never a new count, so a pull request rebased every day that the
-agent can't fix gets no run every day. The next occurrence then closes *Gave up after 2 tries.*
-with **Try again**, which starts the count over and opens it again; only you can. A run that
-was interrupted, stopped because its item closed, or refused for usage counts as no try.
-While one of a routine's matches on an item works or is checking, another of its matches there
-waits for it.
+## Tries
 
-**The loop guard.** A **New commits** routine never fires on a commit a routine's own run
-pushed, unless its trigger says **Also on commits a routine pushed**. While an agent works on
-the item, a new head waits to be told apart until its run ends and records what it pushed;
-someone else's push then fires it as before.
+A routine's runs on an item count as its tries (**Tries per item**, 2), across occurrences: a fix
+that still fails puts a new commit at the head, which the routine fires on again after **Wait
+between tries**, until the last try, which says it gave up. A Dependabot rebase is a new occurrence,
+never a new count, so a pull request rebased every day that the agent can't fix gets no run every
+day. The next occurrence then closes *Gave up after 2 tries.* with **Try again**, which starts the
+count over and opens it again; only you can. A run that was interrupted, stopped because its item
+closed, or refused for usage counts as no try. While one of a routine's matches on an item works or
+is checking, another of its matches there waits for it.
+
+## The loop guard
+
+A **New commits** routine never fires on a commit a routine's own run pushed, unless its trigger
+says **Also on commits a routine pushed**. While an agent works on the item, a new head waits to be
+told apart until its run ends and records what it pushed; someone else's push then fires it as
+before.

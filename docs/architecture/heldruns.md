@@ -1,5 +1,7 @@
 # internal/heldruns
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/heldruns`](../../internal/heldruns) · Guide: [Reviewing a pull request](../guide/reviewing-a-pull-request.md)
+
 `internal/heldruns/` decides which of a pull request's workflow runs that GitHub holds for
 approval count toward where it stands, and declares **Ignored workflows**
 (`checks.ignoredWorkflows`, a list of workflow names, matched whole and case-sensitively),

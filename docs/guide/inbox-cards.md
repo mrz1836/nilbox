@@ -1,5 +1,7 @@
 # Inbox cards
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/inbox`](../architecture/inbox.md), [The inbox cards (frontend)](../architecture/frontend/inbox-cards.md), [`internal/avatars`](../architecture/avatars.md)
+
 Each pull request or issue in the inbox is a card two lines high, built to answer three
 questions at a glance: where it stands, what changed, and what to do next. **Settings →
 Cards** can make every card one line instead (**Compact cards**, below).
@@ -119,168 +121,185 @@ Cards** can make every card one line instead (**Compact cards**, below).
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy
 with GitHub.
 
-**Show details.** Click a card's empty space, or **Show details**, to open it in place, under
-its two lines, with everything the card leaves out, read from what the inbox already has, so it
-costs no request: where it stands (the checks as a bar with their counts, the review, the
-merge, or an issue's projects, each with its status and every field it has a value in, such as
-Size or Estimate, and its sub-issues), the change (lines added and removed, files, commits, the
-head branch and whether it comes from a fork, and the sensitive files by category) or, for an
-issue, how it is planned, as GitHub's sidebar shows it (its type, such as **Task**, its
-values in its organization's issue fields, such as **Priority** and **Effort**, its milestone
-with its due day, in amber once it has passed, and how far along it is, the issue it is a
-sub-issue of, and how many open issues block it and it blocks), and what is around it (the
-agent session and how it started, what the routines did with it, an issue's **Development**,
-the pull requests that close it with where each stands, or the issues in your inbox a pull
-request **Closes**, why it is here, and every label). An area with nothing to say is left out. Its buttons repeat your next move, offer **Review**
-or **Read** when that move doesn't open the item, open the agent's launch options, and snooze,
-dismiss, pin, or open it on GitHub, and, with **Unread dots** on, **Mark as read** or **Mark as
-unread**. Click again to close it.
+## Show details
 
-**A narrow window.** The cards follow their list's width rather than the window's: below about
-1,000 pixels the action column narrows, then the labels and the size go, then the agent
-button shows its spark alone and a live session its dot, then the track goes too, with the
-repository's org.
+Click a card's empty space, or **Show details**, to open it in place, under its two lines, with
+everything the card leaves out, read from what the inbox already has, so it costs no request: where
+it stands (the checks as a bar with their counts, the review, the merge, or an issue's projects,
+each with its status and every field it has a value in, such as Size or Estimate, and its
+sub-issues), the change (lines added and removed, files, commits, the head branch and whether it
+comes from a fork, and the sensitive files by category) or, for an issue, how it is planned, as
+GitHub's sidebar shows it (its type, such as **Task**, its values in its organization's issue
+fields, such as **Priority** and **Effort**, its milestone with its due day, in amber once it has
+passed, and how far along it is, the issue it is a sub-issue of, and how many open issues block it
+and it blocks), and what is around it (the agent session and how it started, what the routines did
+with it, an issue's **Development**, the pull requests that close it with where each stands, or the
+issues in your inbox a pull request **Closes**, why it is here, and every label). An area with
+nothing to say is left out. Its buttons repeat your next move, offer **Review** or **Read** when
+that move doesn't open the item, open the agent's launch options, and snooze, dismiss, pin, or open
+it on GitHub, and, with **Unread dots** on, **Mark as read** or **Mark as unread**. Click again to
+close it.
 
-**How to read a card.** The **?** beside **Last refreshed**, at the top of the inbox, opens
-**How to read a card**: a sample card, the real one, with its parts numbered 1 to 8 and a
-legend of what each says (whose move it is, who opened it and what it is, the title and
-labels, the story, the byline, the risk, where it stands, and your move and the agent's),
-then a key to the edge's colors, the track's symbols, a person's picture and a bot's, and,
-with **Unread dots** on, the blue dot. **Show the guide**, in **Settings → Cards** → **How to
-read a card**, opens it too, and setup's **Finish** step shows the sample card and the key.
-The sample is the same pull request every time, made up for the guide: it takes no clicks,
-showing it asks nothing of GitHub, and it is always the two-line card, whatever **Density**
-says. Escape or **Close** puts it away.
+## A narrow window
 
-**Compact cards.** **Settings → Cards** → **Density** chooses how much room each card
-takes, in both lists and a routine's Watching list: **Comfortable** (to start with) is the
-two-line card above, and **Compact** fits about three times as many, one line each, a column
-per question so you can read down each one. From the left: the edge; the pull request or
-issue mark (grey for a draft); the repository, its org dimmed; the title and number, the
-labels as up to six dots in their colors (hover them for their names; hidden labels stay
-hidden), the link to an issue's fix or a pull request's issue, the pin, and the unread dot; the story as a chip tinted with the edge's color (in the
-Snoozed and Dismissed tabs, when it comes back or was dismissed, then where it stands); the risk as its
-shield alone (hover it for who opened it and the sensitive files); the track as three dots,
-filled for a tick, a cross, or ↻, half-filled for runs held, pinging while checks run,
-dashed while a step waits and dotted with nothing yet to say (hover them for the three
-sentences), or for an issue a ring of its sub-issues done, else a dot in its project
-status's color; the size grade, or an issue's priority or size; how long ago it last
-changed; and your next move as words in the edge's color, filled while the pointer is on the
-card. Hover a compact card for its triage, the agent's button, **Show details**, and the
-menu, just left of your next move. Click its empty space, or **Show details**, for the same
-details as a comfortable card. In a list narrower than about 900 pixels the repository and
-the size go, and below about 770 the story and the age.
+The cards follow their list's width rather than the window's: below about 1,000 pixels the action
+column narrows, then the labels and the size go, then the agent button shows its spark alone and a
+live session its dot, then the track goes too, with the repository's org.
 
-**Author pictures.** **Settings → Cards** turns the authors' pictures off and on (on to start
-with). The inbox asks for the pictures of its authors as it loads, 25 to a request, all at once,
-and each card's shows as soon as its request comes back, so a slow download holds back only its
-own. A person's picture is downloaded by their login and a bot's from the address GitHub gives
-for it with the item, since the picture host answers a bot's login with a generated pattern;
-both without your token and kept in the database, each downloaded again at most once a week,
-and a failed one not tried again for 30 minutes. Turned off, the cards show initials and the
-bot mark, and nothing is downloaded for them; with the cards compact, which show no picture,
-nothing is downloaded either. A routine's Watching list shows initials and the bot mark alone.
+## How to read a card
 
-**Unread dots.** A blue dot before a card's title (after it, on a compact card) says something
-happened on the item since you last opened it, such as a new commit, a comment, or a review,
-as GitHub's last activity on the item says. Opening its review or issue sheet clears it, from the
-inbox or a routine's Watching list, and so does opening it on GitHub (**⌘-click** on the title,
-the **↗** beside it, or **Open on GitHub** in the card's menu or details). What you do in a
-sheet counts as seen too: the card is marked again as the sheet steps on to the next card (← →)
-or closes, so your own review, comment, or merge never brings the dot back, and so is a card
-you took yourself off on GitHub (**Unassign me**, **Remove me as reviewer**). **Mark as read**
-and **Mark as unread**, in the card's **⋯** menu under **Inbox actions** and in its details,
-set it by hand: an unread card keeps its dot until you open it again. Something you do on
-github.com itself still lights the dot, since GitHub's last activity doesn't say who acted.
-Updating the app marks every item already in your inbox read, and so does your first sign-in
-for everything it brings; an item that arrives later starts unread, unless only a routine's
-search found it.
-**Settings → Cards** → **Unread dots** turns the dots off and on (on to start with); off, the
-cards show no dot and their menus no **Mark as** item, but what you open is still marked, so the
-dots are right when you turn them back on. All of it stays on this Mac: nothing is sent to
-GitHub, it doesn't mark your [GitHub notifications](github-notifications.md) read, and theirs
-don't drive it.
+The **?** beside **Last refreshed**, at the top of the inbox, opens **How to read a card**: a sample
+card, the real one, with its parts numbered 1 to 8 and a legend of what each says (whose move it is,
+who opened it and what it is, the title and labels, the story, the byline, the risk, where it
+stands, and your move and the agent's), then a key to the edge's colors, the track's symbols, a
+person's picture and a bot's, and, with **Unread dots** on, the blue dot. **Show the guide**, in
+**Settings → Cards** → **How to read a card**, opens it too, and setup's **Finish** step shows the
+sample card and the key. The sample is the same pull request every time, made up for the guide: it
+takes no clicks, showing it asks nothing of GitHub, and it is always the two-line card, whatever
+**Density** says. Escape or **Close** puts it away.
 
-**Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
-repository: `size/*` to start with, since each card already shows its own size grade, so
-`size/XL` would only repeat it. Add a label, or a pattern: `*` matches anything, `/` included,
-as in `size/*`, `?` any one character, and case doesn't matter. **Restore the defaults** puts
-the list back. A hidden label is only left off the cards, before the first two are taken, so
-it never takes a visible label's place or counts in the **+N**; a card's details, the
-[filter](filtering.md) (`label:size/XL`), the issue sheet's labels, Autopilot, and the prompts'
-variables still see it.
+## Compact cards
 
-**Archived repositories are left out.** Each of the inbox's four searches asks GitHub for
-`archived:false`, so an archived repository's pull requests and issues never appear, never
-count toward a list's total, and never cost a details request. The inbox query also reports
-each item's repository, so an item whose repository was archived after GitHub indexed it is
-dropped before anything is stored, and the repository is recorded as archived. Clones of
-archived repositories still show in the Worktrees view, where their worktrees can be cleaned
-up.
+**Settings → Cards** → **Density** chooses how much room each card takes, in both lists and a
+routine's Watching list: **Comfortable** (to start with) is the two-line card above, and **Compact**
+fits about three times as many, one line each, a column per question so you can read down each one.
+From the left: the edge; the pull request or issue mark (grey for a draft); the repository, its org
+dimmed; the title and number, the labels as up to six dots in their colors (hover them for their
+names; hidden labels stay hidden), the link to an issue's fix or a pull request's issue, the pin,
+and the unread dot; the story as a chip tinted with the edge's color (in the Snoozed and Dismissed
+tabs, when it comes back or was dismissed, then where it stands); the risk as its shield alone
+(hover it for who opened it and the sensitive files); the track as three dots, filled for a tick, a
+cross, or ↻, half-filled for runs held, pinging while checks run, dashed while a step waits and
+dotted with nothing yet to say (hover them for the three sentences), or for an issue a ring of its
+sub-issues done, else a dot in its project status's color; the size grade, or an issue's priority or
+size; how long ago it last changed; and your next move as words in the edge's color, filled while
+the pointer is on the card. Hover a compact card for its triage, the agent's button, **Show
+details**, and the menu, just left of your next move. Click its empty space, or **Show details**,
+for the same details as a comfortable card. In a list narrower than about 900 pixels the repository
+and the size go, and below about 770 the story and the age.
 
-**Merged and closed items are left out.** The searches ask GitHub for open items only, but its
-search index can trail a merge or a close for a while. The inbox query also reads each item's
-state as of now, at no extra cost, so an item merged or closed since GitHub indexed it is
-dropped before anything is stored.
+## Author pictures
 
-**Repository details.** The same query reads what GitHub says about each item's repository, at
-no extra cost, since GitHub prices lists and a repository is a single object: its description,
-visibility, whether it is archived, disabled, or locked (and why), the repository a fork was
-made from, its default branch, your permission and the merge method GitHub offers you first,
-which merge methods it allows, whether it allows auto-merge and branch updates and deletes
-merged branches, its primary language, and its last push. Every refresh rewrites them with
-the repository; your own settings for it, and its matched clone, are left alone.
+**Settings → Cards** turns the authors' pictures off and on (on to start with). The inbox asks for
+the pictures of its authors as it loads, 25 to a request, all at once, and each card's shows as soon
+as its request comes back, so a slow download holds back only its own. A person's picture is
+downloaded by their login and a bot's from the address GitHub gives for it with the item, since the
+picture host answers a bot's login with a generated pattern; both without your token and kept in the
+database, each downloaded again at most once a week, and a failed one not tried again for 30
+minutes. Turned off, the cards show initials and the bot mark, and nothing is downloaded for them;
+with the cards compact, which show no picture, nothing is downloaded either. A routine's Watching
+list shows initials and the bot mark alone.
 
-**Where the details come from.** Each refresh reads them with a second GraphQL query that asks
-for the listed items by node ID. Asking for these fields inside the inbox query's three
-searches would cost about 12 points a refresh, because GitHub prices nested lists per result
-slot; asking for the listed items alone costs about one point per request. GitHub answers
-these requests at roughly 150 ms per item, so they go out in batches of at least 10 items, up
-to 4 at a time, and the details of the items already listed are read alongside the inbox
-query rather than after it. Only items new to the lists wait for a request of their own, so a
-refresh takes no longer than before once its items are known. The details are stored with each
-item and read again on every refresh, since checks finish without the item itself changing.
-A card whose details no refresh has read yet, right after updating the app for instance, says
-so.
+## Unread dots
 
-**Watching a refresh.** Every whole refresh shows the same way, whoever started it: the app's
-start, the timer, **Refresh**, or the menu bar. The **Refresh** button turns its arrows and
-reads **Refreshing…** (it can't be clicked again until the refresh ends), and in place of
-**Last refreshed** the toolbar says what the refresh is doing: **Asking GitHub…**, then
-**Reading 3 of 8 new items…** while it reads the details of the items new since the last
-refresh, then **Checking files: 2 of 5…** while it checks the changed files of the pull
-requests whose files are checked, the last two with a thin bar of how far along they are. A
-hairline glides along the top of the lists meanwhile, and the **Inbox** tab turns a small
-spinner beside its count, so a refresh shows from any page. The lists stay as they were until
-the refresh lands. The inbox's very first refresh, when nothing is stored yet, shows **Filling
-your inbox from GitHub…** with what it brings (review requests, your pull requests,
-assignments, checks and reviews) above the two lists' outlines, which the real lists replace
-once it lands; a first refresh that fails shows its error and **Not refreshed yet** instead.
-An empty inbox throws its [party](inbox-nil.md) only once the refresh the window opened on has
-ended, so a stored empty inbox doesn't celebrate while the app's start still reads GitHub. The
-menu bar shows no refresh under way.
+A blue dot before a card's title (after it, on a compact card) says something happened on the item
+since you last opened it, such as a new commit, a comment, or a review, as GitHub's last activity on
+the item says. Opening its review or issue sheet clears it, from the inbox or a routine's Watching
+list, and so does opening it on GitHub (**⌘-click** on the title, the **↗** beside it, or **Open on
+GitHub** in the card's menu or details). What you do in a sheet counts as seen too: the card is
+marked again as the sheet steps on to the next card (← →) or closes, so your own review, comment, or
+merge never brings the dot back, and so is a card you took yourself off on GitHub (**Unassign me**,
+**Remove me as reviewer**). **Mark as read** and **Mark as unread**, in the card's **⋯** menu under
+**Inbox actions** and in its details, set it by hand: an unread card keeps its dot until you open it
+again. Something you do on github.com itself still lights the dot, since GitHub's last activity
+doesn't say who acted. Updating the app marks every item already in your inbox read, and so does
+your first sign-in for everything it brings; an item that arrives later starts unread, unless only a
+routine's search found it. **Settings → Cards** → **Unread dots** turns the dots off and on (on to
+start with); off, the cards show no dot and their menus no **Mark as** item, but what you open is
+still marked, so the dots are right when you turn them back on. All of it stays on this Mac: nothing
+is sent to GitHub, it doesn't mark your [GitHub notifications](github-notifications.md) read, and
+theirs don't drive it.
 
-**Refreshing one card.** Hover a card and click the circular arrow, left of the snooze clock, to
-read that item alone from GitHub, for one point, rather than refreshing the whole inbox. A pull
-request you just merged, or an issue you just closed, leaves the inbox at once, and a toast
-says so. An item still open gets its card and details rewritten in place, and new activity can
-end its snooze. Which lists it is in waits for the next whole refresh, since only the searches
-can tell. The last-refreshed time and the error line above the lists belong to whole
-refreshes; a card refresh that fails says why in a toast.
+## Hidden labels
 
-**Opening a session.** **✦ Claude** beside a card's next step (**Open in Claude** to a screen
-reader, and **✦ Codex** when the item's settings choose Codex) opens the launch menu on the
-item's [resolved launch settings](launch-defaults.md), so you see what the session would start
-with, and can change any of it, before anything starts; the menu's **Open in Claude** starts
-it. Every launch button does the same: the review and issue sheets' **Open in Claude**, and a
-worktree row's in the Worktrees view, which has no arrow. The arrow beside the others, named
-for the prompt and profile those settings choose (**Launch options: Review · default**), opens
-the same launch menu, as does **✦ Claude…** in the card's details. On a card that names a pull
-request's situation, the button opens the launch menu on the prompt your launch defaults
-choose for it (**Open in Claude: Fix checks** to a screen reader), with the settings that
-prompt brings; the card asks for nothing more until its
-launch menu opens, which then works out that prompt's settings once and opens on it, and **Save these choices as the default for** saves a prompt
-chosen there as the prompt for that situation, not for every pull request:
+**Settings → Cards** lists the labels the cards leave out, in every repository: `size/*` to start
+with, since each card already shows its own size grade, so `size/XL` would only repeat it. Add a
+label, or a pattern: `*` matches anything, `/` included, as in `size/*`, `?` any one character, and
+case doesn't matter. **Restore the defaults** puts the list back. A hidden label is only left off
+the cards, before the first two are taken, so it never takes a visible label's place or counts in
+the **+N**; a card's details, the [filter](filtering.md) (`label:size/XL`), the issue sheet's
+labels, Autopilot, and the prompts' variables still see it.
+
+## Archived repositories are left out
+
+Each of the inbox's four searches asks GitHub for `archived:false`, so an archived repository's pull
+requests and issues never appear, never count toward a list's total, and never cost a details
+request. The inbox query also reports each item's repository, so an item whose repository was
+archived after GitHub indexed it is dropped before anything is stored, and the repository is
+recorded as archived. Clones of archived repositories still show in the Worktrees view, where their
+worktrees can be cleaned up.
+
+## Merged and closed items are left out
+
+The searches ask GitHub for open items only, but its search index can trail a merge or a close for a
+while. The inbox query also reads each item's state as of now, at no extra cost, so an item merged
+or closed since GitHub indexed it is dropped before anything is stored.
+
+## Repository details
+
+The same query reads what GitHub says about each item's repository, at no extra cost, since GitHub
+prices lists and a repository is a single object: its description, visibility, whether it is
+archived, disabled, or locked (and why), the repository a fork was made from, its default branch,
+your permission and the merge method GitHub offers you first, which merge methods it allows, whether
+it allows auto-merge and branch updates and deletes merged branches, its primary language, and its
+last push. Every refresh rewrites them with the repository; your own settings for it, and its
+matched clone, are left alone.
+
+## Where the details come from
+
+Each refresh reads them with a second GraphQL query that asks for the listed items by node ID.
+Asking for these fields inside the inbox query's three searches would cost about 12 points a
+refresh, because GitHub prices nested lists per result slot; asking for the listed items alone costs
+about one point per request. GitHub answers these requests at roughly 150 ms per item, so they go
+out in batches of at least 10 items, up to 4 at a time, and the details of the items already listed
+are read alongside the inbox query rather than after it. Only items new to the lists wait for a
+request of their own, so a refresh takes no longer than before once its items are known. The details
+are stored with each item and read again on every refresh, since checks finish without the item
+itself changing. A card whose details no refresh has read yet, right after updating the app for
+instance, says so.
+
+## Watching a refresh
+
+Every whole refresh shows the same way, whoever started it: the app's start, the timer, **Refresh**,
+or the menu bar. The **Refresh** button turns its arrows and reads **Refreshing…** (it can't be
+clicked again until the refresh ends), and in place of **Last refreshed** the toolbar says what the
+refresh is doing: **Asking GitHub…**, then **Reading 3 of 8 new items…** while it reads the details
+of the items new since the last refresh, then **Checking files: 2 of 5…** while it checks the
+changed files of the pull requests whose files are checked, the last two with a thin bar of how far
+along they are. A hairline glides along the top of the lists meanwhile, and the **Inbox** tab turns
+a small spinner beside its count, so a refresh shows from any page. The lists stay as they were
+until the refresh lands. The inbox's very first refresh, when nothing is stored yet, shows **Filling
+your inbox from GitHub…** with what it brings (review requests, your pull requests, assignments,
+checks and reviews) above the two lists' outlines, which the real lists replace once it lands; a
+first refresh that fails shows its error and **Not refreshed yet** instead. An empty inbox throws
+its [party](inbox-nil.md) only once the refresh the window opened on has ended, so a stored empty
+inbox doesn't celebrate while the app's start still reads GitHub. The menu bar shows no refresh
+under way.
+
+## Refreshing one card
+
+Hover a card and click the circular arrow, left of the snooze clock, to read that item alone from
+GitHub, for one point, rather than refreshing the whole inbox. A pull request you just merged, or an
+issue you just closed, leaves the inbox at once, and a toast says so. An item still open gets its
+card and details rewritten in place, and new activity can end its snooze. Which lists it is in waits
+for the next whole refresh, since only the searches can tell. The last-refreshed time and the error
+line above the lists belong to whole refreshes; a card refresh that fails says why in a toast.
+
+## Opening a session
+
+**✦ Claude** beside a card's next step (**Open in Claude** to a screen reader, and **✦ Codex** when
+the item's settings choose Codex) opens the launch menu on the item's [resolved launch
+settings](launch-defaults.md), so you see what the session would start with, and can change any of
+it, before anything starts; the menu's **Open in Claude** starts it. Every launch button does the
+same: the review and issue sheets' **Open in Claude**, and a worktree row's in the Worktrees view,
+which has no arrow. The arrow beside the others, named for the prompt and profile those settings
+choose (**Launch options: Review · default**), opens the same launch menu, as does **✦ Claude…** in
+the card's details. On a card that names a pull request's situation, the button opens the launch
+menu on the prompt your launch defaults choose for it (**Open in Claude: Fix checks** to a screen
+reader), with the settings that prompt brings; the card asks for nothing more until its launch menu
+opens, which then works out that prompt's settings once and opens on it, and **Save these choices as
+the default for** saves a prompt chosen there as the prompt for that situation, not for every pull
+request:
 
 - **Agent:** a switch between Claude and Codex at the top, the one the settings choose marked
   with where it comes from. An agent whose program isn't installed is shown disabled, with why.
@@ -332,31 +351,34 @@ and click it to open the project on GitHub. A closed project, and an item archiv
 project, are left out, and the first five projects an issue is in are read. A project whose
 Status field was renamed or deleted shows its name alone. Pull requests show no projects.
 
-**Sorting by status.** A list whose issues are in projects, **Yours** in practice, has a
-**Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
-items first, then newest activity. **Status** keeps the pinned items first, then lists the
-issues by their project status, an issue in several projects by its best one; issues of one
-status stay newest first, and issues without a status come last. Click the arrows icon beside
-the toggle for **Status order**: the statuses found in the list, top ranked first, each moved
-with its up and down arrows. Every project names its own statuses, so the order is yours.
-A status you haven't placed, as a new project brings, is placed by its name: work under way
-(**In progress**), then in review, ready to start (**Ready**, **Todo**), anything else, new
-work (**Backlog**), work set aside (**Blocked**, **Deferred**, **Waiting**), and done last. It
-goes after the last status you placed at the same point or an earlier one. **Reset** puts
-every status back where its name places it. The toggle and the order are kept across
-launches; statuses you placed that are not in the list now keep their places.
+### Sorting by status
 
-**Showing one kind.** A list that holds both pull requests and issues, **Yours** in
-practice, has an **All | PRs | Issues** switch to the left of that toggle. **PRs** or
-**Issues** shows only that kind on the list's own tab, in the same order, and its count then
-reads *N of M*, so nothing is hidden without saying so; the sheets step through the same
-cards. A kind with nothing left in the list says so, with **Show all**. Snoozed, Dismissed,
-and Muted always show both kinds. The choice is kept for each list across launches, and a
-notification that opens a card of the other kind shows the whole list again.
+A list whose issues are in projects, **Yours** in practice, has a **Recent | Status** toggle at the
+right of its header. **Recent** is the usual order: pinned items first, then newest activity.
+**Status** keeps the pinned items first, then lists the issues by their project status, an issue in
+several projects by its best one; issues of one status stay newest first, and issues without a
+status come last. Click the arrows icon beside the toggle for **Status order**: the statuses found
+in the list, top ranked first, each moved with its up and down arrows. Every project names its own
+statuses, so the order is yours. A status you haven't placed, as a new project brings, is placed by
+its name: work under way (**In progress**), then in review, ready to start (**Ready**, **Todo**),
+anything else, new work (**Backlog**), work set aside (**Blocked**, **Deferred**, **Waiting**), and
+done last. It goes after the last status you placed at the same point or an earlier one. **Reset**
+puts every status back where its name places it. The toggle and the order are kept across launches;
+statuses you placed that are not in the list now keep their places.
 
-**The scope.** GitHub only shows projects to a token with the `read:project` scope (or
-`project`, which includes it), and `gh auth login` doesn't ask for it. Add it to the token
-the app borrows, then refresh:
+### Showing one kind
+
+A list that holds both pull requests and issues, **Yours** in practice, has an **All | PRs |
+Issues** switch to the left of that toggle. **PRs** or **Issues** shows only that kind on the list's
+own tab, in the same order, and its count then reads *N of M*, so nothing is hidden without saying
+so; the sheets step through the same cards. A kind with nothing left in the list says so, with
+**Show all**. Snoozed, Dismissed, and Muted always show both kinds. The choice is kept for each list
+across launches, and a notification that opens a card of the other kind shows the whole list again.
+
+### The scope
+
+GitHub only shows projects to a token with the `read:project` scope (or `project`, which includes
+it), and `gh auth login` doesn't ask for it. Add it to the token the app borrows, then refresh:
 
 ```bash
 gh auth refresh -s read:project
@@ -366,24 +388,26 @@ gh auth refresh -s read:project
 `gh` rewrites its hosts file, as it does when it signs in again, and within ten minutes in any
 case, when the token it holds expires.
 
-**Without it, nothing breaks.** The app never asks GitHub for projects while the token lacks
-the scope, so a refresh goes on as before and issue cards just show none. When the inbox
-holds an issue, a tip above the lists offers to show them, with the command and a **Copy**
-button: **Check again** refreshes to find out, and says so when there is still no access.
-Once a refresh finds access, the tip says the projects are on. Close the tip with **×** and
-it stays away; **Settings → Account → Projects on issues** keeps the command, and says
-**On** once the projects show.
+### Without it, nothing breaks
 
-**How they are read.** The projects and their fields come with each issue's other details, in
-the same requests, so they never add one. GitHub prices the field values per project an issue
-is in, so with them a batch of 50 issues costs about four points of the GraphQL budget instead
-of one; only a token with the scope pays it. Sub-issue counts cost nothing extra. A token that
-reports its scopes is asked for
-projects only when it has the scope. The details of the items already listed are asked for
-before this refresh knows the token's scopes, the way the last refresh read them. When the
-scope was just granted, every item's details are read again once the scopes are known, so the
-first refresh after `gh auth refresh` shows every issue's projects. When it was taken away,
-GitHub refuses the projects, and those requests are sent again without them, so the refresh
-still succeeds and the cards show none. A token that reports no scopes, such as a
-fine-grained token, is asked too; once GitHub refuses it the projects, the app stops asking
-it. Refreshing one card reads its projects when the last whole refresh could.
+The app never asks GitHub for projects while the token lacks the scope, so a refresh goes on as
+before and issue cards just show none. When the inbox holds an issue, a tip above the lists offers
+to show them, with the command and a **Copy** button: **Check again** refreshes to find out, and
+says so when there is still no access. Once a refresh finds access, the tip says the projects are
+on. Close the tip with **×** and it stays away; **Settings → Account → Projects on issues** keeps
+the command, and says **On** once the projects show.
+
+### How they are read
+
+The projects and their fields come with each issue's other details, in the same requests, so they
+never add one. GitHub prices the field values per project an issue is in, so with them a batch of 50
+issues costs about four points of the GraphQL budget instead of one; only a token with the scope
+pays it. Sub-issue counts cost nothing extra. A token that reports its scopes is asked for projects
+only when it has the scope. The details of the items already listed are asked for before this
+refresh knows the token's scopes, the way the last refresh read them. When the scope was just
+granted, every item's details are read again once the scopes are known, so the first refresh after
+`gh auth refresh` shows every issue's projects. When it was taken away, GitHub refuses the projects,
+and those requests are sent again without them, so the refresh still succeeds and the cards show
+none. A token that reports no scopes, such as a fine-grained token, is asked too; once GitHub
+refuses it the projects, the app stops asking it. Refreshing one card reads its projects when the
+last whole refresh could.

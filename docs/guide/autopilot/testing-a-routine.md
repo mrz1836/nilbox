@@ -1,5 +1,7 @@
 # Testing a routine
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Schedules, the digest, the script step, and a routine's week](../../architecture/autopilot/schedules.md), [The searches, and the builder's reads of the inbox](../../architecture/autopilot/searches.md)
+
 **Test**, under the builder, tries the routine as it stands, before you save it: its searches
 are read from GitHub (unless a test read them in the last minute), and each item it watches is
 judged as the routine would judge it now. Since its searches cost points, it runs only when

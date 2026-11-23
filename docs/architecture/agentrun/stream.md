@@ -1,5 +1,7 @@
 # internal/agentrun/stream
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) · Code: [`internal/agentrun/stream`](../../../internal/agentrun/stream) · Guide: [Agents in the background](../../guide/autopilot/agents-in-the-background.md)
+
 `internal/agentrun/stream/` reads a coding agent's stream as its run writes it, Claude Code's
 `claude -p --output-format stream-json --verbose` and Codex's `codex exec --json`, for the
 background runner ([Agents in the background](../autopilot/agents-in-the-background.md)) and Describe it's

@@ -1,5 +1,7 @@
 # Needs you
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Agents in the terminal, readiness, and Needs your OK](../../architecture/autopilot/agents-in-the-terminal.md)
+
 Activity's **Needs you**, above the history, holds what a routine can't do without you:
 
 - **Waiting for your OK:** an Ask first routine's match, a catch-up after a long gap, a run that
@@ -31,11 +33,13 @@ Activity's **Needs you**, above the history, holds what a routine can't do witho
 Each match that comes to wait for you is told once as a **Needs your OK** notification; its
 banner opens its card.
 
-**Run a routine.** An item's **⋯** menu has **Autopilot ▸**: **Run a routine ▸** lists your
-routines that act on its kind, and runs one on it now, once, needing no OK and counting toward no
-cap or try (every other limit still holds it). A routine whose conditions don't match the item
-says why, and offers **Run anyway**. **Why didn't a routine run?** shows a routine's decision on
-the item now, from what is stored, asking GitHub nothing:
+## Run a routine
+
+An item's **⋯** menu has **Autopilot ▸**: **Run a routine ▸** lists your routines that act on its
+kind, and runs one on it now, once, needing no OK and counting toward no cap or try (every other
+limit still holds it). A routine whose conditions don't match the item says why, and offers **Run
+anyway**. **Why didn't a routine run?** shows a routine's decision on the item now, from what is
+stored, asking GitHub nothing:
 
 - what of the routine itself holds it back: *It's switched off*, *Autopilot is paused*, *It's in
   Dry run*, *It belongs to @other-login*, and what this Mac lacks for it, as This Mac says it;

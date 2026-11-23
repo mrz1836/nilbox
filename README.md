@@ -407,14 +407,14 @@ Code propose the routine, with the prompts and settings it needs, as cards you t
 
 <br/>
 
-> 📖 **For how every feature behaves, see the [Desktop Guide →](docs/README.md)**
+> 📖 **For how every feature behaves, see the [User guide →](docs/README.md#user-guide)**
 
 <br/>
 
 ## ✨ Features
 
 Everything Nilbox does, grouped by what you're doing. Expand any feature for the details; each
-links to its full write-up in the [Desktop Guide](docs/README.md).
+links to its full write-up in the [User guide](docs/README.md#user-guide).
 
 <br>
 
@@ -1337,10 +1337,13 @@ View the full documentation for Nilbox:
 
 | Document                                                   | Description                                                                         |
 |------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| **[Desktop Guide](docs/README.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
+| **[Docs index](docs/README.md)**                           | Every doc, one line on what's in it, and how to find things: start here             |
+| **[User guide](docs/README.md#user-guide)**                | How every feature behaves, and what the app does on your Mac                        |
+| **[Development](docs/README.md#development)**              | Prerequisites, build targets, the inspector, and packaging and publishing a release |
+| **[Architecture](docs/README.md#architecture)**            | The design notes of every package, one file each, which CLAUDE.md indexes           |
 | **[Performance](docs/performance.md)**                     | Measured startup, refresh, launch, size, and API budget, and how to reproduce them  |
+| **[Prompt files](docs/prompt-files.md)** and **[Backup files](docs/backup-files.md)** | The formats of an exported prompt file and of a backup  |
 | **[CLAUDE.md](CLAUDE.md)**                                 | Nilbox's own rules, the gate every change passes, and the package index             |
-| **[Architecture](docs/README.md#architecture)**                   | The full design notes of every package, which CLAUDE.md indexes                     |
 | **[AGENTS.md](.github/AGENTS.md)**                         | The shared engineering rulebook for contributors and AI agents                      |
 | **[Tech Conventions](.github/tech-conventions/README.md)** | Commits, branches, pull requests, testing, releases, and security practices         |
 | **[Support](.github/SUPPORT.md)**                          | Questions, bug reports, and private contact                                         |
@@ -1360,8 +1363,8 @@ magex app:dev            # run the app against the Vite dev server, with hot rel
 magex test               # run the Go tests
 ```
 
-Before you open a pull request, run [the gate](CLAUDE.md#the-gate) (below). The
-[Desktop Guide](docs/development/build-targets.md) has every target in full, and how to build and
+Before you open a pull request, run [the gate](CLAUDE.md#the-gate) (below).
+[Build targets](docs/development/build-targets.md) has every target in full, and how to build and
 run the app.
 
 <details>
@@ -1379,8 +1382,8 @@ npm install -g pnpm@12.19.0                             # once, at the version f
 magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
 ```
 
-Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in the
-[Desktop Guide](docs/development/prerequisites.md).
+Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in
+[Prerequisites](docs/development/prerequisites.md).
 
 </details>
 
@@ -1445,7 +1448,7 @@ are kept across restarts until you clear them.
 | `magex inspect:help`              | Every inspector target: the log, the page's console, the live database, and more |
 
 Settings → About → Inspector turns pointing off (⌥⌘P is then the app's again) and clears the
-notes. The [Desktop Guide](docs/development/inspector.md) has the inspector in full.
+notes. [The inspector](docs/development/inspector.md) has it in full.
 
 </details>
 
@@ -1548,8 +1551,8 @@ The method and every run are in [docs/performance.md](docs/performance.md).
 | `magex app:keygen`       | Make the release key (`out=<folder>`, outside the repository) and print its public half to pin                                                         |
 | `magex app:rehearse`     | Build a pair of rehearsal builds to try an update end to end on this Mac (`case=normal`, `tampered`, or `broken`; macOS)                               |
 
-Each one's settings and environment are in the
-[Desktop Guide](docs/development/packaging-a-release.md).
+Each one's settings and environment are in
+[Packaging a release](docs/development/packaging-a-release.md).
 
 </details>
 
@@ -1617,7 +1620,7 @@ For security issues, see our [Security Policy](.github/SECURITY.md) or contact:
 | `frontend/`       | The React + TypeScript frontend and its generated Go bindings                                                                   |
 | `build/`          | App and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set                                                 |
 | `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, the database queries, and measurements                             |
-| `docs/`           | The Desktop Guide and measured performance                                                                                      |
+| `docs/`           | Every doc, indexed in `docs/README.md`: the user guide, development, the design notes, performance, and the file formats       |
 | `.github/`        | CI workflows, community docs, and engineering conventions                                                                       |
 
 </details>
@@ -1635,12 +1638,11 @@ magex version:bump bump=patch push=true branch=master
 The tag starts two workflows. GoFortress runs every check on it but publishes nothing
 (`ENABLE_RELEASE=false` in `.github/env/90-project.env`), and
 [desktop-release.yml](.github/workflows/desktop-release.yml) builds the universal macOS app,
-unsigned, on a macOS runner with no secret in reach, waits for GoFortress to pass, then signs it
-in a job of its own and publishes the release with its zip, disk image, checksums, and signed
-update manifest attached. `magex app:build` stamps the app with
-the same version, build number, and commit, all shown in Settings → About. The
-[Desktop Guide](docs/development/publishing-a-release.md) has the details, the secrets the workflow
-needs, and what to do when a release goes wrong.
+unsigned, on a macOS runner with no secret in reach, waits for GoFortress to pass, then signs it in
+a job of its own and publishes the release with its zip, disk image, checksums, and signed update
+manifest attached. `magex app:build` stamps the app with the same version, build number, and commit,
+all shown in Settings → About. [Publishing a release](docs/development/publishing-a-release.md) has
+the details, the secrets the workflow needs, and what to do when a release goes wrong.
 
 </details>
 

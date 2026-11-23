@@ -1,5 +1,7 @@
 # Backing up your setup
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/backup`](../architecture/backup.md) · See also: [Backup files](../backup-files.md)
+
 **Settings → Back up and restore** saves your whole setup to one file, to keep or to bring to
 another Mac, and brings it back. The file is a [backup file](../backup-files.md), plain JSON
 readable only by you.

@@ -1,9 +1,10 @@
 # internal/describeit
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/describeit`](../../internal/describeit) · Guide: [Describe it](../guide/autopilot/describe-it.md), [Use Nilbox in your own Claude Code](../guide/autopilot/your-own-claude-code.md)
+
 `internal/describeit/` is Describe it, the Autopilot tab's conversation: the user says what
 they want, and Claude Code proposes it as cards the user reviews and applies through the
-window's own builder, prompts, and settings (what the user sees is `docs/desktop.md`'s
-[Describe it](../guide/autopilot/describe-it.md)). It is a boundary: the repoguard test keeps it off the
+window's own builder, prompts, and settings. It is a boundary: the repoguard test keeps it off the
 store (and so off Autopilot's service and the background runner), the GitHub client, every
 service, `prompts`, `profiles`, `launcher`, `scriptrun`, `desktop`, and `notify`, and it reaches
 the rest of the app through the interfaces it declares (`Agents`, `Setup`, `Attachments`,

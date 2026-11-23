@@ -1,5 +1,7 @@
 # The Scripts tab
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/integrations`](../architecture/integrations.md), [The Scripts tab's pages (frontend)](../architecture/frontend/scripts-pages.md)
+
 **Scripts** sits after Prompts while mage-x or go-pre-commit is on, or you turned Scripts on in
 Settings → Integrations; with everything off, the tab goes away. When it first appears because a
 tool was found while the window is open, a toast says so, once and never again (*Found magex and

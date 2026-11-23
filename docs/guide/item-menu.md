@@ -1,5 +1,7 @@
 # The item menu and edits on GitHub
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/inbox`](../architecture/inbox.md), [`internal/budget` and `internal/github`](../architecture/budget-and-github.md)
+
 Every card has a **More actions** menu (**⋯**) at the end of its triage buttons, which shows as
 you hover the card or move focus into it. It gathers everything you can do with the item:
 
@@ -20,17 +22,19 @@ you hover the card or move focus into it. It gathers everything you can do with 
 The keyboard works as in any Mac menu: the arrows move, → opens a submenu and ← leaves it,
 Return chooses, and Escape closes the menu.
 
-**Edits on GitHub.** These are the only changes Nilbox makes on GitHub, and only when you choose
-one. Each is made with your `gh` token, and GitHub's answer is checked before the card changes.
-A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
-of their rows, and so does a merge that posts your text as a comment first (Merge when ready
-then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
-rules** does, when you choose it, and an Autopilot routine you
+## Edits on GitHub
+
+These are the only changes Nilbox makes on GitHub, and only when you choose one. Each is made with
+your `gh` token, and GitHub's answer is checked before the card changes. A combined action, such as
+**Approve & merge**, makes its changes one at a time and costs the sum of their rows, and so does a
+merge that posts your text as a comment first (Merge when ready then reads the merge state before
+the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only
+**Merge past the rules** does, when you choose it, and an Autopilot routine you
 [allow](autopilot/merge-and-post-review.md) on your own signed pull request that lacks only an
-approval), and no agent ever approves, merges, or closes: every
-approval, merge, and close happens only because you clicked. The one change Nilbox makes on its
-own is [clearing your GitHub notifications](github-notifications.md), and only once you turn
-clearing on: it marks a notification done, or read, when the work behind it is finished.
+approval), and no agent ever approves, merges, or closes: every approval, merge, and close happens
+only because you clicked. The one change Nilbox makes on its own is [clearing your GitHub
+notifications](github-notifications.md), and only once you turn clearing on: it marks a notification
+done, or read, when the work behind it is finished.
 
 | Change | Where | Cost |
 |---|---|---|
@@ -76,15 +80,18 @@ your review moves to **Yours** when you opened it or are assigned to it, and an 
 no longer assigned to stays there while you opened it, without **assigned** in its byline; with
 nothing else keeping it, it leaves the inbox.
 
-**Whose account.** An edit goes out only with the token of the account whose inbox you see. If
-you switched accounts with `gh auth switch` since the last refresh, Nilbox asks you to refresh
-first, so it never takes another account off anything. Checking a token the inbox hasn't used
-yet costs one GraphQL point; after that, it is remembered.
+## Whose account
 
-**Within your budget.** Each edit spends what the table says, which the [API budget
-gauge](window.md) counts like every other request. Nilbox also keeps its own pace well under
-GitHub's limits on writes: at most 60 edits a minute and 400 an hour, Autopilot's included, and
-none while the REST
-budget is down to its last hundredth (50 of 5,000 points), which it leaves for `gh` and your
-agents. When GitHub asks it to slow down, it waits as long as GitHub says. An edit held back for
-any of these sends nothing, and the toast says why and when to try again.
+An edit goes out only with the token of the account whose inbox you see. If you switched accounts
+with `gh auth switch` since the last refresh, Nilbox asks you to refresh first, so it never takes
+another account off anything. Checking a token the inbox hasn't used yet costs one GraphQL point;
+after that, it is remembered.
+
+## Within your budget
+
+Each edit spends what the table says, which the [API budget gauge](window.md) counts like every
+other request. Nilbox also keeps its own pace well under GitHub's limits on writes: at most 60 edits
+a minute and 400 an hour, Autopilot's included, and none while the REST budget is down to its last
+hundredth (50 of 5,000 points), which it leaves for `gh` and your agents. When GitHub asks it to
+slow down, it waits as long as GitHub says. An edit held back for any of these sends nothing, and
+the toast says why and when to try again.

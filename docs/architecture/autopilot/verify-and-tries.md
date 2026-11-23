@@ -1,6 +1,6 @@
 # Verify, tries, the loop guard, and profile fallback
 
-What the user sees is in `docs/desktop.md`'s *Closing the loop: Wait for the checks*.
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Closing the loop: Wait for the checks](../../guide/autopilot/wait-for-the-checks.md), [When a routine misbehaves](../../guide/autopilot/when-a-routine-misbehaves.md)
 
 - **Verify** (`verify.go`) is the engine's own (`catalog.DispatchVerify` names no registered
   dispatcher): each cycle judges every verifying match from the facts the cycle read (the

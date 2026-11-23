@@ -1,5 +1,7 @@
 # Merge it and Post the agent's review
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Merge it and Post the agent's review](../../architecture/autopilot/merge-and-review.md)
+
 Two steps act on what a run came to, and only if you add them. Both are pull requests' alone,
 go through the review sheet (read from GitHub right before, one point, and sent only as the
 sheet offers it then, at the [pace](changes-on-github.md) of the GitHub

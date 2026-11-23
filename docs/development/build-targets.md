@@ -1,5 +1,7 @@
 # Build targets
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Prerequisites](prerequisites.md), [The inspector](inspector.md), [Packaging a release](packaging-a-release.md)
+
 | Target | What it does |
 |---|---|
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
@@ -51,42 +53,45 @@ magex db:check
 magex app:check
 ```
 
-**Signing.** `magex app:build` signs the bundle ad hoc (`codesign --force --sign -`), which is
-enough to run it on the machine that built it. A release (`magex app:package`) is signed with a
-self-signed code-signing identity instead, so every release keeps the same designated
-requirement. Nothing is notarized.
+## Signing
 
-**Versions.** `magex app:build` stamps the build's versions from git: the release version
-(the latest tag, `0.0.0` before the first release), a build number (the commit count), and the
-`git describe` commit, such as `v0.1.0-3-gabc1234`, or the bare commit hash before the first
-tag, with `-dirty` when the working tree had uncommitted changes. Settings → About shows all
-three, with the macOS version and the processor architecture, the version of each coding
-agent installed, read with its own `--version` (`claude --version`, `codex --version`), and,
-under **Tools**, the GitHub CLI's (`gh --version`), whose sign-in the app borrows, and Git's
-(`git --version`), which makes every launch's worktree and tells which clone is which repository. Each is read
-once per build of its command and kept until the command changes, as when it updates itself,
-so opening About again runs nothing; hover a version for where its command is. Its **Report a
-bug** button opens a new GitHub issue with all of it filled in: the versions only, never their
-paths. The bundle's `Info.plist` carries the
-release version, only its numeric core for a prerelease (`0.2.0` for `0.2.0-rc.1`), and the
-build number too. macOS caches app icons by that build number, so a
-new commit is what refreshes the icon Stage Manager and Finder show. An icon change you have
-not committed yet keeps the old build number; if a stale icon persists, clear the cache with
-`sudo rm -rf /Library/Caches/com.apple.iconservices.store` and then
+`magex app:build` signs the bundle ad hoc (`codesign --force --sign -`), which is enough to run it
+on the machine that built it. A release (`magex app:package`) is signed with a self-signed
+code-signing identity instead, so every release keeps the same designated requirement. Nothing is
+notarized.
+
+## Versions
+
+`magex app:build` stamps the build's versions from git: the release version (the latest tag, `0.0.0`
+before the first release), a build number (the commit count), and the `git describe` commit, such as
+`v0.1.0-3-gabc1234`, or the bare commit hash before the first tag, with `-dirty` when the working
+tree had uncommitted changes. Settings → About shows all three, with the macOS version and the
+processor architecture, the version of each coding agent installed, read with its own `--version`
+(`claude --version`, `codex --version`), and, under **Tools**, the GitHub CLI's (`gh --version`),
+whose sign-in the app borrows, and Git's (`git --version`), which makes every launch's worktree and
+tells which clone is which repository. Each is read once per build of its command and kept until the
+command changes, as when it updates itself, so opening About again runs nothing; hover a version for
+where its command is. Its **Report a bug** button opens a new GitHub issue with all of it filled in:
+the versions only, never their paths. The bundle's `Info.plist` carries the release version, only
+its numeric core for a prerelease (`0.2.0` for `0.2.0-rc.1`), and the build number too. macOS caches
+app icons by that build number, so a new commit is what refreshes the icon Stage Manager and Finder
+show. An icon change you have not committed yet keeps the old build number; if a stale icon
+persists, clear the cache with `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and then
 `killall Dock WindowManager`.
 
-**Firewalls.** The app talks to GitHub: `api.github.com` on every refresh, and
-`avatars.githubusercontent.com` to download profile pictures: yours once, the pictures of the
-people an issue you open shows, and those of the inbox cards' authors (unless **Settings →
-Cards** turns them off), each person's downloaded by login and each bot's from the address
-GitHub gives for it, without your token, kept in the database, and downloaded again at most
-once a week. The [service status](../guide/window.md) check reads the status pages of the services you
-watch, `www.githubstatus.com`, `status.claude.com`, and `status.openai.com`, each sent only the
-request for its summary. A per-app firewall must
-allow `bin/Nilbox Dev.app/Contents/MacOS/nilbox` (a release's is
-`/Applications/Nilbox.app/Contents/MacOS/nilbox`) to reach `api.github.com`, or every refresh
-times out. Blocking the avatar host only means initials show instead of pictures, and blocking a
-status page only means the check says it couldn't reach it.
+## Firewalls
+
+The app talks to GitHub: `api.github.com` on every refresh, and `avatars.githubusercontent.com` to
+download profile pictures: yours once, the pictures of the people an issue you open shows, and those
+of the inbox cards' authors (unless **Settings → Cards** turns them off), each person's downloaded
+by login and each bot's from the address GitHub gives for it, without your token, kept in the
+database, and downloaded again at most once a week. The [service status](../guide/window.md) check
+reads the status pages of the services you watch, `www.githubstatus.com`, `status.claude.com`, and
+`status.openai.com`, each sent only the request for its summary. A per-app firewall must allow
+`bin/Nilbox Dev.app/Contents/MacOS/nilbox` (a release's is
+`/Applications/Nilbox.app/Contents/MacOS/nilbox`) to reach `api.github.com`, or every refresh times
+out. Blocking the avatar host only means initials show instead of pictures, and blocking a status
+page only means the check says it couldn't reach it.
 
 ## Nilbox Dev, a build from source
 

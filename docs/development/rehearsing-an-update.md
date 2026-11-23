@@ -1,5 +1,7 @@
 # Rehearsing an update
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Updates](../guide/updates.md), [`internal/update`](../architecture/update.md)
+
 `magex app:rehearse` builds two versions of the app to try an update end to end on one Mac,
 in place or from the Applications folder, without a release:
 

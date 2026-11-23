@@ -1,11 +1,13 @@
 # Release
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/release`](../architecture/release.md), [The Scripts tab's pages (frontend)](../architecture/frontend/scripts-pages.md)
+
 **Release** lists every clone in the [repository locations](launching-a-session.md#repository-locations) whose `origin`
 is on GitHub, which is where magex pushes, and releases a new version of any of them with magex's
 `version:bump`. The app itself never tags or pushes: magex does, when you click a button that
 names the version.
 
-**The page.**
+## The page
 
 - **Groups:** **Unreleased changes** (the default branch has commits since its newest version
   tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), **Can't release here**
@@ -167,8 +169,10 @@ never from its exit status alone:
 magex's warnings show with the result, all but the one it prints on every release with
 something to release, that the newest version tag isn't on HEAD; the log keeps that one.
 
-**Following the release.** Once a release is on GitHub, the app follows the tag's release
-workflow until it publishes the release, and the result says how it goes:
+## Following the release
+
+Once a release is on GitHub, the app follows the tag's release workflow until it publishes the
+release, and the result says how it goes:
 
 - **While it follows:** *Following the release workflow for acme-org/sdk v1.4.3…*.
 - **Published:** the heading reads *acme-org/sdk v1.4.3 is published*, the line *The release
@@ -198,12 +202,13 @@ again, within the same 20 checks and 45 minutes. A published release and a faile
 recorded in the [notification history](menu-bar.md), with their banners when
 those kinds are on, even when you quit just then; any other end only says so in its result.
 
-**After a merge.** When you merge a pull request in the review sheet, the toast that says so
-offers **Release acme-org/sdk…** when Release can release it: the setting **Offer a release after
-you merge a pull request** (Settings → Integrations, on by default) is on, mage-x can be used,
-the repository has a clone with that GitHub origin, and the pull request merged into a branch
-Release offers. Asking costs no GitHub request. The action opens Scripts → Release at that
-repository's sheet, its checks already running; it never releases by itself. A release that
-reaches GitHub is also recorded in the [notification history](menu-bar.md) as
-**Released**, with its banner when that kind is on, and then as **Published** or **Release
-workflow failed** once its workflow says so.
+## After a merge
+
+When you merge a pull request in the review sheet, the toast that says so offers **Release
+acme-org/sdk…** when Release can release it: the setting **Offer a release after you merge a pull
+request** (Settings → Integrations, on by default) is on, mage-x can be used, the repository has a
+clone with that GitHub origin, and the pull request merged into a branch Release offers. Asking
+costs no GitHub request. The action opens Scripts → Release at that repository's sheet, its checks
+already running; it never releases by itself. A release that reaches GitHub is also recorded in the
+[notification history](menu-bar.md) as **Released**, with its banner when that kind is on, and then
+as **Published** or **Release workflow failed** once its workflow says so.

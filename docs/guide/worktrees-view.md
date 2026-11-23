@@ -1,5 +1,7 @@
 # The Worktrees view
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/worktrees`](../architecture/worktrees.md), [`internal/localrepos`](../architecture/localrepos.md), [The Worktrees page (frontend)](../architecture/frontend/worktrees-page.md)
+
 The **Worktrees** tab lists every linked worktree of every git repository in the [repository
 locations](launching-a-session.md#repository-locations), including worktrees from sessions started outside the app. It
 loads when you open it or click **Check again**, and again after the automatic cleanup, not on
@@ -7,33 +9,39 @@ the inbox's five-minute timer. It runs git only in the clones whose git folder r
 linked worktree or can't be read, and in those an app record names; any other clone has nothing
 to list, and is only looked at.
 
-**The head.** The top of the tab stays in place while the clones scroll under it. Its first
-line says how many worktrees there are, in how many clones, and when they were checked, as in
-**12 worktrees in 4 clones · checked 2m ago**. While a listing runs, its progress takes that
-place: finding the clones, listing each clone's worktrees ("3 of 12 clones", with a bar),
-checking each worktree, and asking GitHub about their pull requests and issues. While a change
-runs, the same place says what it is doing, as in **Removing example-repo/pr-7…**. Neither moves
-the rows. Then come **Check again** and the cleanups: **Clean up N finished** while any worktree
-is finished, with **⌄** beside it for **Remove N clean worktrees…** and **Clean up merged
-branches…**, or **Clean up ⌄** alone while none is, its menu saying why a cleanup has nothing to
-take.
+## The head
 
-**Chips.** Under the title, a chip counts the worktrees in each state any of them is in:
-**running**, **uncommitted**, **not on GitHub**, **needs a look**, and **ready to clean up**. A
-chip writes its filter in the toolbar (`is:in-use`, `is:dirty`, `is:unpushed`, `is:review`,
-`is:finished`), and a second click clears it. Under the chips are the notes a listing carries: a
-location it couldn't read, such as a drive that isn't plugged in, a system whose running
-processes can't be listed, and GitHub that couldn't be reached. Last comes a one-line card that
-says what the latest change did.
+The top of the tab stays in place while the clones scroll under it. Its first line says how many
+worktrees there are, in how many clones, and when they were checked, as in **12 worktrees in 4
+clones · checked 2m ago**. While a listing runs, its progress takes that place: finding the clones,
+listing each clone's worktrees ("3 of 12 clones", with a bar), checking each worktree, and asking
+GitHub about their pull requests and issues. While a change runs, the same place says what it is
+doing, as in **Removing example-repo/pr-7…**. Neither moves the rows. Then come **Check again** and
+the cleanups: **Clean up N finished** while any worktree is finished, with **⌄** beside it for
+**Remove N clean worktrees…** and **Clean up merged branches…**, or **Clean up ⌄** alone while none
+is, its menu saying why a cleanup has nothing to take.
 
-**Clones.** Each clone has a heading that stays at the top while its rows scroll by: its owner
-and name, its path, and its main checkout as a note, such as **on main · clean**, amber with the
-count while it holds uncommitted files. On the right it counts its worktrees that run, are at
-risk, are ready, and have a problem, and offers **Prune** when git still lists worktrees whose
-folders are gone. Clicking the heading folds the clone's rows away. The main checkout isn't a
-row of its own. Every clone shares one set of columns, so the rows line up down the whole page.
+## Chips
 
-**Rows.** Each linked worktree is one line, in the order of what needs you: something runs in
+Under the title, a chip counts the worktrees in each state any of them is in: **running**,
+**uncommitted**, **not on GitHub**, **needs a look**, and **ready to clean up**. A chip writes its
+filter in the toolbar (`is:in-use`, `is:dirty`, `is:unpushed`, `is:review`, `is:finished`), and a
+second click clears it. Under the chips are the notes a listing carries: a location it couldn't
+read, such as a drive that isn't plugged in, a system whose running processes can't be listed, and
+GitHub that couldn't be reached. Last comes a one-line card that says what the latest change did.
+
+## Clones
+
+Each clone has a heading that stays at the top while its rows scroll by: its owner and name, its
+path, and its main checkout as a note, such as **on main · clean**, amber with the count while it
+holds uncommitted files. On the right it counts its worktrees that run, are at risk, are ready, and
+have a problem, and offers **Prune** when git still lists worktrees whose folders are gone. Clicking
+the heading folds the clone's rows away. The main checkout isn't a row of its own. Every clone
+shares one set of columns, so the rows line up down the whole page.
+
+## Rows
+
+Each linked worktree is one line, in the order of what needs you: something runs in
 it, it needs a look, it holds work that isn't on GitHub, it's open, it's ready to clean up, then
 a problem (its folder is gone, git couldn't read it, or it is locked by hand), each group with
 the newest commit first. An edge in the group's color marks it. The line shows the worktree's
@@ -50,27 +58,28 @@ branch made for it), **Open in Claude** or **Open in Codex**, which opens the la
 and, from their **Open**, resumes it. Last come **›_**, which opens the worktree in the
 terminal your launches open in, **⋯**, and the chevron.
 
-**The drawer.** A click on a row, or on its chevron, unfolds its drawer; from the keyboard, →
-unfolds it, ← folds it, and ↑ and ↓ move between the rows. Several drawers can be open at once,
-and they stay open across listings. On top, one sentence says what removing the worktree would
-cost: green when nothing would be lost, amber when work would be or is only here, blue while
-something runs in it, and red for a real problem, with the way out (for a lock set by hand, the
-`git worktree unlock` command to copy). Under it are three columns. **Changes** lists the
-uncommitted files by their status letters, with **Copy list**. **Not on GitHub** lists the
-commits that aren't, each marked with its copy on a pushed branch when it has one (**=
-copied as** and the copy's commit for an identical copy, **≈ edited copy** for an edited
-one), then the branch, its head, and how far it is behind `origin`'s default branch; when
-every one of them is on GitHub as an identical copy, it is headed **Copied to PR #42** (or the
-branch the copies are on) instead. **About** says what the worktree is for, the session in it, its launches, who made it
-(Nilbox, a routine, Claude Code under a clone's `.claude/worktrees/`, or someone outside the
-app) and when, its path, its lock, and which branches a removal would delete. The first 12
-files show at once, from the listing; the drawer reads the rest from local git as it opens,
-with the commits and the base, once per listing (a read that failed is tried again when the
-drawer opens again), and lists at most 200 files and 200 commits (the rest are in Terminal, in
-`git status` and `git log`). The drawer's footer has **Open in Terminal**, **Reveal in
-Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force
-remove…** for a worktree with uncommitted files, as the drawer last read them, each saying why
-when it can't run.
+## The drawer
+
+A click on a row, or on its chevron, unfolds its drawer; from the keyboard, → unfolds it, ← folds
+it, and ↑ and ↓ move between the rows. Several drawers can be open at once, and they stay open
+across listings. On top, one sentence says what removing the worktree would cost: green when nothing
+would be lost, amber when work would be or is only here, blue while something runs in it, and red
+for a real problem, with the way out (for a lock set by hand, the `git worktree unlock` command to
+copy). Under it are three columns. **Changes** lists the uncommitted files by their status letters,
+with **Copy list**. **Not on GitHub** lists the commits that aren't, each marked with its copy on a
+pushed branch when it has one (**= copied as** and the copy's commit for an identical copy, **≈
+edited copy** for an edited one), then the branch, its head, and how far it is behind `origin`'s
+default branch; when every one of them is on GitHub as an identical copy, it is headed **Copied to
+PR #42** (or the branch the copies are on) instead. **About** says what the worktree is for, the
+session in it, its launches, who made it (Nilbox, a routine, Claude Code under a clone's
+`.claude/worktrees/`, or someone outside the app) and when, its path, its lock, and which branches a
+removal would delete. The first 12 files show at once, from the listing; the drawer reads the rest
+from local git as it opens, with the commits and the base, once per listing (a read that failed is
+tried again when the drawer opens again), and lists at most 200 files and 200 commits (the rest are
+in Terminal, in `git status` and `git log`). The drawer's footer has **Open in Terminal**, **Reveal
+in Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force
+remove…** for a worktree with uncommitted files, as the drawer last read them, each saying why when
+it can't run.
 
 **The ⋯ menu** holds everything a row offers: **Open in Terminal**, **Reveal in Finder**, **Copy
 path**, **Copy branch**, the item on GitHub, **Unlock** for a lock an ended session left,
@@ -79,8 +88,10 @@ red. An item that can't run now says why under it. For a folder that's gone, or 
 couldn't read, **Open in Terminal** and **Reveal in Finder** are disabled in ⋯, which says why,
 and the row and the drawer leave them out.
 
-**Keeping track.** The app records each worktree it makes or adopts, and checks every record
-against `git worktree list` each time it lists or sweeps:
+## Keeping track
+
+The app records each worktree it makes or adopts, and checks every record against `git worktree
+list` each time it lists or sweeps:
 
 - a record is matched to its worktree by path, else by its branch, so a worktree moved with `git
   worktree move` is followed;
@@ -89,34 +100,37 @@ against `git worktree list` each time it lists or sweeps:
 - a worktree on an item's own `worktree-pr-<n>` or `worktree-issue-<n>` branch with no record is
   recorded once GitHub links it to its item.
 
-**In use.** A worktree is **in use** while a running process works inside it, whichever agent or
-tool it is, and whether a terminal or an editor runs it, as in **codex · pid 4242**. A coding
-agent's process is named for its agent, as in **Claude 2.1.328 · pid 63296**, where the
-program's own name would be Claude Code's version; while the app [follows](following-a-session.md)
-its session there, the row says how the session stands instead, as in **Claude 2.1.328 · needs
-approval · 5m**. A process a session started there, such as the `caffeinate` that keeps the Mac
-awake for it, is folded into it. The app lists the running processes' working folders once per
-listing or sweep, with `lsof` on macOS and `/proc` on Linux, leaving out its own git commands,
-and a coding agent's background service: the agent's own program running under launchd (or init
-or systemd) rather than a terminal or an app, with everything under it. Codex's app-server daemon is one: Codex starts it with its first
-session and keeps it after you quit, and it keeps that session's folder as its working
-directory, so it would otherwise hold that worktree in use until you restart. Where the processes
-can't be listed, the view says so; the automatic cleanup then removes nothing, since it never
-guesses, and no worktree is force-removed, while a plain removal you ask for still goes ahead,
-since git refuses one with uncommitted changes. A lock Claude Code wrote for a session in one of
-its own worktrees counts too.
+## In use
 
-**Linked pull requests and issues.** A worktree made for an item is linked to it: exactly, from
-the app's record, or otherwise by its name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's
-worktree folder) or its own branch, and the clone's GitHub remotes. A worktree with none of
-these, on a branch pushed to one of the clone's GitHub remotes, is linked by that branch to the
-pull request it heads in that same repository, the one updated last, so a fork's branch of the
-same name never links it. One whose commits were copied onto a pushed branch is linked to that
-branch's pull request ([copied work](#copied-work), below). One GraphQL request, for one
-point, asks GitHub whether each is open, merged, or closed, and the row links to it; the
-branches ride in that same request, and one is asked about again only once it moves, or now and
-then while no pull request heads it. Each linked
-worktree gets a stage, which places its row (**Rows**, above):
+A worktree is **in use** while a running process works inside it, whichever agent or tool it is, and
+whether a terminal or an editor runs it, as in **codex · pid 4242**. A coding agent's process is
+named for its agent, as in **Claude 2.1.328 · pid 63296**, where the program's own name would be
+Claude Code's version; while the app [follows](following-a-session.md) its session there, the row
+says how the session stands instead, as in **Claude 2.1.328 · needs approval · 5m**. A process a
+session started there, such as the `caffeinate` that keeps the Mac awake for it, is folded into it.
+The app lists the running processes' working folders once per listing or sweep, with `lsof` on macOS
+and `/proc` on Linux, leaving out its own git commands, and a coding agent's background service: the
+agent's own program running under launchd (or init or systemd) rather than a terminal or an app,
+with everything under it. Codex's app-server daemon is one: Codex starts it with its first session
+and keeps it after you quit, and it keeps that session's folder as its working directory, so it
+would otherwise hold that worktree in use until you restart. Where the processes can't be listed,
+the view says so; the automatic cleanup then removes nothing, since it never guesses, and no
+worktree is force-removed, while a plain removal you ask for still goes ahead, since git refuses one
+with uncommitted changes. A lock Claude Code wrote for a session in one of its own worktrees counts
+too.
+
+## Linked pull requests and issues
+
+A worktree made for an item is linked to it: exactly, from the app's record, or otherwise by its
+name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's worktree folder) or its own branch, and
+the clone's GitHub remotes. A worktree with none of these, on a branch pushed to one of the clone's
+GitHub remotes, is linked by that branch to the pull request it heads in that same repository, the
+one updated last, so a fork's branch of the same name never links it. One whose commits were copied
+onto a pushed branch is linked to that branch's pull request ([copied work](#copied-work), below).
+One GraphQL request, for one point, asks GitHub whether each is open, merged, or closed, and the row
+links to it; the branches ride in that same request, and one is asked about again only once it
+moves, or now and then while no pull request heads it. Each linked worktree gets a stage, which
+places its row (**Rows**, above):
 
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
@@ -133,16 +147,17 @@ GitHub decides when a worktree is finished, and git alone decides whether removi
 so a name or branch that only looks like an item's can never cost work. If GitHub can't be
 reached, the view says so and lists the worktrees without their items.
 
-**Actions.** Each row offers only what is allowed, and every removal checks again first that no
-session runs in the worktree. Each removal and cleanup asks first, in a dialog that starts with
-the drawer's sentence on what removing the worktree would cost, says what it does to the
-folder, and lists a box for each [branch](#branches) that could go with it, ticked as
-**Settings → Worktrees** says; untick any to keep it. While a change runs, each worktree it
-takes dims and says what is happening; one a bulk change left in place keeps its color, with
-why on a line under it. When a change finishes, a toast says what it did (or why it failed),
-with **View** if another view is open by then, and a one-line card at the top of the Worktrees
-view sums it up, with notes on anything left under it, until you dismiss it, click **Check
-again**, or make the next change.
+## Actions
+
+Each row offers only what is allowed, and every removal checks again first that no session runs in
+the worktree. Each removal and cleanup asks first, in a dialog that starts with the drawer's
+sentence on what removing the worktree would cost, says what it does to the folder, and lists a box
+for each [branch](#branches) that could go with it, ticked as **Settings → Worktrees** says; untick
+any to keep it. While a change runs, each worktree it takes dims and says what is happening; one a
+bulk change left in place keeps its color, with why on a line under it. When a change finishes, a
+toast says what it did (or why it failed), with **View** if another view is open by then, and a
+one-line card at the top of the Worktrees view sums it up, with notes on anything left under it,
+until you dismiss it, click **Check again**, or make the next change.
 
 - **Clean up** removes a finished worktree. It checks the worktree again first, releases the
   lock of a Claude Code session that has ended, and runs `git worktree remove` without
@@ -171,13 +186,15 @@ again**, or make the next change.
   `git worktree prune`, which touches no worktree that exists and no branch.
 - The main checkout shows only as its clone's note, and is never removable.
 
-**Cleaning up after a merge.** A worktree stays after its session ends, so the next launch on the
-item resumes it, and no agent removes one whose pull request merges later. So every five minutes
-(or as set in **Settings → Refreshing**) the app checks the clones that have worktrees it or Claude Code made, or records, without listing
-every clone, and, with **Clean up after merging** on (**Settings → Worktrees**, on by default),
-cleans up each finished worktree whose pull request merged or whose issue closed and that no
-session runs in, with the branches **Settings → Worktrees** deletes. Which worktrees it takes
-depends on how each is linked, so a name or a branch that only looks like an item's is never
+## Cleaning up after a merge
+
+A worktree stays after its session ends, so the next launch on the item resumes it, and no agent
+removes one whose pull request merges later. So every five minutes (or as set in **Settings →
+Refreshing**) the app checks the clones that have worktrees it or Claude Code made, or records,
+without listing every clone, and, with **Clean up after merging** on (**Settings → Worktrees**, on
+by default), cleans up each finished worktree whose pull request merged or whose issue closed and
+that no session runs in, with the branches **Settings → Worktrees** deletes. Which worktrees it
+takes depends on how each is linked, so a name or a branch that only looks like an item's is never
 enough:
 
 - one linked by its name, or by the pushed branch it is on, only when the app launched a
@@ -193,16 +210,17 @@ updates the **Worktrees** tab's count, which it reads from each clone's git dire
 running git, and marks the tab while some worktrees are done on GitHub but still on disk.
 Removing a worktree also removes the files git ignores in it, such as build output.
 
-**Recently cleaned up.** A toast is easy to miss, so every cleanup, by hand or automatic, is
-also recorded, and the bottom of the Worktrees view lists the newest five (**Show N more** for
-the rest), one line each. Each line names the repository and worktree, the pull request or issue
-it was for, whether you or the automatic cleanup removed it, which branch went with it, the
-commit it was at, which is on GitHub, and when. Pointing at a line shows its actions: **Copy
-restore command** copies the `git worktree add` that brings the worktree back at that commit,
-on the branch that went with it when one did (for a pull request whose head git has pruned
-since, `git fetch origin pull/<n>/head` fetches it first), and the item opens on GitHub.
-The list survives restarts and keeps the newest 100; **Clear** empties it and removes nothing
-else.
+## Recently cleaned up
+
+A toast is easy to miss, so every cleanup, by hand or automatic, is also recorded, and the bottom of
+the Worktrees view lists the newest five (**Show N more** for the rest), one line each. Each line
+names the repository and worktree, the pull request or issue it was for, whether you or the
+automatic cleanup removed it, which branch went with it, the commit it was at, which is on GitHub,
+and when. Pointing at a line shows its actions: **Copy restore command** copies the `git worktree
+add` that brings the worktree back at that commit, on the branch that went with it when one did (for
+a pull request whose head git has pruned since, `git fetch origin pull/<n>/head` fetches it first),
+and the item opens on GitHub. The list survives restarts and keeps the newest 100; **Clear** empties
+it and removes nothing else.
 
 ## Copied work
 
@@ -313,14 +331,15 @@ those commands for every branch deleted. Branches are deleted a few clones at a 
 clone's branches read once. The automatic cleanup deletes only a worktree's own and pull request branches, as the
 settings say; merged branches go only through the dialog. Nothing on GitHub is ever changed.
 
-**Deleting a merged branch with work not on GitHub.** A merged branch held only because some of
-its commits aren't in its pull request or on GitHub, such as an old branch you know you don't
-want, can be deleted anyway. Tick **Also offer the N branches with commits not on GitHub** above
-the list: each such branch then gets a box, unticked, and says how many commits it holds. Delete
-asks once more, naming each of those branches and its commits, and **Go back** returns to the
-list. Their commits are then left only in the clone, until git cleans them away (`git gc`), and
-the outcome lists each branch's commit, so `git branch <name> <commit>` brings one back while
-git still has it. A branch checked out, protected, or a repository's default branch is never
-offered.
+### Deleting a merged branch with work not on GitHub
+
+A merged branch held only because some of its commits aren't in its pull request or on GitHub, such
+as an old branch you know you don't want, can be deleted anyway. Tick **Also offer the N branches
+with commits not on GitHub** above the list: each such branch then gets a box, unticked, and says
+how many commits it holds. Delete asks once more, naming each of those branches and its commits, and
+**Go back** returns to the list. Their commits are then left only in the clone, until git cleans
+them away (`git gc`), and the outcome lists each branch's commit, so `git branch <name> <commit>`
+brings one back while git still has it. A branch checked out, protected, or a repository's default
+branch is never offered.
 
 Every git command runs as an argument list with `git -C <repository>`, never through a shell.

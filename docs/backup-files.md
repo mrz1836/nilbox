@@ -1,5 +1,7 @@
 # Backup files
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [Backing up your setup](guide/backing-up.md), [Prompt files](prompt-files.md)
+
 A backup file holds your whole setup in a portable form, so you can move it to another Mac, or
 keep it with your own backups and bring it back later: your settings, your repositories, your
 prompts and review replies, your launch defaults, your own scripts, and your Autopilot

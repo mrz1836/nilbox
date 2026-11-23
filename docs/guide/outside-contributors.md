@@ -1,5 +1,7 @@
 # Outside contributors
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md)
+
 An item is **trusted** when its pull request comes from a branch in the repository itself,
 not a fork, and either:
 
@@ -56,11 +58,12 @@ A profile's extra arguments can never set permissions themselves. A launch whose
 one of its agent's permission flags (see [Launch defaults](launch-defaults.md)), or a Codex config
 override of `sandbox_mode` or `approval_policy`, is refused.
 
-**Autopilot and outside contributors.** No routine runs a coding agent on an outside
-contributor's item unless its org or repository allows it, in
-[Launch defaults](launch-defaults.md): the match closes as *Skipped: an outside contributor's
+## Autopilot and outside contributors
+
+No routine runs a coding agent on an outside contributor's item unless its org or repository allows
+it, in [Launch defaults](launch-defaults.md): the match closes as *Skipped: an outside contributor's
 item. Autopilot can act on these in acme-org's launch defaults.* Allowed, the agent still plans
 only: a routine never ticks **Use profile permissions for this item**, which only you can, on a
-launch of your own. A routine's local steps (Notify me, Pin, Snooze, Dismiss, Restore) act on
-every item, since they never put an outside contributor's text in front of an agent. Trusted
-bots aren't outside contributors.
+launch of your own. A routine's local steps (Notify me, Pin, Snooze, Dismiss, Restore) act on every
+item, since they never put an outside contributor's text in front of an agent. Trusted bots aren't
+outside contributors.

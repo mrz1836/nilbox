@@ -1,5 +1,7 @@
 # Coding agents and profiles
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [Shared building blocks](../architecture/shared-building-blocks.md), [`internal/launcher`](../architecture/launcher.md)
+
 Nilbox launches two coding agents, **Claude Code** (`claude`) and **OpenAI Codex** (`codex`),
 and treats them the same way: each has its own profiles, its own model and effort lists, and
 its own permission flags, and every launch picks one. **Settings → Profiles** lists each agent
@@ -27,11 +29,12 @@ Profiles are config directories, discovered from your home directory on every st
   Codex's `--dangerously-bypass-approvals-and-sandbox`), the agent's default model and effort,
   and plan mode off.
 
-**Signing in.** Claude Code profiles are used as they are. A Codex profile needs its own sign-in,
-which Codex keeps in `auth.json` in the profile's directory; Nilbox only checks that the file is
-there and never reads it. A Codex profile without one, and whose environment sets no
-`OPENAI_API_KEY` or `CODEX_API_KEY`, shows **Not signed in**, with the command to fix it, such as
-`CODEX_HOME=~/.codex_work codex login`.
+## Signing in
+
+Claude Code profiles are used as they are. A Codex profile needs its own sign-in, which Codex keeps
+in `auth.json` in the profile's directory; Nilbox only checks that the file is there and never reads
+it. A Codex profile without one, and whose environment sets no `OPENAI_API_KEY` or `CODEX_API_KEY`,
+shows **Not signed in**, with the command to fix it, such as `CODEX_HOME=~/.codex_work codex login`.
 
 Profiles can't be edited in the app yet: each one keeps the settings discovery gave it.
 Discovery never changes a stored profile, though, and a profile whose directory disappears is
@@ -45,12 +48,14 @@ agent's default profile setting, the setting falls back to `default`.
 what it sets for a session (model, effort, plan mode, extras, and permissions, in each agent's
 own words), and marks any whose folder has gone missing or that isn't signed in.
 
-**Choosing the agent and the profile.** **Settings → Launching** sets the default coding agent
-(the `agent.default` setting, initially Claude) and a default profile for each agent (the
-`profile.default.claude` and `profile.default.codex` settings, initially `default`). Each inbox
-card's launch uses the agent and the profile its [launch defaults](launch-defaults.md) resolve to:
-the launch menu's switch for that launch, else the repository's, else its org's, else the
-default agent; then that agent's profile from the repository's defaults, else its org's, else
-the agent's default profile. A launch menu choice applies to that launch only. Model, effort,
-and plan mode come from the profile unless the launch defaults, the prompt, or the launch menu
-set them; extra directories and environment come from the profile only.
+## Choosing the agent and the profile
+
+**Settings → Launching** sets the default coding agent (the `agent.default` setting, initially
+Claude) and a default profile for each agent (the `profile.default.claude` and
+`profile.default.codex` settings, initially `default`). Each inbox card's launch uses the agent and
+the profile its [launch defaults](launch-defaults.md) resolve to: the launch menu's switch for that
+launch, else the repository's, else its org's, else the default agent; then that agent's profile
+from the repository's defaults, else its org's, else the agent's default profile. A launch menu
+choice applies to that launch only. Model, effort, and plan mode come from the profile unless the
+launch defaults, the prompt, or the launch menu set them; extra directories and environment come
+from the profile only.

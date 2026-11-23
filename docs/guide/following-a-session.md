@@ -1,26 +1,30 @@
 # Following a session
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/sessions`](../architecture/sessions.md)
+
 Every launch starts an agent session that the item's card follows until the agent quits:
 what it is doing, how long it has been at it, and what it last said. You keep your own
 terminal; the app only reads.
 
-**Its ID.** Before the terminal opens, the app mints the session an ID of its own. Claude Code
-takes it as `--session-id`, so the session is linked from its first moment. Codex takes no ID:
-once the session starts, the app finds its thread among the ones Codex lists for the item's
-folder, created after the launch, preferring the one whose first message is the prompt the
-launch sent.
+## Its ID
 
-**On the card.** The agent's button beside the card's next step follows the newest running
-session, or one that ended in the last day: while it starts or works, a pill with a slowly
-moving border, such as **Claude working 2m**, that opens the item's sessions, with **Show in
-terminal** (or **Watch**, for a routine's run in the background) beside it; waiting on you,
-the card's story says so (**Claude needs approval · Bash: go test**) and its next step is
-**Show terminal**, breathing, or **Watch**; its turn done, **Claude’s done · 2m**, which shows
-its terminal; ended, **✦ Findings · 2m**, which opens the item's sheet, where the agent's
-verdict shows what it last said; failed today, the next step is **What happened**, which opens
-the sessions, and a day later the card is back to its own next step, with a fresh launch
-beside it. While an agent works, the card's story says **Claude is on it**, and your own
-next step stays beside it, quiet. The [Worktrees view](worktrees-view.md) shows how the
+Before the terminal opens, the app mints the session an ID of its own. Claude Code takes it as
+`--session-id`, so the session is linked from its first moment. Codex takes no ID: once the session
+starts, the app finds its thread among the ones Codex lists for the item's folder, created after the
+launch, preferring the one whose first message is the prompt the launch sent.
+
+## On the card
+
+The agent's button beside the card's next step follows the newest running session, or one that ended
+in the last day: while it starts or works, a pill with a slowly moving border, such as **Claude
+working 2m**, that opens the item's sessions, with **Show in terminal** (or **Watch**, for a
+routine's run in the background) beside it; waiting on you, the card's story says so (**Claude needs
+approval · Bash: go test**) and its next step is **Show terminal**, breathing, or **Watch**; its
+turn done, **Claude’s done · 2m**, which shows its terminal; ended, **✦ Findings · 2m**, which opens
+the item's sheet, where the agent's verdict shows what it last said; failed today, the next step is
+**What happened**, which opens the sessions, and a day later the card is back to its own next step,
+with a fresh launch beside it. While an agent works, the card's story says **Claude is on it**, and
+your own next step stays beside it, quiet. The [Worktrees view](worktrees-view.md) shows how the
 session stands on its worktree's row, where its agent goes, such as **Claude 2.1.328 · needs
 approval · 2m**.
 
@@ -35,11 +39,13 @@ approval · 2m**.
 | Status unavailable | The session runs, but the agent couldn't be asked how it is |
 | Ended | The agent quit |
 
-**The panel.** Click the pill for every session of the item, newest first: its agent, profile,
-and prompt, what it is doing and since when, the permissions it started with and where it runs
-(**full access · new worktree**, or **in the clone**), what came of the item on GitHub while it
-ran, how many tokens it used, the folder, anything its launch worked around, and the start of
-what the agent last said. Each has its actions:
+## The panel
+
+Click the pill for every session of the item, newest first: its agent, profile, and prompt, what it
+is doing and since when, the permissions it started with and where it runs (**full access · new
+worktree**, or **in the clone**), what came of the item on GitHub while it ran, how many tokens it
+used, the folder, anything its launch worked around, and the start of what the agent last said. Each
+has its actions:
 
 - **Show in terminal** brings forward the tab the session runs in, found by its terminal
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
@@ -62,8 +68,9 @@ what the agent last said. Each has its actions:
   can't be removed. The card then follows the next session that ended within the day, or
   none.
 
-**How it is read.** The app asks each agent through the interface it supports for this, and
-never the terminal:
+## How it is read
+
+The app asks each agent through the interface it supports for this, and never the terminal:
 
 - **Claude Code:** `claude agents --json`, which Claude Code documents as the supported way to
   read session state from outside it, run once for each profile's config directory. Its
@@ -87,42 +94,46 @@ never the terminal:
   line of the rollout file Codex writes, and the card shows **Status unavailable** while it
   runs.
 
-**What came of it on GitHub.** The panel says the newest of what happened to the item on GitHub
-while a session ran: **On GitHub: Approved at abc1234 · 2m ago**, **Changes requested at …**,
-**Merged**, or **Closed**. It comes from what Nilbox reads anyway (the read of the item after a
-session stops working, a card's or the review sheet's refresh, the whole refresh) and costs no
-request of its own. It counts what happened between the session's launch and its end, by
-GitHub's time, give or take a few seconds, and never says who did it: the agent with `gh`, or
-you in your browser or in Nilbox. A review counts only when it approves or requests changes,
-and only one made within two hours of when Nilbox sees it.
+## What came of it on GitHub
 
-**When the item is read again.** Each time a session stops working (it goes idle, waits for
-you, ends, or fails), Nilbox reads its item from GitHub again, one GraphQL point, so the card
-catches up with what the agent did. While the session still works, it also reads the item as
-soon as the agent finishes a command that changes something on GitHub: `gh pr review`,
-`merge`, `close`, `reopen`, `comment`, `edit`, `ready`, or `update-branch`; `gh issue close`,
-`reopen`, `comment`, or `edit`; a write through `gh api`; or `git push`, also behind `cd`,
-`timeout`, `env`, or a shell's `-c`. The first such command reads the item at once, and any
-more within 30 seconds once more when they're up, so an approval and a merge a moment later
-both reach the card, at most a point per item every 30 seconds. A command that failed, or one
-still running in the background, doesn't count. Nilbox spots these commands in the agent's own
-files on this Mac, never the network: only what Claude Code added to the session's transcript
-since the last look (the commands from before the launch never count), and the commands in the
-turns Codex's daemon reports. A Codex session the daemon can't reach gets only the read once it
-stops working.
+The panel says the newest of what happened to the item on GitHub while a session ran: **On GitHub:
+Approved at abc1234 · 2m ago**, **Changes requested at …**, **Merged**, or **Closed**. It comes from
+what Nilbox reads anyway (the read of the item after a session stops working, a card's or the review
+sheet's refresh, the whole refresh) and costs no request of its own. It counts what happened between
+the session's launch and its end, by GitHub's time, give or take a few seconds, and never says who
+did it: the agent with `gh`, or you in your browser or in Nilbox. A review counts only when it
+approves or requests changes, and only one made within two hours of when Nilbox sees it.
 
-**Its tokens.** The panel says how many tokens each session used, such as **1.2M tokens · 840K
-cached**, with every count (in, out, read from the cache, written to it) in its tooltip, read
-from the agent's own files on this Mac when the panel opens and again each time the session
-changes state, never from the network. Claude Code's come from the session's transcript: each
-assistant message's usage, counted once though Claude Code writes a line per part of a message,
-read only as far as the file grew since the last read, and at most its first 64 MB (past that,
-the panel says **at least**). Codex's come from the last token count in the end of its rollout
-file, the thread's running total. An agent's run in the background (**⚡ in the background**)
-counts what its run reported instead, as Autopilot records it while the run goes, its writes
-to the cache within what went in. A session the agent hasn't named yet, or whose files report
-no usage, shows none. These are the agent's own counts, not a bill: a subscription's sign-in
-spends its plan's usage, and nothing here turns tokens into dollars.
+## When the item is read again
+
+Each time a session stops working (it goes idle, waits for you, ends, or fails), Nilbox reads its
+item from GitHub again, one GraphQL point, so the card catches up with what the agent did. While the
+session still works, it also reads the item as soon as the agent finishes a command that changes
+something on GitHub: `gh pr review`, `merge`, `close`, `reopen`, `comment`, `edit`, `ready`, or
+`update-branch`; `gh issue close`, `reopen`, `comment`, or `edit`; a write through `gh api`; or `git
+push`, also behind `cd`, `timeout`, `env`, or a shell's `-c`. The first such command reads the item
+at once, and any more within 30 seconds once more when they're up, so an approval and a merge a
+moment later both reach the card, at most a point per item every 30 seconds. A command that failed,
+or one still running in the background, doesn't count. Nilbox spots these commands in the agent's
+own files on this Mac, never the network: only what Claude Code added to the session's transcript
+since the last look (the commands from before the launch never count), and the commands in the turns
+Codex's daemon reports. A Codex session the daemon can't reach gets only the read once it stops
+working.
+
+## Its tokens
+
+The panel says how many tokens each session used, such as **1.2M tokens · 840K cached**, with every
+count (in, out, read from the cache, written to it) in its tooltip, read from the agent's own files
+on this Mac when the panel opens and again each time the session changes state, never from the
+network. Claude Code's come from the session's transcript: each assistant message's usage, counted
+once though Claude Code writes a line per part of a message, read only as far as the file grew since
+the last read, and at most its first 64 MB (past that, the panel says **at least**). Codex's come
+from the last token count in the end of its rollout file, the thread's running total. An agent's run
+in the background (**⚡ in the background**) counts what its run reported instead, as Autopilot
+records it while the run goes, its writes to the cache within what went in. A session the agent
+hasn't named yet, or whose files report no usage, shows none. These are the agent's own counts, not
+a bill: a subscription's sign-in spends its plan's usage, and nothing here turns tokens into
+dollars.
 
 Whether a session still runs comes from its process, checked against the agent so a process ID
 macOS has since given another program never keeps a session alive: Claude Code must list the
@@ -138,34 +149,38 @@ the app quit are reconciled then. Nothing is ever sent to a session, no approval
 and nothing is written into an agent's config or conversation beyond the launch's
 `--session-id`. Nothing about sessions leaves your Mac.
 
-**One session per folder, unless you say so.** While a session is still running on an item, its
-card's button is **Show in terminal** rather than **Open in Claude**: getting back to it is the
-likely reason to click. Its worktree's row in the Worktrees view offers no launch while
-something runs in the worktree. Starting another from the
-launch options asks first when one is still running in the same folder (the item's worktree, or
-its clone, whichever item that session was started on, since items share their clone): two
-agents working in one folder can undo each other's changes and wait on each other's git
-commands. The question offers **Show in terminal**, or **Start another**, which
-starts it beside exactly the sessions it listed; one that started since asks again. A launch
-waiting on that question asks GitHub nothing, and a pull request whose
-[files](sensitive-files.md) also hold it back asks about them next. Only sessions the app follows
-count: a shell, an editor, or a dev server in the folder never holds a launch back, and while
-following is off nothing does.
+## One session per folder, unless you say so
 
-**The menu bar and banners.** Sessions waiting for your approval or input are listed first in
-the [menu bar](menu-bar.md), under **Waiting for you**, the longest waiting
-first and five at most, then how many more; click one to bring its terminal tab forward, or the
-item when the tab can't be found. The menu is redrawn only when what it lists changes. Two banners, **Sessions waiting
-for you** (once a session has waited five seconds) and **Sessions finishing a turn**, start
-off, since Claude Code and Codex can already notify through your terminal. Turn them on in
-Settings → Notifications.
+While a session is still running on an item, its card's button is **Show in terminal** rather than
+**Open in Claude**: getting back to it is the likely reason to click. Its worktree's row in the
+Worktrees view offers no launch while something runs in the worktree. Starting another from the
+launch options asks first when one is still running in the same folder (the item's worktree, or its
+clone, whichever item that session was started on, since items share their clone): two agents
+working in one folder can undo each other's changes and wait on each other's git commands. The
+question offers **Show in terminal**, or **Start another**, which starts it beside exactly the
+sessions it listed; one that started since asks again. A launch waiting on that question asks GitHub
+nothing, and a pull request whose [files](sensitive-files.md) also hold it back asks about them
+next. Only sessions the app follows count: a shell, an editor, or a dev server in the folder never
+holds a launch back, and while following is off nothing does.
 
-**Turning it off.** **Follow agent sessions** under Settings → Launching is on by default. Turn
-it off and no agent is asked about its sessions, the cards and the menu show none at once, and no
-session banner shows. Launches are still recorded, which costs nothing. Turned on again, the
-sessions still running are followed at once.
+## The menu bar and banners
 
-**What is kept.** Sessions are recorded in the local database (the `agent_sessions` table):
-every one still running, and each ended one for 30 days, at most the newest 20 per item, unless
-you remove it sooner with its **×** in the panel. The last message keeps its first 500
-characters.
+Sessions waiting for your approval or input are listed first in the [menu bar](menu-bar.md), under
+**Waiting for you**, the longest waiting first and five at most, then how many more; click one to
+bring its terminal tab forward, or the item when the tab can't be found. The menu is redrawn only
+when what it lists changes. Two banners, **Sessions waiting for you** (once a session has waited
+five seconds) and **Sessions finishing a turn**, start off, since Claude Code and Codex can already
+notify through your terminal. Turn them on in Settings → Notifications.
+
+## Turning it off
+
+**Follow agent sessions** under Settings → Launching is on by default. Turn it off and no agent is
+asked about its sessions, the cards and the menu show none at once, and no session banner shows.
+Launches are still recorded, which costs nothing. Turned on again, the sessions still running are
+followed at once.
+
+## What is kept
+
+Sessions are recorded in the local database (the `agent_sessions` table): every one still running,
+and each ended one for 30 days, at most the newest 20 per item, unless you remove it sooner with its
+**×** in the panel. The last message keeps its first 500 characters.

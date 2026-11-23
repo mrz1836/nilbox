@@ -1,5 +1,7 @@
 # internal/localrepos
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/localrepos`](../../internal/localrepos) · Guide: [Launching a session](../guide/launching-a-session.md), [The Worktrees view](../guide/worktrees-view.md)
+
 `internal/localrepos` finds the user's clones, in the clone root (`clones.root`, the primary,
 which new clones go in) and the other repository locations (`clones.locations`, which
 settings alone writes: each a folder looked into one level deep as the clone root is, or a

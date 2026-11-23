@@ -1,5 +1,7 @@
 # Agents in your terminal
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Agents in the terminal, readiness, and Needs your OK](../../architecture/autopilot/agents-in-the-terminal.md)
+
 A routine's **Run a coding agent** step, **In my terminal**, opens your terminal on the item
 exactly as a click on its launch button does: the same agent, profile, model, and effort as the
 launch defaults resolve (the routine's own choices taking the launch menu's place), the same

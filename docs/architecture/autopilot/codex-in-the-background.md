@@ -1,5 +1,7 @@
 # Codex in the background
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/agentrun`](../../../internal/agentrun), [`internal/autopilot`](../../../internal/autopilot) · Guide: [Agents in the background](../../guide/autopilot/agents-in-the-background.md)
+
 Codex runs in the background through the same planner, fence, runner, run view, and Take over
 as Claude Code: everything it does differently is its spec's (`internal/agent/codex_headless.go`,
 `codex_fence.go`) and its parser's (`internal/agentrun/stream/codex.go`), as measured on

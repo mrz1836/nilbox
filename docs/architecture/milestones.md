@@ -1,5 +1,7 @@
 # internal/milestones
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/milestones`](../../internal/milestones) · Guide: [Inbox nil](../guide/inbox-nil.md)
+
 `internal/milestones/` keeps the local log of the inbox reaching nil and says what each time
 is worth, so the party at nil can save its confetti for what means something. The log is one
 preference, `milestones.log` (`KeyLog`), JSON through `store.EncodeJSON`/`DecodeJSON`, which

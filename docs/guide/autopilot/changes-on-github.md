@@ -1,5 +1,7 @@
 # What Autopilot may change on GitHub
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [The GitHub step](../../architecture/autopilot/github-step.md)
+
 A routine's steps change on GitHub only what the review and issue sheets already change for you,
 and only these five:
 

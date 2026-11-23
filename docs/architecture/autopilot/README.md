@@ -1,14 +1,35 @@
 # internal/autopilot
 
-`internal/autopilot/` is Autopilot, which watches the user's items and runs their routines.
-Its root package keeps the routines and serves them to the window (**The routines, kept**,
-below); beneath it is the routines core, five pure leaves. They read nothing,
-start nothing, and keep no clock: the moment a decision is for comes with it. They import
-only `item`, `repo`, `trust`, `sensitive`, `bump`, `clock`, `textutil`, the standard
-library, and one another, in this order: `catalog` and `watch` at the bottom, `spec` over
-both, `facts` over `catalog`, and `eval` over all three. `TestLeafImports` in
-`internal/repoguard/deps_test.go` holds each leaf's direct imports to that list, so a leaf
-can never reach the store, GitHub, a process, or a service.
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Autopilot](../../guide/autopilot/README.md), [What Autopilot never does](../../guide/autopilot/never-does.md)
+
+**In this folder:**
+
+- [The routines, kept](routines-kept.md)
+- [The searches, and the builder's reads of the inbox](searches.md)
+- [The engine and the ledger](engine-and-ledger.md)
+- [What runs next (`upcoming.go`)](upcoming.md)
+- [Verify, tries, the loop guard, and profile fallback](verify-and-tries.md)
+- [Merge it and Post the agent's review](merge-and-review.md)
+- [Agents in the terminal, readiness, and Needs your OK](agents-in-the-terminal.md)
+- [Agents in the background](agents-in-the-background.md)
+- [Codex in the background](codex-in-the-background.md)
+- [Local actions: by a routine, Undo, and hands off](local-actions.md)
+- [The GitHub step](github-step.md)
+- [Notices, the menu bar, and the window's close](notices.md)
+- [Easy mode: templates, from an item, why, export and import, graduating](easy-mode.md)
+- [Schedules, the digest, the script step, and a routine's week](schedules.md)
+- [The Autopilot tab](autopilot-tab.md)
+- [`internal/autopilot/draft`](draft.md)
+- [`internal/autopilot/kit`](kit.md)
+
+`internal/autopilot/` is Autopilot, which watches the user's items and runs their routines. Its root
+package keeps the routines and serves them to the window ([The routines, kept](routines-kept.md));
+beneath it is the routines core, five pure leaves. They read nothing, start nothing, and keep no
+clock: the moment a decision is for comes with it. They import only `item`, `repo`, `trust`,
+`sensitive`, `bump`, `clock`, `textutil`, the standard library, and one another, in this order:
+`catalog` and `watch` at the bottom, `spec` over both, `facts` over `catalog`, and `eval` over all
+three. `TestLeafImports` in `internal/repoguard/deps_test.go` holds each leaf's direct imports to
+that list, so a leaf can never reach the store, GitHub, a process, or a service.
 
 **`catalog`** is the vocabulary: every name a spec stores is one of its constants, and the
 builder renders what it lists. Its parts:

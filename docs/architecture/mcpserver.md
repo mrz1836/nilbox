@@ -1,5 +1,7 @@
 # internal/mcpserver
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/mcpserver`](../../internal/mcpserver) · Guide: [Describe it](../guide/autopilot/describe-it.md), [Use Nilbox in your own Claude Code](../guide/autopilot/your-own-claude-code.md)
+
 `internal/mcpserver/` is the app's tool mode: the app's own binary, run again by Claude Code as
 a stdio MCP server (`cmd/nilbox`'s `main` calls `Serve` right after `fence.RunHook`), which
 serves Describe it's tools to the in-app conversation and, through the plugin, to the user's own

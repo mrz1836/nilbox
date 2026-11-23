@@ -1,5 +1,7 @@
 # What Autopilot never does
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [`internal/autopilot`](../../architecture/autopilot/README.md), [`internal/fence`](../../architecture/fence.md)
+
 - It never changes a routine's mode on its own, and never runs while **Autopilot (beta)** is
   off.
 - A local step never replaces what you set aside yourself, and has **Undo**. Dry run changes

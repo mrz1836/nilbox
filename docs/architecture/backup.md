@@ -1,5 +1,7 @@
 # internal/backup
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/backup`](../../internal/backup) · Guide: [Backing up your setup](../guide/backing-up.md) · See also: [Backup files](../backup-files.md)
+
 `internal/backup/` is Settings → Back up and restore's service, which owns no table. It
 exports the user's setup to one `<slug>.backup` file (`File`, version 1, at most 16 MB,
 written user-only through `appdata.WriteFile`), one section per category ticked: settings,

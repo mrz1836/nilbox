@@ -1,5 +1,7 @@
 # internal/avatars
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/avatars`](../../internal/avatars) · Guide: [Inbox cards](../guide/inbox-cards.md), [Reviewing a pull request](../guide/reviewing-a-pull-request.md)
+
 `internal/avatars/` keeps the profile pictures the sheets and the inbox's cards show. The
 sheets show people's (who opened the issue or pull request, an issue's assignees and
 participants, a pull request's reviewers, and who wrote each comment and review shown in full,

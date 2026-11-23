@@ -1,5 +1,7 @@
 # internal/core
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/core`](../../internal/core)
+
 `internal/core/` assembles the app and builds every service the window binds: settings,
 profiles, prompts, launch defaults, inbox, review, issues, the profile pictures, launcher,
 worktrees, notifications, app info, the API budget, sessions, integrations, script runs,

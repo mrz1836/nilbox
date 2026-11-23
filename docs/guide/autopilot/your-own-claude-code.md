@@ -1,5 +1,7 @@
 # Use Nilbox in your own Claude Code
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [`internal/describeit`](../../architecture/describeit.md), [`internal/mcpserver`](../../architecture/mcpserver.md)
+
 Describe it also works from a Claude Code session of your own, in a terminal or an editor.
 **Settings → Autopilot → Use Nilbox in your own Claude Code** lists each of Claude Code's
 profiles with the plugin's state there (*Installed · 1.0.0*, *Not installed*) and **Install** or

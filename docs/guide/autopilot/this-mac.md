@@ -1,5 +1,7 @@
 # This Mac
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Agents in the terminal, readiness, and Needs your OK](../../architecture/autopilot/agents-in-the-terminal.md)
+
 Any Mac with Nilbox can run routines; each checks it has what its routines need. **This Mac**,
 in Settings → Autopilot, lists each check, ✓, ⚠, or ✗, with what it found and its fix: GitHub's
 sign-in (from the last refresh; **Check again** asks GitHub, for one point), `gh` and `git`,

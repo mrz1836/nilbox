@@ -1,5 +1,7 @@
 # internal/timeline
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/timeline`](../../internal/timeline) · Guide: [Reviewing a pull request](../guide/reviewing-a-pull-request.md), [Reading an issue](../guide/reading-an-issue.md)
+
 `internal/timeline/` is the conversation both sheets show, an issue's and a pull request's:
 its entries (`Entry`: comments, reviews with their line comments, and events), a page of
 them (`Page`), and the items, labels, and reactions they name. `Entries` converts what the

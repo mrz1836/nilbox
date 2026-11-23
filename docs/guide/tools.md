@@ -1,5 +1,7 @@
 # Tools the app finds and installs
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/integrations`](../architecture/integrations.md)
+
 **Settings → Integrations** shows the command-line tools the app drives: mage-x's `magex`, which
 releases your repositories, and `go-pre-commit`, which runs your pre-commit checks. For each one
 it says which copy it uses, its version, and where it came from (a GitHub release, Homebrew,

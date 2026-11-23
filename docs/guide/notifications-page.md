@@ -1,5 +1,7 @@
 # The Notifications page
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md), [`internal/ghthreads`](../architecture/ghthreads.md), [`internal/threadrules`](../architecture/threadrules.md)
+
 The **Notifications** tab, beside **Inbox**, holds everything the bell and the GitHub button
 are quick views of, on two tabs: **Nilbox**, the app's own notifications, and **GitHub**, your
 [GitHub notifications](github-notifications.md). Each tab counts its unread. The page opens on
@@ -12,25 +14,28 @@ scrolls past. An unread entry carries a dot and a bolder title. **Show** picks *
 **All** (the default), and **Type** what kind; the toolbar's field [filters](filtering.md) the
 list too. Long lists stay quick: only the rows near the screen are drawn.
 
-**Nilbox.** The whole history, up to the latest 1,000, in the local database (the
-`notifications` table), whether or not a banner was shown. **Type** is **Reviews**,
-**Assigned**, **Snoozes**, **Releases**, **Runs**, **Status**, **Updates**, or **Autopilot**
-(its five kinds together, offered while Autopilot (beta) is on). Click an entry to open it as the bell
-does, which marks it read. Point at one: an unread entry offers **✓ Done**, and a read one
-**Mark unread**, which puts it back on the bell. **Mark all done** marks them all read, and
-**Clear history** forgets every notification, after asking; banners and settings stay.
+## Nilbox
 
-**GitHub.** Every notification Nilbox keeps a copy of, read and unread, grouped by the pull
-request or issue each is about, with the counts and when GitHub was last checked, a refresh
-button that checks it now, **Open on GitHub**, and **Settings**. It says why GitHub refuses the
-token, why the last check failed, and when GitHub holds more than the newest 1,000. **Type** is
-**Pull requests**, **Issues**, **Releases**, **Actions** (workflow runs), or **Other**. A line
-whose item is merged or closed says so. Click a line to open it on GitHub, which marks its
-unread notifications read there; point at it for **Show in inbox** (while the inbox lists its
-item), **Mark read**, and **Done**. Each goes to GitHub at once, one line at a time, through the
-same paced lane as clearing; [Mark all done](#mark-all-done) clears a backlog. While Nilbox
-doesn't read your GitHub notifications, the tab says so and offers **Turn on**, which checks
-GitHub straight after.
+The whole history, up to the latest 1,000, in the local database (the `notifications` table),
+whether or not a banner was shown. **Type** is **Reviews**, **Assigned**, **Snoozes**, **Releases**,
+**Runs**, **Status**, **Updates**, or **Autopilot** (its five kinds together, offered while
+Autopilot (beta) is on). Click an entry to open it as the bell does, which marks it read. Point at
+one: an unread entry offers **✓ Done**, and a read one **Mark unread**, which puts it back on the
+bell. **Mark all done** marks them all read, and **Clear history** forgets every notification, after
+asking; banners and settings stay.
+
+## GitHub
+
+Every notification Nilbox keeps a copy of, read and unread, grouped by the pull request or issue
+each is about, with the counts and when GitHub was last checked, a refresh button that checks it
+now, **Open on GitHub**, and **Settings**. It says why GitHub refuses the token, why the last check
+failed, and when GitHub holds more than the newest 1,000. **Type** is **Pull requests**, **Issues**,
+**Releases**, **Actions** (workflow runs), or **Other**. A line whose item is merged or closed says
+so. Click a line to open it on GitHub, which marks its unread notifications read there; point at it
+for **Show in inbox** (while the inbox lists its item), **Mark read**, and **Done**. Each goes to
+GitHub at once, one line at a time, through the same paced lane as clearing; [Mark all
+done](#mark-all-done) clears a backlog. While Nilbox doesn't read your GitHub notifications, the tab
+says so and offers **Turn on**, which checks GitHub straight after.
 
 ## Mark all done
 
@@ -71,9 +76,11 @@ GitHub inbox isn't empty, and no bulk mark is running.
   view**, until you dismiss it (**×**). There is no undo in Nilbox: GitHub's Done view moves any
   back to your inbox.
 
-**Cleared.** **Show → Cleared** shows what clearing did. **Clearing soon** lists each clear
-waiting to be sent, why it clears, and when it goes (*in 12s*), with **Undo**, which keeps the
-notification. **Recently cleared** lists the last 50 that settled and how: **Marked done**,
-**Marked read**, **Kept**, **Couldn't clear**, or **Skipped**, with why; a click opens the item on
-GitHub. **GitHub's Done view** opens GitHub's own list of what was marked done. While automatic
-clearing is off, it offers to turn it on.
+### Cleared
+
+**Show → Cleared** shows what clearing did. **Clearing soon** lists each clear waiting to be sent,
+why it clears, and when it goes (*in 12s*), with **Undo**, which keeps the notification. **Recently
+cleared** lists the last 50 that settled and how: **Marked done**, **Marked read**, **Kept**,
+**Couldn't clear**, or **Skipped**, with why; a click opens the item on GitHub. **GitHub's Done
+view** opens GitHub's own list of what was marked done. While automatic clearing is off, it offers
+to turn it on.

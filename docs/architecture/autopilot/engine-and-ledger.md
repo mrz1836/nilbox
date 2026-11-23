@@ -1,5 +1,7 @@
 # The engine and the ledger
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Budgets and caps](../../guide/autopilot/budgets-and-caps.md), [When a routine misbehaves](../../guide/autopilot/when-a-routine-misbehaves.md)
+
 **The ledger** (migration `0103_autopilot`, all of it Autopilot's) records what each
 routine did with each item it matched. `autopilot_matches` holds one row per routine, item,
 fire key, and Dry run (unique), so an existing row blocks a repeat: once per occurrence holds
@@ -30,7 +32,7 @@ engine's own checks say. `autopilot_tries` keeps when Try again last reset a rou
 on an item, `autopilot_baselines` what a routine first saw of an item (its head, its comment
 count, for New commits' first commit and New comments), `autopilot_hands_off` the items a
 routine leaves alone, and `autopilot_effects` what its
-local steps did to their items' triage (**Local actions**, below).
+local steps did to their items' triage ([Local actions](local-actions.md)).
 `autopilot_matches` is indexed by `item_id`, which every read by
 item (`LatestMatches` and `ItemHistory`) searches. The engine's own state,
 `autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
@@ -72,8 +74,8 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   for it.
 - **The lock** (`lock.go`) is a `flock` on `<data>/autopilot.lock` (`appdata.Paths.AutopilotLock`),
   tried as the engine is built (in `assemble`, so the copy that will hold it sends the searches
-  from its first refresh) and on every tick, both only while Autopilot (beta) is on (**Autopilot
-  (beta)**, above): only the holder runs cycles and applies commands
+  from its first refresh) and on every tick, both only while Autopilot (beta) is on ([Autopilot
+  (beta)](routines-kept.md#autopilot-beta)): only the holder runs cycles and applies commands
   (another copy refuses them, `ErrElsewhere`, and `Engine().Elsewhere` says so), and only the
   holder sends the routines' searches at all (`Searches.HoldsWatches`, which the inbox's
   `WatchHolder` reads before a watch pass), so two copies on one data folder never replace each
@@ -136,39 +138,39 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   started, and every run still working counts what it reserved against today's cap whatever
   day it started.
 - **The dispatch seam** (`dispatch.go`): a narrow `Dispatcher` per part, keyed by the catalog's
-  dispatcher names (`EngineConfig.Dispatchers`: triage, notices, github, verify, merging,
-  review), and the agent part's `Runner` (`Dispatch` starts a run, `Stop` and `StopAll` stop at
-  once, `Alive`), whose ends come back through `Engine.RunEnded`. A `Job` carries the match,
-  the run, the routine, the item's copy, the head it is pinned to, the step, and the budget;
-  a `Result` says it runs on, how it ended (an Only if outcome), whether GitHub took a write,
-  and when the item's sheet no longer offers the action or offers it with warnings. A step with
-  no dispatcher registered can't run, and the Service keeps a routine with such a step in Dry
-  run (`Offers`, the catalog's own by default, which a test hands in with fakes). The triage
-  steps are offered: the engine registers its own triage dispatcher over `EngineConfig.Triage`
-  (core's `inboxTriage`, **Local actions**, below) unless `Dispatchers` names one; so are the
-  notices (Notify me and Tell me, **Notices**, below), whose dispatcher core registers, the
-  agent step, whose `Runner` core registers (**Agents in the terminal**, below), and the
-  GitHub step and Mark the GitHub notification done (**The GitHub step**, below), whose
-  dispatcher the engine registers over the Service's `GitHubActions`; a routine with any other
-  step still runs in Dry run, and the engine records what it would run. A `Result` may also say
-  the step didn't start and what the match waits on instead (`Wait`, `WaitWords`, and a `Hold`
-  the user confirms), or that it goes back to the queue (`Requeue`), and what a launch started
-  (`Launched`, recorded on the run, `RecordRunLaunch`). For the notices, a job also carries
-  when its match was made, the routine's own banner switches (`Notices`), why it matched
-  (`Reason`, from the trace), and how the steps before it went (`Before`). `dispatch` hands a
-  job over only while `Engine.Enabled` says Autopilot (beta) is on, asked on the worker right
-  before `Dispatch`, so no part (the agent runner's starts included) is handed a step after it
-  was turned off; the freshness read before an agent's start or a GitHub action asks it too, so
-  nothing is read from GitHub for a start Autopilot turned off since.
-- **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`,
-  counting no try), one the user stopped closes `dismissed`, one the engine stopped because its
-  item merged or closed closes `closed` (counting no try), one out of usage (`RunOutOfUsage`)
-  rests its profile and goes back to the queue at the same step (counting no try, **Profile
-  fallback**, below), and one that ended goes to its next step, straight to `verifying` when it
-  pushed and Wait for the checks is next, so the push, which moves the item's head, never
-  closes it as having moved on. A match that started a run is closed only by its item being
-  done with; its fire key moves by design. While one of a routine's matches on an item is
-  running or verifying (`pass.active`), another of its matches there waits (`settling`).
+  dispatcher names (`EngineConfig.Dispatchers`: triage, notices, github, verify, merging, review),
+  and the agent part's `Runner` (`Dispatch` starts a run, `Stop` and `StopAll` stop at once,
+  `Alive`), whose ends come back through `Engine.RunEnded`. A `Job` carries the match, the run, the
+  routine, the item's copy, the head it is pinned to, the step, and the budget; a `Result` says it
+  runs on, how it ended (an Only if outcome), whether GitHub took a write, and when the item's sheet
+  no longer offers the action or offers it with warnings. A step with no dispatcher registered can't
+  run, and the Service keeps a routine with such a step in Dry run (`Offers`, the catalog's own by
+  default, which a test hands in with fakes). The triage steps are offered: the engine registers its
+  own triage dispatcher over `EngineConfig.Triage` (core's `inboxTriage`, [Local
+  actions](local-actions.md)) unless `Dispatchers` names one; so are the notices (Notify me and Tell
+  me, [Notices](notices.md)), whose dispatcher core registers, the agent step, whose `Runner` core
+  registers ([Agents in the terminal](agents-in-the-terminal.md)), and the GitHub step and Mark the
+  GitHub notification done ([The GitHub step](github-step.md)), whose dispatcher the engine
+  registers over the Service's `GitHubActions`; a routine with any other step still runs in Dry run,
+  and the engine records what it would run. A `Result` may also say the step didn't start and what
+  the match waits on instead (`Wait`, `WaitWords`, and a `Hold` the user confirms), or that it goes
+  back to the queue (`Requeue`), and what a launch started (`Launched`, recorded on the run,
+  `RecordRunLaunch`). For the notices, a job also carries when its match was made, the routine's own
+  banner switches (`Notices`), why it matched (`Reason`, from the trace), and how the steps before
+  it went (`Before`). `dispatch` hands a job over only while `Engine.Enabled` says Autopilot (beta)
+  is on, asked on the worker right before `Dispatch`, so no part (the agent runner's starts
+  included) is handed a step after it was turned off; the freshness read before an agent's start or
+  a GitHub action asks it too, so nothing is read from GitHub for a start Autopilot turned off
+  since.
+- **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`, counting
+  no try), one the user stopped closes `dismissed`, one the engine stopped because its item merged
+  or closed closes `closed` (counting no try), one out of usage (`RunOutOfUsage`) rests its profile
+  and goes back to the queue at the same step (counting no try, [Profile
+  fallback](verify-and-tries.md)), and one that ended goes to its next step, straight to `verifying`
+  when it pushed and Wait for the checks is next, so the push, which moves the item's head, never
+  closes it as having moved on. A match that started a run is closed only by its item being done
+  with; its fire key moves by design. While one of a routine's matches on an item is running or
+  verifying (`pass.active`), another of its matches there waits (`settling`).
 - **Settle what moved on:** an open match whose item merged, closed, or is gone closes; one
   whose item left every watch of its routine has its state read (`ReadStates`, one request, one
   at a time per item, again every half hour), so it closes as merged or closed when it did, and
@@ -178,7 +180,7 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   closes as moved on, one the routine no longer matches as no longer matches (or, after an edit,
   as the routine changed), and the rest take the routine's new steps. A running agent whose item
   merged or closed is stopped through the runner; a verifying match closes, and one whose item
-  is still there is judged (**Verify**, below), its routine switched off or not.
+  is still there is judged ([Verify](verify-and-tries.md)), its routine switched off or not.
 - **The first pass** of a routine with a GitHub action, after it is switched on, leaves Dry run,
   changes mode, or its spec changes (a fingerprint of the spec, when it was last switched on,
   and its mode, so switching it off and on in the other copy between two cycles counts too;
@@ -197,11 +199,11 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   fire key, each told before the change is made); any other change, and `run`, is made there at
   once.
 - **Problems** (`upkeep.go`): a search GitHub fails, and an enabled routine that won't load, are
-  recorded once each, keyed by routine and problem, with when they began, in the engine's state
-  and `Engine().Problems`, and told through a `ProblemSink` once (core registers
-  `NewProblemNotices`, below), with the routine's name, when it was made, and its own banner
-  switch for problems; one that couldn't be told stays untold and is told on a later cycle,
-  and one that ends is forgotten, so it is told again when it comes back.
+  recorded once each, keyed by routine and problem, with when they began, in the engine's state and
+  `Engine().Problems`, and told through a `ProblemSink` once (core registers `NewProblemNotices`, in
+  [Notices](notices.md)), with the routine's name, when it was made, and its own banner switch for
+  problems; one that couldn't be told stays untold and is told on a later cycle, and one that ends
+  is forgotten, so it is told again when it comes back.
 - **Retention:** once an hour, a closed match closed longer ago than the history's days goes,
   with its runs, but only once its item is known to be done with (gone, merged or closed, or out
   of every list and watch since then): deleting the record of an item still open would let it
@@ -217,7 +219,7 @@ double click, a banner's click racing a cycle, or an Approve during a refresh ch
 once: `Approve` (an Ask first match's OK, a catch-up's, a backlog's, an interrupted run's),
 `Skip` (refused for a running one), `RunNow` (once per click, on an item its conditions match,
 counting toward no cap or try), `TryAgain` (resets the tries and opens again what gave up on
-the occurrence that still holds), `LetActAgain`, `Undo` (**Local actions**, below), and
+the occurrence that still holds), `LetActAgain`, `Undo` ([Local actions](local-actions.md)), and
 `ClearHistory`. A command before the loop runs is refused (`ErrNotRunning`), and one while
 another copy holds the engine
 (`ErrElsewhere`). `StopRun` and `StopAll` go straight to the runner, never queued behind the
@@ -237,7 +239,7 @@ one that closed as the item or the routine moved on before it acted, with its ru
 effects, for the chip on every row; the window asks in chunks of 500, `inChunks`),
 `Upcoming` (for the items among the ids, the routines that will run there by themselves,
 from the engine's memory, none while Autopilot is off or paused, signed out, or run by
-another copy; see *What runs next* below), `Explain`
+another copy; see [What runs next](upcoming.md)), `Explain`
 (the decision now, and what the ledger knows:
 the record for the occurrence, the tries used, not in the watch, left alone), and `Engine`. No
 result holds a nil list.

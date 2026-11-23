@@ -1,5 +1,7 @@
 # Launching a session
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/launcher`](../architecture/launcher.md), [`internal/localrepos`](../architecture/localrepos.md), [`internal/worktrees`](../architecture/worktrees.md)
+
 A launch writes two files under the data directory's `launch/` folder: the filled-in
 [prompt](prompts.md), and a small `sh` script that changes into the folder the session starts in
 (the item's worktree, or the clone) and runs the agent with the resolved flags. The script does
@@ -18,13 +20,15 @@ agent would read it as an option. Each agent gets its arguments in its own order
   flags> -- <prompt>`. Codex has no session names, and no flag for the effort level or Fast
   mode (see below).
 
-**Codex's effort and Fast mode.** Codex takes these only as config overrides (`--config
-model_reasoning_effort="<level>"` and `--config service_tier="fast"`), and runs a session
-started with any config override outside its shared app server, where the app can't see that
-it [waits for you](following-a-session.md). So by default a Codex launch passes neither: Codex
-uses the effort and speed in its own config, and you change them in the session with `/model`
-and `/fast`. With Codex chosen, the launch menu greys **Effort** out and says so. Two switches
-under **Settings → Launching** change that, both off at first:
+## Codex's effort and Fast mode
+
+Codex takes these only as config overrides (`--config model_reasoning_effort="<level>"` and
+`--config service_tier="fast"`), and runs a session started with any config override outside its
+shared app server, where the app can't see that it [waits for you](following-a-session.md). So by
+default a Codex launch passes neither: Codex uses the effort and speed in its own config, and you
+change them in the session with `/model` and `/fast`. With Codex chosen, the launch menu greys
+**Effort** out and says so. Two switches under **Settings → Launching** change that, both off at
+first:
 
 - **Set Codex's effort at launch** passes the effort a launch resolves to, as Claude Code gets
   it, and the launch menu offers it again.
@@ -36,18 +40,18 @@ Either one costs that session the **Needs approval** and **Needs input** states 
 which then says it runs outside Codex's app server. Your own `--config` flags in a profile's
 extra flags cost the same.
 
-**API keys.** An agent runs on its profile's own sign-in, the one you made with `claude auth
-login` or `codex login` (a subscription through the browser, say), never on a key from your
-shell's environment, unless you say so. So by default every launch unsets the variables that
-would sign the agent in with a key instead: Claude Code's `ANTHROPIC_API_KEY` and
-`ANTHROPIC_AUTH_TOKEN`, and Codex's `OPENAI_API_KEY`, `CODEX_API_KEY`, and
-`CODEX_ACCESS_TOKEN` (either of the last two signs Codex in over a ChatGPT sign-in), which a
-profile's own environment can't set either; the launch menu's Preview lists them (`unset
-ANTHROPIC_API_KEY`).
-**Use an API key when one is set**, under **Settings → Launching**, one switch per agent, off at
-first, lets a key from your shell through for that agent's launches, billed to that key. The
-same rule decides the environment of every launch: from the launch menu, a resume, and an
-Autopilot routine's. Nothing logs a variable's value.
+## API keys
+
+An agent runs on its profile's own sign-in, the one you made with `claude auth login` or `codex
+login` (a subscription through the browser, say), never on a key from your shell's environment,
+unless you say so. So by default every launch unsets the variables that would sign the agent in with
+a key instead: Claude Code's `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, and Codex's
+`OPENAI_API_KEY`, `CODEX_API_KEY`, and `CODEX_ACCESS_TOKEN` (either of the last two signs Codex in
+over a ChatGPT sign-in), which a profile's own environment can't set either; the launch menu's
+Preview lists them (`unset ANTHROPIC_API_KEY`). **Use an API key when one is set**, under **Settings
+→ Launching**, one switch per agent, off at first, lets a key from your shell through for that
+agent's launches, billed to that key. The same rule decides the environment of every launch: from
+the launch menu, a resume, and an Autopilot routine's. Nothing logs a variable's value.
 
 The terminal then runs the script:
 
@@ -97,38 +101,41 @@ Removing a location leaves its clones and their worktrees as they are, but nothi
 or cleans them up until you add it again, and their worktree records are kept. Worktrees stay
 beside their clone, under its folder's `.nilbox/worktrees/<repo>`, wherever it is.
 
-**Clones.** The item's clone is found by scanning the clone root and each folder location one
-level deep, and each clone location, and matching each repository's git remotes: a clone whose
-`origin` is the repository wins, and a tie goes to the clone root's. The match is remembered and
-checked again on the next launch, while a location still holds it. To
-find and check clones, the launcher runs only the read-only `git -C <clone> config --get-regexp`
-remote lookup. No git command the app runs changes a clone's own checkout: no checkout, stash,
-pull, reset, or branch switch, with one exception you click: Repo scripts' **Pull**, which
-fast-forwards the branch a clone is on to origin's (`git pull --ff-only`). Otherwise only a tool
-you turn on in Settings → Integrations does, when you click: a release's magex switches to the
-branch, pulls, tags, and pushes the tag, and the app then checks where the tag and your clone
-are. When a session needs a pull request's branch, the
-starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git
-commands the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into
-the item's own refs, or into a pull request's base's remote-tracking branch, and `git worktree
-add`), the [Worktrees view's](worktrees-view.md)
-removals, prunes, and unlocks, with the [branch deletions](worktrees-view.md#branches) you confirm there, and
-[Repo scripts'](repo-scripts.md) **Pull** you click, which fast-forwards the clone's branch.
+### Clones
 
-**A repository with no clone.** When a launch finds no clone of the item's repository, the row
-says so and where it looked, *No local clone of acme-org/example-repo in ~/projects or your other
-repository locations*, and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then
-the repository's name. It also offers **It's cloned elsewhere…**: pick the clone's folder, and the app checks it is
-a clone of the repository (refusing, say, *~/x isn't a clone of acme-org/example-repo; its origin
-is acme-org/other*), adds it as a repository location, or offers its folder when that holds other
+The item's clone is found by scanning the clone root and each folder location one level deep, and
+each clone location, and matching each repository's git remotes: a clone whose `origin` is the
+repository wins, and a tie goes to the clone root's. The match is remembered and checked again on
+the next launch, while a location still holds it. To find and check clones, the launcher runs only
+the read-only `git -C <clone> config --get-regexp` remote lookup. No git command the app runs
+changes a clone's own checkout: no checkout, stash, pull, reset, or branch switch, with one
+exception you click: Repo scripts' **Pull**, which fast-forwards the branch a clone is on to
+origin's (`git pull --ff-only`). Otherwise only a tool you turn on in Settings → Integrations does,
+when you click: a release's magex switches to the branch, pulls, tags, and pushes the tag, and the
+app then checks where the tag and your clone are. When a session needs a pull request's branch, the
+starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git commands
+the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into the item's
+own refs, or into a pull request's base's remote-tracking branch, and `git worktree add`), the
+[Worktrees view's](worktrees-view.md) removals, prunes, and unlocks, with the [branch
+deletions](worktrees-view.md#branches) you confirm there, and [Repo scripts'](repo-scripts.md)
+**Pull** you click, which fast-forwards the clone's branch.
+
+### A repository with no clone
+
+When a launch finds no clone of the item's repository, the row says so and where it looked, *No
+local clone of acme-org/example-repo in ~/projects or your other repository locations*, and offers
+**Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's name. It also offers
+**It's cloned elsewhere…**: pick the clone's folder, and the app checks it is a clone of the
+repository (refusing, say, *~/x isn't a clone of acme-org/example-repo; its origin is
+acme-org/other*), adds it as a repository location, or offers its folder when that holds other
 clones, and continues the launch. A clone the app remembered that no location holds now, as after
 the clone root changed, is offered as **Use ~/old/&lt;name&gt;**. Confirm the clone, and the app
-runs `gh repo clone <owner>/<name> ~/projects/<name>` as a program
-with arguments, never through a shell. It then remembers the new clone and continues the launch
-with the same choices. The clone uses the GitHub CLI's own sign-in and its git protocol setting.
-This is the only time the app creates a clone, and it never writes into an existing directory.
-If anything is already at that path, such as a clone of another repository with the same name,
-the row says so and offers no clone: clone the repository yourself, or change the clone root.
+runs `gh repo clone <owner>/<name> ~/projects/<name>` as a program with arguments, never through a
+shell. It then remembers the new clone and continues the launch with the same choices. The clone
+uses the GitHub CLI's own sign-in and its git protocol setting. This is the only time the app
+creates a clone, and it never writes into an existing directory. If anything is already at that
+path, such as a clone of another repository with the same name, the row says so and offers no clone:
+clone the repository yourself, or change the clone root.
 
 ## Worktrees
 

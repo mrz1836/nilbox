@@ -1,5 +1,7 @@
 # internal/autopilot/draft
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot/draft`](../../../internal/autopilot/draft) · Guide: [Building a routine](../../guide/autopilot/building-a-routine.md)
+
 `internal/autopilot/draft/` is the one validator of a routine's draft: the builder's
 `Describe` and `Save`'s checks in the root package, and whatever checks a routine outside the
 app's own process ([kit](kit.md), and so [the tool mode](../mcpserver.md)),

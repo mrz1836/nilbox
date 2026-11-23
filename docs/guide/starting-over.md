@@ -1,5 +1,7 @@
 # Starting over
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/store`](../architecture/store.md), [`internal/setup`](../architecture/setup.md) · See also: [A sandbox on fresh data](../development/build-targets.md#a-sandbox-on-fresh-data)
+
 **Settings → About → Reset Nilbox…** starts the app over on fresh data, once you type `reset`
 to confirm. It saves a backup of your whole setup first, as an import does (to
 `backups/nilbox before reset <UTC time>.json`), refusing the reset when that fails, and it

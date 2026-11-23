@@ -1,5 +1,7 @@
 # Templates and quick setup
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Easy mode: templates, from an item, why, export and import, graduating](../../architecture/autopilot/easy-mode.md)
+
 This is Autopilot's easy mode: a routine from a template takes a few blanks and a click, and
 opens in the full builder whenever you want more. **Templates** lists routines made for you to
 start from, each with its icon, one line on what it does, and the mode it suggests. Those that
@@ -29,17 +31,18 @@ The fixed tools presets keep a background agent out of agent, workflow, and tool
 needs one (a JavaScript dependency's, say) pushes nothing and says what a person must change;
 the templates' descriptions say so, and the fence is never widened for them.
 
-**Quick setup.** Picking a template opens a short form, not the whole builder: only the
-template's blanks (for most, **Where**: your account, and the orgs, users, or repositories to
-watch too; for Re-run flaky checks once, the checks' names, picked from those seen on your pull
-requests), the mode it starts in (the one new routines start in, Ask first unless you changed
-it; the template's own suggestion shows beside it as a hint, never as a change), the sentence it
-reads as, and **This Mac**: what this Mac lacks for it (its agent, its profile's sign-in, gh),
-checked from what the checks last found, never asking GitHub. **Test** tries it on your items,
-as the builder's does. **Save** makes the routine, switched off, named after the template
-("<name> 2" when you have one of that name), and **Customize** opens the full builder with
-everything filled in. A template whose starter prompt you deleted says so, with **Add it
-again**, which puts the starter back in your prompts as it ships.
+## Quick setup
+
+Picking a template opens a short form, not the whole builder: only the template's blanks (for most,
+**Where**: your account, and the orgs, users, or repositories to watch too; for Re-run flaky checks
+once, the checks' names, picked from those seen on your pull requests), the mode it starts in (the
+one new routines start in, Ask first unless you changed it; the template's own suggestion shows
+beside it as a hint, never as a change), the sentence it reads as, and **This Mac**: what this Mac
+lacks for it (its agent, its profile's sign-in, gh), checked from what the checks last found, never
+asking GitHub. **Test** tries it on your items, as the builder's does. **Save** makes the routine,
+switched off, named after the template ("<name> 2" when you have one of that name), and
+**Customize** opens the full builder with everything filled in. A template whose starter prompt you
+deleted says so, with **Add it again**, which puts the starter back in your prompts as it ships.
 
 **Make a routine from this…** on an item's **⋯** menu (**Autopilot ▸**) opens the builder filled
 in from the item, saving nothing: its kind; its author, or its bot; its repository's owner (your

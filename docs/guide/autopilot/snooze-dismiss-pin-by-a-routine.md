@@ -1,5 +1,7 @@
 # Snooze, dismiss, and pin: by a routine
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [Local actions: by a routine, Undo, and hands off](../../architecture/autopilot/local-actions.md)
+
 A routine can pin, snooze, dismiss, or restore an item, as you do from its menu. Each runs at
 once wherever it sits in the routine, in Ask first too, needing no OK, and acts on any item, an
 outside contributor's too, since it changes only what this Mac shows. A routine's snooze lasts as

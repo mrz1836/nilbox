@@ -1,5 +1,7 @@
 # Prompt files
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [Prompts](guide/prompts.md), [Backup files](backup-files.md)
+
 A prompt file holds prompts in a portable form, so you can move them between Macs, share them,
 or keep them in your own backups. The app writes one when you export prompts, reads one when
 you import, and keeps one beside its database as `prompts.json`, a copy of your whole library

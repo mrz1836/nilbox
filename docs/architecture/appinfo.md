@@ -1,5 +1,7 @@
 # internal/appinfo
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/appinfo`](../../internal/appinfo) · Guide: [The window](../guide/window.md)
+
 Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.yml` and fills in its
 `environment` field: the versions, then the settings and integrations, which core words
 (`internal/core/bugreport.go`, `appinfo.StateReader`) with nothing personal in them, a name or

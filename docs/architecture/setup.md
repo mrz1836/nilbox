@@ -1,5 +1,7 @@
 # internal/setup
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/setup`](../../internal/setup) · Guide: [First-run setup](../guide/first-run-setup.md), [Starting over](../guide/starting-over.md)
+
 `internal/setup/` is the first-run setup's service: where the user is in it and whether it
 is done, kept in `setup.done` and `setup.step` (a `Step`, a named string type), which it
 alone writes through its narrow `Memory` (core's `prefs.Store`), and which a backup never

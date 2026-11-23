@@ -1,5 +1,7 @@
 # internal/assignees
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/assignees`](../../internal/assignees) · Guide: [Reviewing a pull request](../guide/reviewing-a-pull-request.md), [Reading an issue](../guide/reading-an-issue.md)
+
 `internal/assignees/` is what both sheets' assignee pickers share: whom they offer to assign
 to an issue or a pull request, in what order, and how that offer is learned and searched with
 as few requests as it takes. It knows no store, no service, and neither sheet (the repoguard

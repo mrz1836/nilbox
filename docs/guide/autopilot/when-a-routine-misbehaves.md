@@ -1,5 +1,7 @@
 # When a routine misbehaves
 
+[Docs](../../README.md) › [User guide](../../README.md#user-guide) › [Autopilot](README.md) · Design: [The engine and the ledger](../../architecture/autopilot/engine-and-ledger.md), [Verify, tries, the loop guard, and profile fallback](../../architecture/autopilot/verify-and-tries.md)
+
 - **It does something you didn't want.** **Pause Autopilot** (the tab's header, the menu bar,
   or Settings), and **Stop all** if agents are working. Open the routine's Activity to see each
   match and why, **Undo** what it changed on your Mac, put it back in **Dry run**, fix its

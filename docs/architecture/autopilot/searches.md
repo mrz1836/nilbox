@@ -1,17 +1,21 @@
 # The searches, and the builder's reads of the inbox
 
-**The snapshot.** After every change to a routine (`changed`, a backup's import included) and
-once at startup (core's `assemble`, before the scheduler starts), the Service builds again
-the searches of the enabled routines of the account signed in that load: each search built
-for that account (`watch.Build`, "your account" written as its login), each key once with the
-routines that share it, and `Follow` set when one of their triggers reads the checks (Checks
-fail, Checks pass). It keeps them in an atomic value, which `Searches.Current` reads at once,
-never waiting on anything; `Searches` (`NewSearches`) is the inbox's face of it, never bound.
-Builds run one at a time (`watchSet.build`, a one-slot channel held from the read of the
-routines to the store), so the last to read stores last: two side by side, a change's and a
-new account's, could otherwise store the older read over the newer. A routine that is off,
-broken, another account's, or whose search won't build is left out, and every routine while
-Autopilot (beta) is off; the engine builds the snapshot again as it is turned on or off.
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Building a routine](../../guide/autopilot/building-a-routine.md), [Testing a routine](../../guide/autopilot/testing-a-routine.md), [Routine searches](../../guide/autopilot/routine-searches.md)
+
+## The snapshot
+
+After every change to a routine (`changed`, a backup's import included) and once at startup (core's
+`assemble`, before the scheduler starts), the Service builds again the searches of the enabled
+routines of the account signed in that load: each search built for that account (`watch.Build`,
+"your account" written as its login), each key once with the routines that share it, and `Follow`
+set when one of their triggers reads the checks (Checks fail, Checks pass). It keeps them in an
+atomic value, which `Searches.Current` reads at once, never waiting on anything; `Searches`
+(`NewSearches`) is the inbox's face of it, never bound. Builds run one at a time (`watchSet.build`,
+a one-slot channel held from the read of the routines to the store), so the last to read stores
+last: two side by side, a change's and a new account's, could otherwise store the older read over
+the newer. A routine that is off, broken, another account's, or whose search won't build is left
+out, and every routine while Autopilot (beta) is off; the engine builds the snapshot again as it is
+turned on or off.
 
 **`Suggest`** returns what the stored items hold for the builder (`Items.Suggestions`): the
 people and the bots who opened them, the owners of their repositories, their labels, and

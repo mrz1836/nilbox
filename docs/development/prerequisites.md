@@ -1,5 +1,7 @@
 # Prerequisites
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Build targets](build-targets.md)
+
 - **macOS 13.3 or newer.** The app is built and supported on macOS only for now. macOS 13.3
   ships Safari 16.4, the oldest WebKit the window's bundle targets.
 - **Xcode Command Line Tools** (`xcode-select --install`), which provide the C toolchain the

@@ -1,5 +1,7 @@
 # internal/autopilot/kit
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot/kit`](../../../internal/autopilot/kit) · Guide: [Describe it](../../guide/autopilot/describe-it.md)
+
 `internal/autopilot/kit/` is what Describe it hands a coding agent, and how it reads what the
 agent hands back, which the app ([internal/describeit](../describeit.md)) and its tool mode
 ([internal/mcpserver](../mcpserver.md)) share, so the two never disagree about a format. It
@@ -58,7 +60,7 @@ coming with each call.
 - **Risks** (`RoutineRisks`, `SettingsRisks`, `RulesRisks`, `PromptRisks`) are worked out from a
   part's before and after, never from the agent's words, each one sentence, a warning or a
   caution (a stale base, a name taken); what a routine did before, and does still, is no new
-  risk. `docs/desktop.md`'s [Describe it](../../guide/autopilot/describe-it.md) lists what they cover, and
+  risk. [Describe it](../../guide/autopilot/describe-it.md) lists what they cover, and
   goldens pin every line (`TestRiskLinesArePinned`).
 - **The words** are generated from this build's catalog, spec, and settings, so an update
   changes what the agent knows: `Guide` (`autopilot_guide`, read first: how Autopilot works,

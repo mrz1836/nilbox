@@ -1,12 +1,14 @@
 # Repo scripts
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/scripts`](../architecture/scripts.md)
+
 **Repo scripts** runs a clone's own commands: its `t3.json` scripts, its `.vscode/tasks.json`
 tasks, and magex's targets. Listing them runs nothing in the clone: the files are read, and
 magex's built-in targets are listed in a folder of the app's own. The page never asks GitHub's
 API, so it works offline and signed out; only the branch check beside the chosen clone asks its
 origin, with one `git ls-remote` whose answer is kept five minutes.
 
-**The page.**
+## The page
 
 - **The picker** lists the clones in the [repository locations](launching-a-session.md#repository-locations), the ones
   a script ran in most recently first, and the page starts on the one you chose last, even after a
@@ -68,7 +70,7 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   `key=value` pairs, which magex's own targets run with. A note says that magex targets run the
   repository's own code and its `.github/env` settings, as any build does.
 
-**Your scripts.**
+## Your scripts
 
 - **New script** saves a command of your own: its name; the command, one line as you'd type it
   in a terminal; the repositories it shows in, **All repositories**, **Go repositories** (the
@@ -89,7 +91,7 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   you deleted or set to ask before running, which you run from Repo scripts. A script you
   save again as its run is starting doesn't run, and says so.
 
-**Running one.**
+## Running one
 
 - **A script of yours set to ask before running** shows its command and where it runs, with
   **Run** and **Cancel**, before each run, its ⋯ menu's included.

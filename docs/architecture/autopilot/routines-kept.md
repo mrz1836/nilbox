@@ -1,5 +1,7 @@
 # The routines, kept
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot), [`internal/autopilotprefs`](../../../internal/autopilotprefs) · Guide: [Export and import](../../guide/autopilot/export-and-import.md), [Settings → Autopilot](../../guide/autopilot/settings.md)
+
 The root package owns `autopilot_routines` (migration `0100_settings`): one row
 per routine, its spec one JSON document (`spec.Encode`, compact) beside its `spec_version`,
 and, as columns, never spec, its name, description, switch (`enabled`, with `enabled_at`
@@ -19,8 +21,8 @@ alone; a worded check runs before the index would refuse. Its queries are in
 
 **The bound Service** (`List`, `Get`, `Save`, `Delete`, `Duplicate`, `SetEnabled`, `SetMode`,
 `Catalog`, `RoutineNames`, and Easy mode's `Templates`, `FromItem`, `DraftReadiness`,
-`DeclineGraduate`, `Export`, `PreviewImport`, and `Import`, **Easy mode**, below) never returns a
-nil list, and words every refusal with `uierr`.
+`DeclineGraduate`, `Export`, `PreviewImport`, and `Import`, [Easy mode](easy-mode.md)) never returns
+a nil list, and words every refusal with `uierr`.
 
 - Every read loads each spec with `spec.Load`: one that won't load (`spec.BrokenError`:
   newer, unreadable, or invalid) is listed as broken, with `Broken` in the window's words
@@ -58,7 +60,7 @@ nil list, and words every refusal with `uierr`.
   at `steps[i].agent.where` (the draft leaf's `Offers.placeProblems`), in `Describe` and `Save`
   alike, never a Dry run hold, so a routine is never saved to wait for a later build; a
   routine stored before with such a step isn't ready on this Mac (its `place:` need,
-  **Readiness**, below).
+  [Readiness](agents-in-the-terminal.md#readiness-readygo)).
 - `Describe(draft)` reads a draft as the builder edits it, through the draft leaf's `Read`,
   whose checks `Save` shares (`draft.Problems`), saving nothing and asking GitHub nothing:
   the spec normalized, encoded, and loaded as `Save` does, its problems (the spec's,
@@ -96,9 +98,11 @@ nil list, and words every refusal with `uierr`.
 - `Sentence` names a starter prompt by the nickname of the user's copy of it (`Names`, core's
   adapter over the prompt library).
 
-**The copy and the restore.** After every change to a routine, the Service writes its copy,
-`autopilot.json` beside the database (`File`, `appdata.Paths.Autopilot`, user-only through
-`appdata.WriteFile`), every routine not deleted in the export format:
+## The copy and the restore
+
+After every change to a routine, the Service writes its copy, `autopilot.json` beside the database
+(`File`, `appdata.Paths.Autopilot`, user-only through `appdata.WriteFile`), every routine not
+deleted in the export format:
 
 ```text
 { "format": "<slug>-autopilot/1", "exportedAt", "app",
@@ -108,7 +112,7 @@ nil list, and words every refusal with `uierr`.
 `DecodeBundle` refuses another format and a newer version (`ErrNewerBundle`), and takes a
 field a later build adds. A bundle never holds an account, or a routine's history. An
 export the Autopilot tab writes may also hold `prompts`, the prompts its routines name by
-nickname in the prompts' own format (**Easy mode**, below); the copy and a backup never do.
+nickname in the prompts' own format ([Easy mode](easy-mode.md)); the copy and a backup never do.
 `Restore` runs only while `autopilot_routines` holds no row at all, the deleted ones
 included, so a routine the user deleted is never brought back: from the database set aside
 when it has the table (`store.OpenSnapshot`, tolerant of missing columns, keeping each
@@ -122,22 +126,23 @@ defaults, so the prompts a routine names by nickname are back first, and writes 
 startup only when it is missing or routines were just restored, so a loss in the database
 never overwrites it. The window's restore notice counts them (`appinfo.Restored.Routines`).
 
-**Backups.** The Autopilot section (`backup.SectionAutopilot`) is the export format,
-through `NewBackupPart`, a type of its own that core adapts in `adapters_backup.go`, never a
-method of the bound Service. `PlanBackup` leaves out, with a note, a routine with no name, a
-second of a name, and one whose spec won't load (as a newer build's); a mode this build
-doesn't know takes the mode new routines start in. Routines are matched by name
-(`draft.NameKey`): one whose definition, description, and mode are the file's is left as it is, on
-or off, under either mode; any other is saved over and switched off, and one this Mac lacks
-is added, off, at the end (Merge) or in the file's order (Replace, which also deletes,
-softly, every routine the file doesn't name). A routine here that a newer build wrote is
-never saved over or deleted by an import, under either mode: it is left as it is, with a note
-(*made by a newer Nilbox: left as it is*), as `Save` refuses to save over it. A spec that
-loads is stored normalized, as on a restore. `BackupDone` writes the copy again. The window
-lists the category as **Autopilot routines**, beside the others.
+## Backups
+
+The Autopilot section (`backup.SectionAutopilot`) is the export format, through `NewBackupPart`, a
+type of its own that core adapts in `adapters_backup.go`, never a method of the bound Service.
+`PlanBackup` leaves out, with a note, a routine with no name, a second of a name, and one whose spec
+won't load (as a newer build's); a mode this build doesn't know takes the mode new routines start
+in. Routines are matched by name (`draft.NameKey`): one whose definition, description, and mode are
+the file's is left as it is, on or off, under either mode; any other is saved over and switched off,
+and one this Mac lacks is added, off, at the end (Merge) or in the file's order (Replace, which also
+deletes, softly, every routine the file doesn't name). A routine here that a newer build wrote is
+never saved over or deleted by an import, under either mode: it is left as it is, with a note (*made
+by a newer Nilbox: left as it is*), as `Save` refuses to save over it. A spec that loads is stored
+normalized, as on a restore. `BackupDone` writes the copy again. The window lists the category as
+**Autopilot routines**, beside the others.
 
 **The settings** are `internal/autopilotprefs`'s, a leaf that imports only `prefval`:
-`autopilot.enabled` (Autopilot (beta), off: see **Autopilot (beta)**, below),
+`autopilot.enabled` (Autopilot (beta), off: see [Autopilot (beta)](#autopilot-beta), below),
 `autopilot.paused` (off), `autopilot.defaultMode` (`ask`), `autopilot.agentsAtOnce` (2, 1 to
 3, so one of the run engine's four slots stays free for the user's scripts),
 `autopilot.runsPerDay` (20, 1 to 200), `autopilot.actionsPerDay` (500, 1 to 2,000),
@@ -163,23 +168,25 @@ routine (not deleted), the report states the settings, then Describe it's agent,
 routines counted by mode, by switch, broken, and another account's, none named; while it is
 off and the user has no routine, it says nothing more of Autopilot.
 
-**Autopilot (beta).** `autopilot.enabled` (`SetAutopilotEnabled`, Settings → Labs) is off on
-every install until the user turns it on, an install from before it included, since a key
-never stored reads as its default; Prefs that can't be read count as off. Off, Autopilot is
-inert and invisible, its routines, ledger, and copy left as they are:
+## Autopilot (beta)
+
+`autopilot.enabled` (`SetAutopilotEnabled`, Settings → Labs) is off on every install until the user
+turns it on, an install from before it included, since a key never stored reads as its default;
+Prefs that can't be read count as off. Off, Autopilot is inert and invisible, its routines, ledger,
+and copy left as they are:
 
 - the snapshot of the searches is empty (`rebuildWatches` leaves every routine out), and
   `Searches.HoldsWatches` is false (`Engine.Enabled` and the lock), so the inbox's watch pass
   sends nothing and the checks follower follows none of the routines' items (its
   `ListRunningChecks` takes `watched`, `holdsWatches`, so the rows a search stored before stay,
   stale, and unfollowed);
-- the engine (**The engine and the ledger**, below) takes no lock, runs no cycle, applies no
-  command (`ErrOff`, *Autopilot is off. Turn it on in Settings → Labs.*), and makes no GitHub
-  request; `Test`, and `Matching` through it, are refused the same way before they read
+- the engine ([The engine and the ledger](engine-and-ledger.md)) takes no lock, runs no cycle,
+  applies no command (`ErrOff`, *Autopilot is off. Turn it on in Settings → Labs.*), and makes no
+  GitHub request; `Test`, and `Matching` through it, are refused the same way before they read
   anything;
 - `Glance.On` is false and `Glance.Enabled` 0, so `KeepsRunning` counts only an agent run
   still going, and core's `ShellAutopilot` hands the menu bar no Autopilot group;
-- the window (**The Autopilot tab**, below) shows none of it.
+- the window ([The Autopilot tab](autopilot-tab.md)) shows none of it.
 
 The engine reads the switch on every wake (`follow`, on the loop; core's relay wakes it on
 `event.AutopilotChanged`), and a command reads it again before it is applied. Turned on, it

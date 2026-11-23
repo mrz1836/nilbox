@@ -1,5 +1,7 @@
 # internal/people
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/people`](../../internal/people) · Guide: [Reviewing a pull request](../guide/reviewing-a-pull-request.md), [Reading an issue](../guide/reading-an-issue.md)
+
 `internal/people/` is the app's local directory of who works on each repository, which the
 review sheet's reviewer picker suggests from with no request (see internal/review), and of who
 can be assigned there, which both sheets' assignee pickers suggest from (see
@@ -36,7 +38,7 @@ nor asked for in a year, and a read neither made nor failed in a year, go. Every
 from its injected clock, and an entry without a valid login, a pull request number, or a known
 role is skipped.
 
-**Who can be assigned** (`assignable.go`, migration `0108_people_assignable`).
+## Who can be assigned (`assignable.go`, migration `0108_people_assignable`)
 `people_assignable` holds, per repository and
 person, when a read of GitHub's assignable users last named them (`listed_at`) and when the app
 last saw them assigned there (`assigned_at`, from a sheet's read or the user's own edit,

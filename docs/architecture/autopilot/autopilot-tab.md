@@ -1,5 +1,7 @@
 # The Autopilot tab
 
+[Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`frontend/src/components/autopilot`](../../../frontend/src/components/autopilot), [`internal/autopilot`](../../../internal/autopilot) · Guide: [Autopilot](../../guide/autopilot/README.md), [Building a routine](../../guide/autopilot/building-a-routine.md)
+
 The window side lives in `frontend/src/components/autopilot/` (the tab itself,
 `AutopilotView`, loaded on its first visit and kept mounted in an `Activity`) and
 `frontend/src/lib/`; it reaches Go only through the platform module.

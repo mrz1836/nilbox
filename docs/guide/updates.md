@@ -1,12 +1,14 @@
 # Updates
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/update`](../architecture/update.md), [`internal/updateprefs`](../architecture/updateprefs.md), [`cmd/nilbox`](../architecture/cmd/nilbox.md) · See also: [Rehearsing an update](../development/rehearsing-an-update.md)
+
 A release of the app updates itself: it checks for a new version on its own, downloads it
 quietly, checks it against the key built into the app, and installs it on one click, after
 backing your data up. Nothing in your Applications folder changes until you click. The window
 offers it in a banner and in Settings → About, and the menu bar beside them ([Menu bar and
 notifications](menu-bar.md)).
 
-**How it works.**
+## How it works
 
 - **Checking.** About a minute after the app opens, then whenever six hours have passed on the
   clock (a Mac that slept checks at its next look, every fifteen minutes), the app reads the
@@ -136,20 +138,23 @@ version is found, **Try again** and **Download manually** after one that didn't 
 update itself, it says why, with **Move to Applications** wherever moving it helps, as the
 banner and the move dialog offer it.
 
-**What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
-release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
-and, once a newer version checks out, its zip, from the URL of that release's tag. Each sends
-nothing but the request for that file: no token, no cookie, and nothing of yours, and neither
-spends API budget. **Update and Reopen**, in the dialog shown when a newer version saved your
-data (*Data a newer version saved*, below), sends the same two, on your click alone. A
-rehearsal build reads its releases from a folder and sends nothing.
+## What a check sends
 
-**Firewalls.** Updates need `github.com`, which redirects each download to
-`release-assets.githubusercontent.com` (and, for some releases,
-`objects.githubusercontent.com`). Blocking any of them only means a check or a download fails,
-which the window and the menu say; nothing else changes.
+Two GETs at most, both to GitHub's release download hosts: the latest release's manifest,
+`https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`, and, once a newer
+version checks out, its zip, from the URL of that release's tag. Each sends nothing but the request
+for that file: no token, no cookie, and nothing of yours, and neither spends API budget. **Update
+and Reopen**, in the dialog shown when a newer version saved your data (*Data a newer version
+saved*, below), sends the same two, on your click alone. A rehearsal build reads its releases from a
+folder and sends nothing.
 
-**Where things live.**
+## Firewalls
+
+Updates need `github.com`, which redirects each download to `release-assets.githubusercontent.com`
+(and, for some releases, `objects.githubusercontent.com`). Blocking any of them only means a check
+or a download fails, which the window and the menu say; nothing else changes.
+
+## Where things live
 
 | What | Where |
 |---|---|
@@ -166,7 +171,9 @@ which the window and the menu say; nothing else changes.
 0.3.0…**, which downloads and restarts), or **Don't check** (no checks on their own). **Check
 for Updates** works in every mode.
 
-**The three flavors.** What a build does is stamped into it (`main.flavor`):
+## The three flavors
+
+What a build does is stamped into it (`main.flavor`):
 
 | Flavor | Made by | Updates | Data |
 |---|---|---|---|
@@ -178,10 +185,12 @@ A rehearsal build keeps its own data because the update opens the new version wi
 arguments: a `--data-dir` would not survive the swap, and the new version would open on your
 data.
 
-**Data a newer version saved.** A version can't open data a newer version has migrated, as
-after running a build from source and then the release again. It says *Nilbox needs an update*,
-and that your data is safe and untouched, and offers the way forward its build has. Nothing on
-this path opens, migrates, or changes the database: the newer version opens it as it is.
+## Data a newer version saved
+
+A version can't open data a newer version has migrated, as after running a build from source and
+then the release again. It says *Nilbox needs an update*, and that your data is safe and untouched,
+and offers the way forward its build has. Nothing on this path opens, migrates, or changes the
+database: the newer version opens it as it is.
 
 - **A release in an Applications folder** offers **Update and Reopen** (Return) and **Quit**
   (Escape). A click reads the latest release's manifest; when it is newer than the running
@@ -227,7 +236,7 @@ open, nothing was changed, so quit that copy and open Nilbox again; when the new
 aside but the backup couldn't take its place (rare), no data is in place, and the dialog names
 the set-aside file and its folder, to rename it `nilbox.db` before opening Nilbox again.
 
-**Troubleshooting.**
+## Troubleshooting
 
 - **Check failed.** Hover the menu's line for why. Most often GitHub can't be reached, or a
   firewall blocks the hosts above. The next look tries again.

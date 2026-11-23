@@ -1,5 +1,7 @@
 # Snooze, dismiss, and pin
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/inbox`](../architecture/inbox.md), [`internal/reporules`](../architecture/reporules.md)
+
 Each list has four tabs: the list itself with its count (**Review requested 14**), then
 **Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. Snoozing or
 dismissing an item moves it out of its list's own tab, so the lists only show what still needs
@@ -33,11 +35,12 @@ dismissal, with **Undo**, over the sheet while one is open. The default length a
 snooze menu's **Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
 GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
 
-**One toast at a time.** The window shows one toast at a time. One that answers your click shows
-at once; if another was showing, that one waits behind it and gets its full time again when it
-comes back, so an **Undo** is never lost. One you didn't ask for, such as a worktree cleanup's,
-an update's, or the Scripts tab's, waits its turn. While more wait, the toast says which it is,
-as in **1 of 3**.
+## One toast at a time
+
+The window shows one toast at a time. One that answers your click shows at once; if another was
+showing, that one waits behind it and gets its full time again when it comes back, so an **Undo** is
+never lost. One you didn't ask for, such as a worktree cleanup's, an update's, or the Scripts tab's,
+waits its turn. While more wait, the toast says which it is, as in **1 of 3**.
 
 ## Pinned and muted repositories and orgs
 

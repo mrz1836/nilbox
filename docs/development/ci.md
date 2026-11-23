@@ -1,5 +1,7 @@
 # How the desktop shell is kept out of CI
 
+[Docs](../README.md) › [Development](../README.md#development) · See also: [Build targets](build-targets.md)
+
 Everything except the window is plain Go in untagged `internal/*` packages, built, tested, and
 linted on Linux with `CGO_ENABLED=0`. Only the desktop bootstrap needs Wails, CGO, and WebKit,
 and it sits behind the `desktop` build tag:

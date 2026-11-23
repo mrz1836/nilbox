@@ -1,5 +1,7 @@
 # internal/threadrules
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/threadrules`](../../internal/threadrules) · Guide: [The Notifications page](../guide/notifications-page.md), [GitHub notifications](../guide/github-notifications.md)
+
 `internal/threadrules/` holds the rules for the user's GitHub notifications (`threadrules.*`:
 whether they are read, whether they are cleared on their own, marked done or read, by which
 triggers, and whether a watched repository's or a bot's activity counts), which settings

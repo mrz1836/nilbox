@@ -1,5 +1,7 @@
 # Runs
 
+[Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/scriptrun`](../architecture/scriptrun.md)
+
 Releases, hook changes, pre-commit checks, scripts, a clone's pull, and a tool updating itself
 all go through one runner, which keeps a record of each run and its whole output.
 

@@ -1,5 +1,7 @@
 # internal/statusprefs
 
+[Docs](../README.md) › [Architecture](../README.md#architecture) · Code: [`internal/statusprefs`](../../internal/statusprefs) · Guide: [The window](../guide/window.md)
+
 `internal/statusprefs/` is the service status check's catalog and the user's choices of
 what it watches. Each `Provider` (GitHub, Claude, OpenAI) has its page, where its summary is
 read (`Host`, `Path`, and `Format`: Statuspage's `summary.json`, or incident.io's documented
