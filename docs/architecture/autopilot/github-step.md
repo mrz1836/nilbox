@@ -7,7 +7,8 @@
 The GitHub dispatcher (`NewGitHub`, which the engine registers over the Service's `Config.GitHub`
 unless `EngineConfig.Dispatchers` names one) reaches the app only through `GitHubActions`: `Read`
 (the item's sheet reads it again, one point, which rewrites the inbox's card from the same answer),
-`Send` (one action, as its sheet sends it), `MarkDone`, and `Preview`. Core's `githubSteps`
+`Send` (one action, as its sheet sends it), `MarkDone`, and `Preview`, beside `Merge` and
+`PostReview`, which only Merge it and Post the agent's review call. Core's `githubSteps`
 (`internal/core/adapters_githubsteps.go`) adapts the review sheet (`ReadAgain`, `Refresh`, `Act`,
 and `EditLabels`, its label edit of a pull request at the issues endpoint), the issue sheet
 (`ReadAgain`, `Refresh`, `Act`, `Edit`), the mirror of the GitHub notifications (`ClearItemThreads`,
@@ -83,5 +84,5 @@ nothing.
 (`sim.GitHub`, over the scripted World: its read is the inbox's own single-item read, a send is
 pinned to the World's head, and a scenario can withdraw an offer, add warnings, have the gate
 refuse, or change the World as a send arrives), with a fake prompt library (`sim.Library`);
-its scenarios include *Ask Dependabot to rebase what conflicts* as the template gallery holds
+its scenarios include *Ask Dependabot to rebase what conflicts* as `spec/testdata/templates` writes
 it.

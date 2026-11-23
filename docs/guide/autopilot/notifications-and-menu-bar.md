@@ -20,9 +20,9 @@ opens the item, as an inbox arrival does, and the entry is marked read when the 
 opens; clicking one about no item, as a problem is, opens the Autopilot tab at its routine. When
 what it names is gone, as after **Clear history**, a toast says so.
 
-While Autopilot (beta) is on and a routine exists, the [menu bar](../menu-bar.md)
-menu has an **Autopilot** group after your lists: each agent working, *N needs your OK*, which
-opens Activity, and **Pause Autopilot** as a checkbox row, the same setting as the tab's button
-and Settings'. The number by the icon stays the inbox's. While a routine is on (and Autopilot
+While Autopilot (beta) is on and a routine exists, the [menu bar](../menu-bar.md) menu has an
+**Autopilot** group after your lists: each agent working, *1 needs your OK* (*3 need your OK*),
+which opens Activity, and **Pause Autopilot** as a checkbox row, the same setting as the tab's
+button and Settings'. The number by the icon stays the inbox's. While a routine is on (and Autopilot
 is) or an agent works, closing the window only hides it, even with the menu bar icon off, so
 Autopilot carries on; the Dock icon brings it back.

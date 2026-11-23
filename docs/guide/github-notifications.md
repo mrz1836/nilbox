@@ -13,12 +13,12 @@ Beside the bell, GitHub's mark counts the unread notifications in your GitHub in
 and shows nothing while none are unread. While GitHub refuses your token the notifications, it shows
 an amber dot instead. Click it for the counts and when GitHub was last checked (*5 unread · 38 in
 your GitHub inbox · checked 2m ago*), with a refresh button that checks GitHub now and turns while
-it does; why they can't be read and when Nilbox asks again, with **Check again**; and the newest 20
-unread, grouped by the pull request or issue each is about. Opening the panel reads Nilbox's own
-copy: it asks GitHub nothing and marks nothing read. While automatic clearing is off, it offers
-**Turn on automatic clearing**. **View all** opens the [Notifications page](notifications-page.md)'s
-GitHub tab, which lists every notification, read ones too, and what clearing did. **Open on GitHub**
-opens your GitHub inbox, and **Settings** its settings.
+it does; why they can't be read and when Nilbox asks again (the refresh button asks now); and the
+newest 20 unread, grouped by the pull request or issue each is about. Opening the panel reads
+Nilbox's own copy: it asks GitHub nothing and marks nothing read. While automatic clearing is off,
+it offers **Turn on automatic clearing**. **View all** opens the [Notifications
+page](notifications-page.md)'s GitHub tab, which lists every notification, read ones too, and what
+clearing did. **Open on GitHub** opens your GitHub inbox, and **Settings** its settings.
 
 ## Opening and Done
 

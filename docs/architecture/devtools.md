@@ -9,7 +9,8 @@ is `cmd/nilbox/devtools_desktop.go` and, for the picture, `devtools_darwin.go`.
 
 ## Only builds from source
 
-Every file that imports it builds only with the `devtools` tag, and magex passes that tag to a build
+Every file of the app that imports it builds only with the `devtools` tag (the `magex inspect:*`
+targets import it too, under the `mage` tag), and magex passes that tag to a build
 from source alone: `buildTags` in `magefiles/bundle.go` gives it to `app:dev` and to the bundle
 `app:build` makes (no flavor), never to a release or a rehearsal, which the magefiles' tests pin,
 and `TestOnlyBuildsFromSourceCarryTheInspector` (`internal/repoguard/devtools_test.go`) fails on a

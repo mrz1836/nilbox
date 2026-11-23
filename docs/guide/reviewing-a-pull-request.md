@@ -44,20 +44,20 @@ Every card gets it, in any list.
   requested changes**, with **Show commits**. When the branch was rewritten since, as by a
   rebase, it says **The branch was rewritten since you requested changes**, in amber, and the
   Commits tab links to the force push in the conversation. It goes by where your reviewed
-  commit is in the branch, never by dates, which a rebase keeps; commits from **Update
-  branch** count as pushed since.
+  commit is in the branch, never by dates, which a rebase keeps; commits you pushed yourself never
+  count, so a merge from **Update branch** counts only when someone else clicked it.
 - **The summary** on the right: a one-line readiness sentence (**Ready to merge**, **An approval
   · checks running · auto-merge available**, **Behind main**, **Conflicts with main**), which
   stays in view at the top of the column while the rest scrolls, with the pull request's
   worktree and agent session under it, as its card shows them; a chip for the kind of change
   and the folders it touches (as in **in wallet/ and the top level**); the dependency it bumps
-  (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); **Closes**, the issues it
-  closes once it merges (one already closed says how, as in **closed as not planned**), each
-  opening in the [issue sheet](reading-an-issue.md) when it is in your inbox; the checks, listed open
-  with the failing ones first, then those running, then those passed, the required ones marked,
-  and the skipped ones folded away below them under their count (click a count to open or fold
-  it); the card's sensitive-file chip; each reviewer's latest review; and who it is assigned to
-  (see [Assignees](#assignees) below). A check that is queued
+  (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the card's sensitive-file
+  chip; **Closes**, the issues it closes once it merges (one already closed says how, as in
+  **closed as not planned**), each opening in the [issue sheet](reading-an-issue.md) when it is in
+  your inbox; each reviewer's latest review; who it is assigned to (see [Assignees](#assignees)
+  below); and the checks, listed open with the failing ones first, then those running, then those
+  passed, the required ones marked, and the skipped ones folded away below them under their count
+  (click a count to open or fold it). A check that is queued
   or in progress has a ring swelling slowly out of its amber dot, as a working session's dot
   does on its card, and so does the count of those running (**43 checks · 5 failing · 5
   running**), so a folded list still shows that CI is at work. With reduced motion, the dots
@@ -309,8 +309,8 @@ GitHub's answer at once, without reading the pull request again. Hover a line fo
 that person; with no one assigned, the summary offers **Assign yourself**, the author, and one more
 in one click, and **More…** for the picker. You take yourself off with **Unassign me**, in the
 card's menu, never here; your own row in the picker stays checked. A pull request read by an older
-Nilbox shows its assignees once it is read again. The card learns that you assigned yourself at the
-next refresh.
+Nilbox shows its assignees once it is read again. Once GitHub takes it, the card shows at
+once that you assigned yourself.
 
 ## People
 

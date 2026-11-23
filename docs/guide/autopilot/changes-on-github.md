@@ -11,7 +11,7 @@ and only these five:
 | **Update branch** | Merges the base branch into the pull request's branch, as the review sheet's | Not at all: the merge commit stays |
 | **Comment one of my replies** | One of your comment replies, filled in for the item: on a pull request, as the review sheet's **Comment** (a review that only comments, so on one asking for your review it counts as your review), on an issue, as the issue sheet's | The comment can be deleted, but GitHub has told people by then |
 | **Add or remove labels** | The labels added and taken off, as the issue sheet's edit, for pull requests too; only what changes the labels it has | By hand. A label can start a repository's label-triggered workflows |
-| **Mark the GitHub notification done** | Clears the item's GitHub notifications, as the item's **⋯** menu does, by your [rules](../github-notifications.md) (done or read) | On GitHub, where a notification marked done can be moved back |
+| **Mark the GitHub notification done** | Clears the item's GitHub notifications, as **Done** on the Notifications page does, by your [rules](../github-notifications.md) (done or read) | On GitHub, where a notification marked done can be moved back |
 
 Marking a notification done changes only your own notifications, so it runs at once with the
 local steps, in any mode. The four actions follow the routine's mode: in Ask first, the first
@@ -36,17 +36,15 @@ one waits for your OK (**Send it**), and the rest go once you've said yes. Each 
 - **waits for your OK on an outside contributor's item,** in every mode, since what it says is
   visible to them.
 
-The first time a routine with a GitHub action is switched on, leaves Dry run, or changes, it
-queues at most 25 of what it matches; past that it queues none, and they wait for you as a
-backlog (**Matched at once**, in [Needs you](needs-you.md)), whose **Run on them** sends them all
-at the pace above. A GitHub action never merges,
-approves, requests changes, closes, or approves workflow runs, and a test fails the build if one
-could reach any of them: merging and posting a review are steps of their own, each opt-in
-and behind its own guards ([Merge it and Post the agent's
-review](merge-and-post-review.md)), which never close anything or approve workflow
-runs, and merge past GitHub's rules only your own signed pull request that lacks only an
-approval from someone else, as a routine you confirmed allows it while **Let routines merge
-your own pull requests past the rules** is on. A reply that approves (*LGTM*,
-*Update OK*) or requests changes is refused where the routine is built and again right before
-each action; one your library changed since holds the action back (**⚡ Can't start yet**) and
-says why, reading nothing from GitHub.
+The first time a routine with a GitHub action is switched on, leaves Dry run, or changes, it queues
+at most 25 of what it matches; past that it queues none, and they wait for you as a backlog
+(**Matched at once**, in [Needs you](needs-you.md)), whose **Run on them** sends them all at the
+pace above. A GitHub action never merges, approves, requests changes, closes, or approves workflow
+runs, and a test fails the build if one could reach any of them: merging and posting a review are
+steps of their own, each opt-in and behind its own guards ([Merge it and Post the agent's
+review](merge-and-post-review.md)), which never close anything or approve workflow runs, and merge
+past GitHub's rules only your own signed pull request that lacks only an approval from someone else,
+as a routine you confirmed allows it while **Let routines merge your own pull requests past the
+rules** is on. A reply that approves (*LGTM*, *Update OK*) or requests changes is refused where the
+routine is built and again right before each action; one your library changed since holds the action
+back (under **Can't start yet** in Needs you) and says why, reading nothing from GitHub.

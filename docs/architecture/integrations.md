@@ -40,7 +40,8 @@ updater alike: `$GOBIN`, each `$GOPATH` folder's bin, and `~/go/bin`, from the s
 and, while `go` is on its `PATH`, from `go env GOBIN GOPATH` too (run once per detection with
 `GOTOOLCHAIN=local`; one that fails leaves the folders unsure, and then no copy updates itself).
 Every run of a tool gets `Definition.RunEnv` (the shell's environment with the quiet variables and
-`GIT_TERMINAL_PROMPT=0`, or the quiet variables alone in the terminal), detection's and an install's
+`GIT_TERMINAL_PROMPT=0`, or in the terminal the quiet variables alone, but `NO_COLOR`, so the colors
+stay), detection's and an install's
 `--version` runs included; release and hooks use it too.
 
 `Update` of a copy that can update itself runs the tool's own updater (`Definition.UpdateArgs`:

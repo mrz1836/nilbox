@@ -22,8 +22,8 @@ notifications](menu-bar.md)).
   why), or the version it found.
 - **Trusting it.** The manifest is taken only when its Ed25519 signature verifies with the key
   the app pins (`update.ReleaseKey`), it is for this Mac's build (`darwin-universal`), and its
-  version is a release, not a prerelease, newer than the one running. Anything else is an error
-  the app keeps, and nothing is downloaded.
+  version is a release, not a prerelease. Anything else is an error the app keeps, and nothing is
+  downloaded; a manifest for a version no newer than the one running reads as up to date.
 - **Downloading.** With **Download it and tell me**, the zip the manifest names is downloaded
   from its release's tag (the second GET), at most 200 MiB and within ten minutes, into
   `<data>/updates/<version>/`, beside its manifest. Only a zip whose size and SHA-512 match the
@@ -69,7 +69,8 @@ notifications](menu-bar.md)).
   asked about again. If the restart waited for a check that found a newer version, it
   downloads that one and restarts into it, once, without asking again what you already
   answered. Then the app checks the downloaded zip again (a
-  damaged one is thrown away and downloaded again), backs up the database beside it
+  damaged one is thrown away and the restart stops: with **Download it and tell me** it downloads
+  again on its own, and otherwise at your next click), backs up the database beside it
   (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;
   a backup the update took under ten minutes ago is used again), stages the update beside
   itself, in a `wails-update-*` folder, and quits. The update's helper, the app's own program
@@ -302,8 +303,10 @@ move either: About says the account is why.
   else changes. Before it copies anything, the move marks its hidden folder with the app's
   bundle identifier and its process. A hidden folder a move cut off by a crash, a power cut, or
   a force quit left there, however far the copy had got, is removed by the next move once the
-  copy of the app that made it no longer runs (or, when that can't be told, once it is older
-  than a move takes); one holding anything else, or not marked, is left as it is. While it
+  copy of the app that made it no longer runs or is this one (or, when that can't be told, once
+  it is older than a move takes), and so is an empty one, cut off before it was marked, once it
+  is older than a move takes; one holding anything else, or a copy that isn't marked, is left as
+  it is. While it
   works, the dialog says *Moving to Applications…* and holds its buttons, and every quit waits
   for it (the window comes forward, where the move shows), going ahead once the move ends: the
   copy and its check stop after five minutes, and the steps around them (clearing what

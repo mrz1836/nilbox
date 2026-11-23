@@ -35,8 +35,9 @@ so the providers share one timer; on `event.StatusRulesChanged` (core's relay ca
 it drops what it keeps of a provider no longer watched, its ETag included, sets the alerts'
 baselines quietly, tells the window, and checks a provider turned on at once.
 
-Alerts (`alerts.go`, in memory): the first reading after a start, or after a change of the choices,
-only sets the baseline, so a restart during an incident repeats no banner; a state that rises into
+Alerts (`alerts.go`, in memory): the first reading after a start, or of a provider just turned on,
+only sets the baseline, and a change of the choices sets it at once from the reading kept, so a
+restart during an incident repeats no banner; a state that rises into
 minor, major, or critical above the level already known tells its `Notifier` ("Claude: Partial
 outage", the parts affected and the first incident, opening the incident), one that falls back to
 operational or maintenance after it tells "Claude: Operational again", and nothing else does; core's

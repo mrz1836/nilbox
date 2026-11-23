@@ -3,13 +3,13 @@
 [Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`frontend`](../architecture/frontend/README.md), [`internal/event` and `internal/desktop`](../architecture/event-and-desktop.md), [`internal/appinfo`](../architecture/appinfo.md), [`internal/svcstatus`](../architecture/svcstatus.md), [`internal/statusprefs`](../architecture/statusprefs.md), [`internal/budget` and `internal/github`](../architecture/budget-and-github.md), [`internal/pushwatch`](../architecture/pushwatch.md)
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**,
-[**Notifications**](notifications-page.md), [**Autopilot**](autopilot/README.md), **Worktrees**, and
-**Prompts** tabs, and
-[**Scripts**](scripts-tab.md) while mage-x or go-pre-commit is on, or you turned Scripts on,
-and, on the right, the page's [filter](filtering.md), the
-[notification](menu-bar.md) bell, the [GitHub notifications](github-notifications.md)
-button, the API budget gauge, and your profile picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
-the filter gives way first.
+[**Notifications**](notifications-page.md), **Worktrees**, and **Prompts** tabs, with
+[**Autopilot**](autopilot/README.md), marked **Beta**, after Notifications while Autopilot (beta) is
+on, and [**Scripts**](scripts-tab.md) while mage-x or go-pre-commit is on, or you turned Scripts on,
+and, on the right, the page's [filter](filtering.md), the [notification](menu-bar.md) bell, the
+[GitHub notifications](github-notifications.md) button, the API budget gauge, and your profile
+picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows, the
+filter gives way first.
 
 ## Tab counts
 
@@ -53,7 +53,7 @@ that fails leaves it pushed to, and is tried again on the next refresh. Its
 
 Click your picture for who is signed in, **Settings** (also ⌘,), **View GitHub profile** (or click
 your name or picture at the top), and **Service status**, a submenu with each service you watch and
-where it stands, each opening its status page in your browser, for when GitHub, Claude, or Codex is
+where it stands, each opening its status page in your browser, for when GitHub, Claude, or OpenAI is
 having an incident and the inbox, reviews, checks, or agents lag, and **Choose what to watch…**,
 which opens Settings → Service status. Below them, **Report a bug** opens a GitHub issue with your
 versions, settings, and integrations filled in, as Settings → About's button does, and **Send
@@ -156,6 +156,7 @@ while no merge happened.
 
 **Settings → Refreshing** sets each interval: the inbox (every 2 minutes to every hour, five minutes
 by default), the running checks (off, or every 30 seconds to every 2 minutes, 45 seconds by
+default), the [Release](release.md) page's running checks (the same choices, 45 seconds by
 default), the worktrees' sweep (every 5 minutes to every hour, five minutes by default), the [GitHub
 notifications](github-notifications.md) (every minute to every hour, five minutes by default, and
 never sooner than GitHub asks). **Settings → Service status** sets how often the [service
@@ -238,7 +239,9 @@ your account, appearance (the theme, the text size, the size the window opens at
 [celebrations](inbox-nil.md)),
 [notifications](menu-bar.md) (the menu bar icon and which banners show),
 [GitHub notifications](github-notifications.md) (whether the app reads them, and when they are
-cleared), and refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
+cleared), refreshing (how often the inbox, the running checks, the Release page's running checks,
+the worktrees, and your GitHub notifications are read again), and service status (which services
+you watch, and how often they are checked); then,
 under **Inbox**, snoozing (how long the [Snooze](snooze-dismiss-pin.md) button sets an item
 aside, and what [wakes a snooze early](snooze-dismiss-pin.md#waking-a-snooze-early)), cards (the labels the
 [cards](inbox-cards.md) leave out), and reviewing (the merge method and your
@@ -254,6 +257,7 @@ merging](worktrees-view.md), which branches go with them, and protected branches
 **Tools**, [integrations](tools.md) (mage-x, go-pre-commit, and
 Scripts); **Labs**, the parts still being built, each off until you turn it on
 ([Autopilot (beta)](autopilot/README.md), whose own section, under **Autopilot**, shows only while it
-is on); and the app's version. Each change is saved as you make it, except the clone root, which its **Save**
+is on); back up and restore ([your whole setup in one file](backing-up.md)); and the app's
+version. Each change is saved as you make it, except the clone root, which its **Save**
 button saves (or **Choose…**, as soon as it picks a folder), and launch defaults, which are saved
 with theirs. Escape or the back arrow returns to the view you came from.

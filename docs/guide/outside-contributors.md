@@ -32,7 +32,7 @@ The launcher decides a launch's access once, and each agent turns it into its ow
 | Plan (an outside contributor's item, or the profile's plan mode) | `--permission-mode plan` | `--sandbox read-only --ask-for-approval on-request` |
 | Plan with a full-access profile | `--permission-mode plan --allow-dangerously-skip-permissions` | the same as Plan |
 | Nothing set | no flag: the agent's own defaults | no flag: the agent's own defaults |
-| A routine's fence (a background run) | the preset's own flags and settings ([Fences](autopilot/fences.md)); an untrusted item's is Read only | not kept yet |
+| A routine's fence (a background run) | the preset's own flags and settings ([Fences](autopilot/fences.md)); an untrusted item's is Read only | the preset's sandbox, config, and fence hook ([Fences](autopilot/fences.md)); an untrusted item's is Read only; **GitHub tasks only** isn't kept |
 
 A background run takes none of the profile's extra directories, and refuses as extra arguments,
 beside the permission flags, every flag the fence sets or that would loosen it: the tools and

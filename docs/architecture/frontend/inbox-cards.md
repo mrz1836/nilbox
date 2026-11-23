@@ -125,8 +125,8 @@ but never while a read or a rebuild is under way, nor while the reads after an a
 
 Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads it and,
 compact, renders `card/CompactRow` from the same step, session, and clock reads, so one set of rules
-drives both. A compact card is one 2.375rem grid row (`data-density` gives `index.css` its
-`contain-intrinsic-size`) of a column per question: the edge, `KindMark`, the repository, the title
+drives both. A compact card is one 2.375rem grid row (`data-density` marks it for the tests and
+the render check) of a column per question: the edge, `KindMark`, the repository, the title
 with its number, label dots, and pin, `CardStory` as a chip, `RiskIcon`, `MiniTrack` (the track's
 steps as dots, from the same `trackOf`) or an issue's `IssueTrack`, `SizeGrade` or `IssueGrade`, the
 age, and `CardActions`' compact go button. Its hover row, placed absolutely over every column but

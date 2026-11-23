@@ -13,8 +13,9 @@ at that head as `HoldAgentFiles`, whoever opened it.
 
 `internal/launcher/terminal/` renders the launch script, which only changes into the folder and runs
 the agent, and opens it in the user's terminal app, one driver per terminal and OS.
-`terminal.WriteScript` writes every script the app opens in a terminal into the launch folder, a
-session's and a followed run's alike (named `pr-`, `issue-`, or `run-<number>`, or a repository's
+`terminal.ScriptWriter` writes every script the app opens in a terminal into the launch folder, a
+session's (`WriteLaunchFiles`, with its prompt file) and a followed run's (`terminal.WriteScript`)
+alike (named `pr-`, `issue-`, or `run-<number>`, or a repository's
 launch's `repo-<YYYYMMDD>`, pruned after seven days by those prefixes alone); a followed run's
 script runs its command under `script(1)`, recording its output, its shell's PID, and its exit
 status in the run's files. `launcher.CommandOpener`, which core hands the runs and never binds,
@@ -22,8 +23,10 @@ opens only such a script, in the terminal chosen in Settings.
 
 `Resume` takes `ResumeRequest.Access`: a background run's session resumes under its run's fence
 (`ResumableSession.Fence`, the preset and the run's folder), taken over (`Fence.TakenOver`,
-`agent.Access.TakenOver`: the same tools, rules, hook, and sandbox, a fixed preset in `manual`
-rather than `dontAsk`, so the user is asked about the rest), unless the user ticks the profile's own
+`agent.Access.TakenOver`: for Claude Code, the same tools, rules, hook, and sandbox, a fixed preset
+in `manual` rather than `dontAsk`, so the user is asked about the rest; for Codex, the same sandbox
+and writable folders, no fence hook, and `--ask-for-approval on-request` rather than
+`approval_policy="never"`), unless the user ticks the profile's own
 (`profile`), under the trust rule; a fence whose settings are gone is `ErrNoFence`. The bound
 `TakeOver` stops a background run first through its `TakeOvers` (core's `backgroundAgents`), then
 resumes it so, in its worktree, held back as a launch is.

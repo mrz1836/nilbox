@@ -12,8 +12,9 @@ unset or not listed in `/etc/shells`), in its own process group, with nothing on
 five-second limit, and keeps the variables it prints. On an M1 Max that took about
 330 ms the first time and under 60 ms after.
 
-- **What it's for.** It's the environment the app finds and runs your command-line tools with
-  for Integrations (mage-x and go-pre-commit), so they're the same copies your terminal runs
+- **What it's for.** It's the environment the app finds and runs your command-line tools with,
+  the coding agents and git as well as the integrations (mage-x and go-pre-commit), so they're the
+  same copies your terminal runs
   (see [Tools the app finds and installs](tools.md)). It matters for
   `git` too:
   Apple's `/usr/bin/git` and Homebrew's keep separate keychain entries, and Apple's can stop to

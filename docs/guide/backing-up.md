@@ -13,7 +13,7 @@ where to save the file (`Nilbox backup <date>.json`):
 |---|---|
 | **Settings** | Every setting but the window's memory: the agent and profile defaults, launching, worktrees and branch rules, trusted bots, snoozing, sensitive files, notifications and banners, the GitHub notification rules, refreshing, reviewing, appearance, the inbox's sorting, and the integrations' switches, options, and chosen copies |
 | **Repositories** | The clone folder, the other repository locations, and the pinned and muted repositories and orgs |
-| **Prompts & replies** | The whole [prompt library](prompts.md), its defaults and the record of deleted starters included |
+| **Prompts and replies** | The whole [prompt library](prompts.md), its defaults and the record of deleted starters included |
 | **Launch defaults** | Every org's and repository's [launch defaults](launch-defaults.md), naming prompts by nickname |
 | **Your scripts** | Your own [scripts](repo-scripts.md), in their order |
 | **Autopilot routines** | Your [Autopilot](autopilot/README.md) routines, in their order, never their history. A routine an import adds or saves over arrives switched off; one already the same stays as it is, on or off |
@@ -31,7 +31,7 @@ Then choose how to treat what's on this Mac:
 |---|---|---|
 | **Settings** | Each setting the file holds is set; one it lacks is left as it is | The same |
 | **Repositories** | The clone folder is set if it exists here; the file's locations that exist here are added; each pinned or muted target is set, the file's rule winning | The clone folder likewise; the locations are exactly the file's that exist here; the pinned and muted lists are exactly the file's |
-| **Prompts & replies** | As **Import from a file…**: what you have is left out, a taken nickname is renamed, an unchanged starter is saved over; the file's defaults are set where they fit | Prompts are matched by nickname: each match is saved over, the rest added, and every other prompt deleted, but one a launch default you keep still names, which is kept with a note; the defaults become the file's |
+| **Prompts and replies** | As **Import from a file…**: what you have is left out, a taken nickname is renamed, an unchanged starter is saved over; the file's defaults are set where they fit | Prompts are matched by nickname: each match is saved over, the rest added, and every other prompt deleted, but one a launch default you keep still names, which is kept with a note; the defaults become the file's |
 | **Launch defaults** | The file's row for an org or repository replaces this Mac's; the others stay | Exactly the file's rows |
 | **Your scripts** | A script identical to one here is skipped; the others are added at the end, in order | Exactly the file's scripts, in its order |
 | **Autopilot routines** | Routines are matched by name: one the file holds as it is here is left alone, on or off; any other is saved over and switched off, and one this Mac lacks is added at the end, off | The same, in the file's order, and every other routine is deleted; a routine a newer Nilbox made is never saved over or deleted, under either mode |

@@ -47,9 +47,8 @@ stored, asking GitHub nothing:
   review: it's in your inbox, opened by you.*, *Not in its search: its author is octo-other,
   not Dependabot.*, *it's in acme-labs/web, not acme-org*, or, for an item its search should
   find, that the next refresh brings it;
-- each condition with the value it compared, and what its history says (*It already ran on this
-  commit*, *2 of 2 tries used*, its record for the occurrence now, as *Queued: today's cap is
-  reached*);
+- each condition with the value it compared, and what its history says (*2 of 2 tries used.*, and
+  its record for the occurrence now, as *Its record for this: …*);
 - and, folded, **Its ledger for this item**: every match the routine recorded on it, newest
   first, a Dry run's marked.
 

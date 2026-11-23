@@ -70,7 +70,8 @@ depends on no agent. It is a leaf: it imports only `sensitive`, `paths`, and `te
   is beside it, which it must refuse. Until the proof exists, every command but the check is
   refused, its reason giving the exact line; once the probe exists, the sandbox didn't hold, and
   every call is refused. `Sandboxed` reads the outcome for the run's end (held, leaked,
-  unchecked, or none), and `Fence.AgentNote` is the line the unattended note gains.
+  unchecked, or none). Each agent's spec words the line the unattended note gains:
+  `Fence.AgentNote` for Claude Code, `Fence.NoteWith` with its own sandbox's words for Codex.
 - **The agent's rules.** `AllowedCommands`, `DeniedCommands`, and `DeniedPaths` work out, from the
   policy, the lists an agent's own rules name, so every agent and the hook hold the same ones:
   for a fixed preset whose mode refuses what no rule allows, the repository's tools, everyday

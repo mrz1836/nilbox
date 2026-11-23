@@ -17,8 +17,9 @@ method that takes a `*sql.Tx`; the owners import only backup's words (`Mode`, `P
 `Count`), and the boundary test forbids the reverse. `Preview` works every section out under
 both modes (Merge, whose wire value is `combine`, and Replace), a section that can't be read
 shown with why; `Import` reads the file again and refuses it when its SHA-256 differs from the
-preview's (`ErrChanged`), saves the whole setup first to `<data>/backups/<slug> before import
-<stamp>.json` (the newest `KeepBefore`, 5, kept), works each section out again, then applies
+preview's (`ErrChanged`), works each section out again, refusing the import when one fails, saves
+the whole setup to `<data>/backups/<slug> before import <stamp>.json` (the newest `KeepBefore`, 5,
+kept), then applies
 every one in one `store.InTx`, in `Sections` order, a `Clearer`'s rows (the launch defaults',
 under Replace) deleted first so the prompts part may delete what they named; the prompts
 part fills in the `Links` (each file nickname's ID here) the launch defaults part finds its

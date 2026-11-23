@@ -17,11 +17,11 @@ Three limits bound what the routines' agents spend, each set in dollars or in to
   waits until tomorrow: Autopilot sent 50 GitHub actions today, the most Settings → Autopilot allows
   in a day.* A cap counts the runs budgeted in its own unit, so a dollar cap can't hold back a run
   budgeted in tokens, nor count a Codex run.
-- **Tokens are the real measure.** Every run shows its tokens, in and out, with what it read
-  from the cache apart, in the run view, Working, and a routine's **This week**. Its dollars are
-  what the agent reports: on a subscription (Claude Max, say), what the same work would cost
-  through the API, an estimate and never a bill, which Nilbox always words as *about* or
-  *estimated*; with an API key, which a run uses only while **Use an API key when one is set**
-  is on for its agent, what that key was charged. A run in your terminal reports neither, so no
-  budget or cap counts it; the item's [session panel](../following-a-session.md) counts its
-  session's tokens.
+- **Tokens are the real measure.** Every run shows its tokens, in and out, with what it read from
+  the cache apart, in the run view, Working, and a routine's **This week**. Its dollars are what the
+  agent reports: on a subscription (Claude Max, say), what the same work would cost through the API,
+  an estimate and never a bill, which Nilbox always words as *about* or *estimated*; with an API
+  key, which a run uses only while its agent's **Use an API key for Claude Code when one is set** or
+  **Use an API key for Codex when one is set** is on, what that key was charged. A run in your
+  terminal reports neither, so no budget or cap counts it; the item's [session
+  panel](../following-a-session.md) counts its session's tokens.

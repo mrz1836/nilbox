@@ -17,14 +17,15 @@ repository, leaves the start not ready.
   one at another head waits for you. The prompt's **.Unattended** is true. An outside contributor's
   item runs read only whatever the fence says.
 - **What it runs with.** Your login shell's environment, with the profile's own (the default
-  profile's config folder is never named, and no API key signs the agent in unless **Use an API
-  key when one is set** is on), without the variables an agent session sets for itself; no permission
-  prompts, which no one would answer; the fence's flags and settings, worked out for the
-  worktree as the run starts and kept in the run's own folder, and its line in the note the
-  agent is given (what it may do, and for a sandboxed preset, the check to run first); the budget in dollars,
-  which the agent keeps to itself, or in tokens, which Nilbox stops it at; and the time limit,
-  30 minutes unless the step says. Claude Code 2.1.319 or later is needed, and Codex 0.163.0 or
-  later; an older one leaves the routine not ready, saying so.
+  profile's config folder is never named, and no API key signs the agent in unless its agent's **Use
+  an API key for Claude Code when one is set** or **Use an API key for Codex when one is set** is
+  on), without the variables an agent session sets for itself; no permission prompts, which no one
+  would answer; the fence's flags and settings, worked out for the worktree as the run starts and
+  kept in the run's own folder, and its line in the note the agent is given (what it may do, and for
+  a sandboxed preset, the check to run first); the budget in dollars, which the agent keeps to
+  itself, or in tokens, which Nilbox stops it at; and the time limit, 30 minutes unless the step
+  says. Claude Code 2.1.319 or later is needed, and Codex 0.163.0 or later; an older one leaves the
+  routine not ready, saying so.
 - **Codex** runs as `codex exec`, reading none of your Codex config (its MCP servers, plugins,
   notify program, and the folders it trusts), so a branch's own `.codex` config and hooks never
   load, and none of its rules files; its sign-in is the profile's. It keeps no budget of its own
@@ -64,29 +65,28 @@ repository, leaves the start not ready.
   ends, the view says how it came out: Nilbox's verdict from GitHub, the agent's own report or
   its last words, whether it needs a person, its turns, its time, its commit, and how many files
   it changed.
-- **Take over** stops the agent while it works, waits for its end, and opens its conversation
-  in the terminal chosen in Settings, in its worktree, with its profile (`claude --resume
-  <session>`), as a launch does, held back as one is. It keeps the run's fence, but someone
-  answers now: anything the fence doesn't allow asks you instead of being refused (its rules,
-  its hook, and its sandbox still hold). **Use the profile's permissions for this session**,
-  unticked, gives that one session the profile's own, under the trust rule as always, so an
-  outside contributor's item still only plans. Background runs pass
-  `--system-prompt-snapshot off`, so the unattended note isn't replayed on resume, and the
-  resumed session is yours: no *in the background* mark, followed as any session is, and it
-  holds a click on the item, and the routine's next start there, while it runs. The run's match
-  closes as **Taken over**, counting as no try, and nothing says it stopped. A run whose fence is
-  no longer kept (its history cleared) is taken over only with the profile's permissions. A
-  Codex run is taken over as `codex resume <thread>`, under the run's sandbox again, asking you
-  about whatever it refuses, with the network off, so a push asks first; its fence's hook
-  doesn't follow it into the terminal, nor is its worktree trusted for it, so Codex asks you
-  whether to trust the folder. Its first message tells it you've taken over, since its
-  unattended note stays in the conversation.
-- **Where it shows.** The item's session pill and panel follow the run, with **Watch**,
-  **Stop**, and **Take over** in place of Show in terminal and Resume, and its launch button
-  says **Watch**. The Worktrees view's row for its worktree says *⚡ <routine> · in the
-  background* where its agent goes, and its drawer that the routine made it, so the cleanup
-  never removes it; a click's launch there is held
-  back, never started beside it: the dialog offers **Watch it** and **Take over** instead.
+- **Take over** stops the agent while it works, waits for its end, and opens its conversation in the
+  terminal chosen in Settings, in its worktree, with its profile (`claude --resume=<session>`), as a
+  launch does, held back as one is. It keeps the run's fence, but someone answers now: anything the
+  fence doesn't allow asks you instead of being refused (its rules, its hook, and its sandbox still
+  hold). **Use the profile's permissions for this session**, unticked, gives that one session the
+  profile's own, under the trust rule as always, so an outside contributor's item still only plans.
+  Background runs pass `--system-prompt-snapshot off`, so the unattended note isn't replayed on
+  resume, and the resumed session is yours: no *in the background* mark, followed as any session is,
+  and it holds a click on the item, and the routine's next start there, while it runs. The run's
+  match closes as **Taken over**, counting as no try, and nothing says it stopped. A run whose fence
+  is no longer kept (its history cleared) is taken over only with the profile's permissions. A Codex
+  run is taken over as `codex resume <thread>`, under the run's sandbox again, asking you about
+  whatever it refuses, with the network off, so a push asks first; its fence's hook doesn't follow
+  it into the terminal, nor is its worktree trusted for it, so Codex asks you whether to trust the
+  folder. Its first message tells it you've taken over, since its unattended note stays in the
+  conversation.
+- **Where it shows.** The item's session pill and panel follow the run, with **Watch**, **Stop**,
+  and **Take over** in place of Show in terminal and Resume, and its launch button says **Watch**.
+  The Worktrees view's row for its worktree says *⚡ <routine> · <owner/repo> #<number> · in the
+  background* where its agent goes, and its drawer that the routine made it, so the cleanup never
+  removes it; a click's launch there is held back, never started beside it: the dialog offers
+  **Watch it** and **Take over** instead.
 - **Quitting** while agents work asks first, as for any run ([Runs](../runs.md)), naming them
   (*2 agents are still working.*). **Stop and quit** stops each (the agent's own Control-C
   first, so it reports its end). **Let them finish** (**Let it finish** for one), offered while

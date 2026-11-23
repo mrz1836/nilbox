@@ -64,8 +64,9 @@ failed. A pass that changes what `Snapshot` shows, the passes' times aside, emit
 `event.GHThreadsUpdated` (`ghthreads:updated`), but one whose caller gave up tells nothing.
 
 It clears the threads by the user's rules (`clear.go`), and owns `gh_thread_moments` and
-`gh_thread_clears` for it. The inbox's `Config.Outcomes` is its `Settler` (core's `ghThreadOutcomes`
-adapts `inbox.Outcome` to its own `Outcome`, never bound), whose `Settle` records, in one
+`gh_thread_clears` for it. The inbox's `Config.Outcomes` is core's `outcomesFanOut`, which tells
+Autopilot's engine, then this package's `Settler` (core's `ghThreadOutcomes` adapts `inbox.Outcome`
+to its own `Outcome`, never bound), then the sessions. The `Settler`'s `Settle` records, in one
 transaction and without waiting, the moments the user finished an item in the app (a merge, a close,
 a review that approves or requests changes, a dismissal, taking themselves off), a review of the
 user's made anywhere else that the inbox saw (an agent's gh, a browser: `OutcomeReviewed` from a
@@ -133,10 +134,11 @@ thread that isn't a pull request's or an issue's) and says how many it queued, w
 Mark the GitHub notification done runs; `Keep` takes queued clears back; and `MarkDone` and
 `MarkRead` (`mark.go`) are the panel's Done and its opening of a line on GitHub: any thread the
 mirror lists for the account, whatever its subject and whatever the rules' action, sent at once
-through the chore lane (waiting out its pace up to `MaxPaceWait`, else worded), holding the pass
-slot so no pass stores a listing read before GitHub took the mark, after the token's login is
-checked against the account, each landing in the mirror as GitHub takes it (done or gone: dropped;
-read: kept, read), recorded in no ledger, and told to the window.
+through the chore lane (waiting out its pace up to `MaxPaceWait`, else worded), a pass running or
+not, after the token's login is checked against the account. What GitHub took is then recorded in
+the mirror in one transaction holding the pass slot, so a pass that listed before GitHub took the
+marks stores first (done or gone: dropped; read: kept, read). A mark is recorded in no ledger, but
+a Done settles a clear the ledger queued for its thread; the window is told.
 
 The `Snapshot` also lists the `Queued` clears, the `Backlog`, and the `Recent` 50 that settled.
 Moments and settled clears are dropped 30 days on. It never imports the inbox, settings, core,

@@ -39,7 +39,7 @@ has, as a picked suggestion does. `#123` matches item 123, and a bare `123` matc
 | Page | Keys |
 |---|---|
 | Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict`, `is:pushed` (pushed since you requested changes) (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
-| Notifications | `repo:` (`owner/name`), `type:` (on the Nilbox tab `review`, `assigned`, `snooze`, `release`, `run`; on the GitHub tab `pr`, `issue`, `release`, `actions`, `other`), `is:unread`, `is:read`; on the GitHub tab also `is:open`, `is:merged`, `is:closed` (the item's state), and `reason:` (GitHub's reason, such as `mention` or `review_requested`) |
+| Notifications | `repo:` (`owner/name`), `type:` (on the Nilbox tab `review`, `assigned`, `snooze`, `release`, `run`, `status`, `update`, `autopilot`; on the GitHub tab `pr`, `issue`, `release`, `actions`, `other`), `is:unread`, `is:read`; on the GitHub tab also `is:open`, `is:merged`, `is:closed` (the item's state), and `reason:` (GitHub's reason, such as `mention` or `review_requested`) |
 | Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:unpushed` (commits not on GitHub), `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
 

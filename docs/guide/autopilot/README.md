@@ -96,13 +96,13 @@ A routine earns your trust one mode at a time:
    [limits](settings.md) you set. **Pause Autopilot** stops every new start at once.
 
 Coding agents run [in your terminal](agents-in-your-terminal.md), as a click does, or [in the
-background](agents-in-the-background.md), headless, inside a
-[fence](fences.md). Either way they run on the profile's own
-sign-in (a subscription such as Claude Max, through `claude auth login`), never on an API key
-from your shell unless you turn on **Use an API key when one is set** ([API
+background](agents-in-the-background.md), headless, inside a [fence](fences.md). Either way they run
+on the profile's own sign-in (a subscription such as Claude Max, through `claude auth login`), never
+on an API key from your shell unless you turn on its agent's **Use an API key for Claude Code when
+one is set** or **Use an API key for Codex when one is set** ([API
 keys](../launching-a-session.md)). What a run costs is counted in tokens, the real measure; its
-dollars are what the agent reports, an estimate of the API's price when you are on a
-subscription ([budgets and caps](budgets-and-caps.md)).
+dollars are what the agent reports, an estimate of the API's price when you are on a subscription
+([budgets and caps](budgets-and-caps.md)).
 
 ## The tab
 
@@ -198,14 +198,14 @@ Nilbox made, shows only the sentence it reads as. Below them:
 
 There is no schedule to set. Autopilot learns of what it acts on when Nilbox reads GitHub: your
 inbox and your routines' searches every 5 minutes, and the checks still running on your pull
-requests every 45 seconds (**Settings → Refresh** sets both). Right after each read, every minute,
-and at once when you change or switch a routine on, it checks every routine that is on, and one acts
-as soon as what it waits for holds. Below Activity's title, a line says so as it goes: *● Running ·
-last check 20s ago · reads GitHub again in 3m*, with **Refresh now**, which reads the inbox from
-GitHub at once, as the inbox's **Refresh** does; under it, how often it reads each, in your
-settings' numbers. A routine's pane shows the first line while the routine is on. It says *Starting*
-until the first read since Nilbox opened is in, and that no routine is on while none is; the banners
-say what stops everything else.
+requests every 45 seconds (**Settings → Refreshing** sets both). Right after each read, every
+minute, and at once when you change or switch a routine on, it checks every routine that is on, and
+one acts as soon as what it waits for holds. Below Activity's title, a line says so as it goes: *●
+Running · last check 20s ago · reads GitHub again in 3m*, with **Refresh now**, which reads the
+inbox from GitHub at once, as the inbox's **Refresh** does; under it, how often it reads each, in
+your settings' numbers. A routine's pane shows the first line while the routine is on. It says
+*Starting* until the first read since Nilbox opened is in, and that no routine is on while none is;
+the banners say what stops everything else.
 
 **Activity** lists what the routines did, under a heading for each day, newest first:
 
@@ -252,24 +252,24 @@ a match Activity lists, which opens its card in [Needs you](needs-you.md) while 
 
 Before a routine runs on an item, the chip says it will, dashed, in the accent's color, as something
 still to come: **⚡ Runs when its checks pass** on your pull request whose checks still run, **⚡ Runs
-in 2m** while they settle, counting down, **⚡ Runs at 09:00** for a schedule due later today. It
-shows only when the routine will run by itself, with nothing more from anyone: it is on and not in
-Dry run, its **If** counts the item for sure as the item will stand when its **When** holds (*the
-checks' state is passing* counts a pull request whose checks still run, for a routine that fires
-when they pass), its **When** is on its way (checks still running, or passed and settling; checks
-that failed, waiting for the rest; a schedule due today; a quiet spell due within a day), and it
-hasn't already run on that occurrence (a commit it ran on whose checks run again shows nothing). A
-**When** that waits on something no one can foresee (a comment, a label, an approval, a new commit)
-never shows, so a routine never marks everything it watches. While Autopilot is paused, off, or run
-by another copy of Nilbox, no chip says so. What goes on now comes first: a match that waits for you
-or works shows its own chip, and once the routine ran, the chip says what it did. Click it for **Up
-next**: each routine that will run, how (*Runs by itself*, or *Asks you first* when it is in Ask
-first with a step that asks, an agent's or one on GitHub, since local steps run by themselves either
-way), when, and what it will do (*Then: Comment one of my replies, then Merge it*), with **Open
-routine** and **Leave this one alone**, which tells it never to run on this item, the line staying
-with **Undo**, and Activity's *Left alone* line letting it act again later. The item's history
-follows below. It costs nothing: Autopilot notes what will run as it checks the routines each
-minute, and the inbox reads it from memory.
+in 2m** while they settle, counting down, **⚡ Runs in 3h** for a schedule due later today, counting
+down too. It shows only when the routine will run by itself, with nothing more from anyone: it is on
+and not in Dry run, its **If** counts the item for sure as the item will stand when its **When**
+holds (*the checks' state is passing* counts a pull request whose checks still run, for a routine
+that fires when they pass), its **When** is on its way (checks still running, or passed and
+settling; checks that failed, waiting for the rest; a schedule due today; a quiet spell due within a
+day), and it hasn't already run on that occurrence (a commit it ran on whose checks run again shows
+nothing). A **When** that waits on something no one can foresee (a comment, a label, an approval, a
+new commit) never shows, so a routine never marks everything it watches. While Autopilot is paused,
+off, or run by another copy of Nilbox, no chip says so. What goes on now comes first: a match that
+waits for you or works shows its own chip, and once the routine ran, the chip says what it did.
+Click it for **Up next**: each routine that will run, how (*Runs by itself*, or *Asks you first*
+when it is in Ask first with a step that asks, an agent's or one on GitHub, since local steps run by
+themselves either way), when, and what it will do (*Then: Comment one of my replies, then Merge
+it*), with **Open routine** and **Leave this one alone**, which tells it never to run on this item,
+the line staying with **Undo**, and Activity's *Left alone* line letting it act again later. The
+item's history follows below. It costs nothing: Autopilot notes what will run as it checks the
+routines each minute, and the inbox reads it from memory.
 
 ## While a routine acts on an item, launching waits
 

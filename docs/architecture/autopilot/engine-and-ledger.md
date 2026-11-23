@@ -2,44 +2,41 @@
 
 [Docs](../../README.md) › [Architecture](../../README.md#architecture) › [`internal/autopilot`](README.md) · Code: [`internal/autopilot`](../../../internal/autopilot) · Guide: [Budgets and caps](../../guide/autopilot/budgets-and-caps.md), [When a routine misbehaves](../../guide/autopilot/when-a-routine-misbehaves.md)
 
-**The ledger** (migration `0103_autopilot`, all of it Autopilot's) records what each
-routine did with each item it matched. `autopilot_matches` holds one row per routine, item,
-fire key, and Dry run (unique), so an existing row blocks a repeat: once per occurrence holds
-across refreshes, check re-runs, and restarts, and a Dry run's record never blocks a real
-run. Each row keeps a copy of its item (repository, kind, number, title, URL; `item_id` is set
-NULL once the item is gone), the decision's trace as it was, the steps it started with and
-how each went (`steps`, JSON, with `step` where it is: a routine saved with other steps never
-changes what a match has done), the spec's fingerprint (`spec_hash`), the head it was decided
-on, whether auto-merge was on, the user's OK (`approved`), and how many runs it started
-(`attempt`). A row is open (`waiting`, `blocked`, `queued`, `running`, `verifying`, with
-`blocked_by`) or closed (`done`, `skipped`, `dismissed`, `closed`, `baseline`, with `reason`),
-and every change is a compare-and-set on the state it was read in (`UpdateMatch ... WHERE
-state = was`). Only the routine's own outcomes close a row: it ran (`done`), the user skipped
-it (`dismissed`), it ran out of tries or met the outside contributor rule (`skipped`), or the
-item moved on (`closed`: merged, closed, gone, left the watch, its fire key moved, no longer
-matches, the routine changed or was switched off, the item's sheet no longer offers the
-action). Everything that only delays a start keeps it open, retried every cycle. A row that
-closed without ever running (no longer matches, left the watch, moved on, the routine changed
-or was switched off, `Reason.reopens`) opens again when the same occurrence matches again, but
-only if none of its steps ever started (`reopensRow`: no run, no step moved past, none running,
-done, or failed): a row that started a step, a local one included, is the occurrence's record,
-which only Try again opens again, and `Matching` counts it as recorded.
-`autopilot_runs` holds one row per run a match starts (an agent's, in the background or the
-terminal, or a GitHub action the app sends), with every column the run view, the caps, and the
-stats read, and a partial unique index on `item_id` for the active statuses (starting,
-running, stopping), so a second active run on an item fails in the database whatever the
-engine's own checks say. `autopilot_tries` keeps when Try again last reset a routine's count
-on an item, `autopilot_baselines` what a routine first saw of an item (its head, its comment
-count, for New commits' first commit and New comments), `autopilot_hands_off` the items a
-routine leaves alone, and `autopilot_effects` what its
-local steps did to their items' triage ([Local actions](local-actions.md)).
-`autopilot_matches` is indexed by `item_id`, which every read by
-item (`LatestMatches` and `ItemHistory`) searches. The engine's own state,
-`autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
-began, the last refresh it saw, when the last catch-up began and the routines still in it, the
-last cycle, each GitHub routine's first-pass fingerprint, the routines whose current matches
-become their baseline, the problems, and when the retention last ran; a deleted or
-switched-off routine's entries are dropped.
+**The ledger** (migration `0103_autopilot`, all of it Autopilot's) records what each routine did
+with each item it matched. `autopilot_matches` holds one row per routine, item, fire key, and Dry
+run (unique), so an existing row blocks a repeat: once per occurrence holds across refreshes, check
+re-runs, and restarts, and a Dry run's record never blocks a real run. Each row keeps a copy of its
+item (repository, kind, number, title, URL; `item_id` is set NULL once the item is gone), the
+decision's trace as it was, the steps it started with and how each went (`steps`, JSON, with `step`
+where it is: a routine saved with other steps never changes what a match has done), the spec's
+fingerprint (`spec_hash`), the head it was decided on, whether auto-merge was on, the user's OK
+(`approved`), and how many runs it started (`attempt`). A row is open (`waiting`, `blocked`,
+`queued`, `running`, `verifying`, with `blocked_by`) or closed (`done`, `skipped`, `dismissed`,
+`closed`, `baseline`, with `reason`), and every change is a compare-and-set on the state it was read
+in (`UpdateMatch ... WHERE state = was`). Only the routine's own outcomes close a row: it ran
+(`done`), the user skipped it (`dismissed`), it ran out of tries or met the outside contributor rule
+(`skipped`), or the item moved on (`closed`: merged, closed, gone, left the watch, its fire key
+moved, no longer matches, the routine changed or was switched off, the item's sheet no longer offers
+the action). Everything that only delays a start keeps it open, retried every cycle. A row that
+closed without ever running (no longer matches, left the watch, moved on, the routine changed or was
+switched off, `Reason.reopens`) opens again when the same occurrence matches again, but only if none
+of its steps ever started (`reopensRow`: no run, no step moved past, none running, done, or failed):
+a row that started a step, a local one included, is the occurrence's record, which only Try again
+opens again, and `Matching` counts it as recorded. `autopilot_runs` holds one row per run a match
+starts (an agent's, in the background or the terminal, a GitHub action the app sends, or one of the
+user's scripts), with every column the run view, the caps, and the stats read, and a partial unique
+index on `item_id` for the active statuses (starting, running, stopping), so a second active run on
+an item fails in the database whatever the engine's own checks say. `autopilot_tries` keeps when Try
+again last reset a routine's count on an item, `autopilot_baselines` what a routine first saw of an
+item (its head, its comment count, for New commits' first commit and New comments),
+`autopilot_hands_off` the items a routine leaves alone, and `autopilot_effects` what its local steps
+did to their items' triage ([Local actions](local-actions.md)). `autopilot_matches` is indexed by
+`item_id`, which every read by item (`LatestMatches` and `ItemHistory`) searches. The engine's own
+state, `autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
+began, the last refresh it saw, when the last catch-up began and the routines still in it, the last
+cycle, each GitHub routine's first-pass fingerprint, the routines whose current matches become their
+baseline, the problems, and when the retention last ran; a deleted or switched-off routine's entries
+are dropped.
 
 **The engine** (`NewEngine`, never bound; the Service is its face) is a deferred desktop worker
 with one loop of its own (`engine.go`), the only writer of matches and the only thing that
@@ -121,47 +118,51 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   catch-up began (each of its searches answered with no error, and a refresh, when it watches
   the inbox's lists or has no search): until then its agent and GitHub steps wait for the user
   (`catch_up`), and a routine whose own search keeps failing says so, while the others go on.
-- **A start** goes through, in Go, in this order (`gate`): the user's OK for a routine that asks
-  first, and in a catch-up an Autopilot routine's too; no one signed in to GitHub (the last
-  refresh found no token, or GitHub refused it: `signed_out`), Pause, and the routine's active
-  hours, all three of which hold a local step too; the tries (`skipped: tries`), the routine's runs a day, the agent runs
-  a day, the GitHub actions a day, and the wait between tries, none of which a manual run counts
-  toward; a free slot and the daily cap and the routine's own budget, reserved in their unit,
-  for an agent; the outside contributor rule (an agent closes `skipped`, a GitHub action waits);
-  a fork's branch for a run that pushes; and one active run per item. Then the item is read
-  fresh on a worker (`ReadItem`, the inbox's `RefreshItem`) and the `Holds` the later parts
-  register are asked; the cycle after that read, which evaluated the item on what it stored
-  (a moved head closes the match as moved on), records the run and the reservation in one
+- **A start** goes through, in Go, in this order (`gate`): Merge it's own guards (`mergeRules`,
+  `recheck`, `pastRulesSwitch`) and a script step that asks (`scriptAsks`); the user's OK for a
+  routine that asks first, and in a catch-up an Autopilot routine's too; no one signed in to GitHub
+  (the last refresh found no token, or GitHub refused it: `signed_out`), Pause, and the routine's
+  active hours, all three of which hold a local step too; the tries (`skipped: tries`), the
+  routine's runs a day, the agent runs a day, the GitHub actions a day, and the wait between tries,
+  none of which a manual run counts toward; a free slot and the daily cap and the routine's own
+  budget, reserved in their unit, for an agent, and the pace of GitHub writes (`pace`) for a GitHub
+  action; the outside contributor rule (an agent closes `skipped` unless its repository or org
+  allows agents there, and then it plans only; a GitHub action waits); a fork's branch for a run
+  that pushes; one active run per item; and, for an agent, this Mac's readiness (`readyFor`). Then
+  the item is read fresh on a worker (`ReadItem`, the inbox's `RefreshItem`) and the `Holds` the
+  later parts register are asked; the cycle after that read, which evaluated the item on what it
+  stored (a moved head closes the match as moved on), records the run and the reservation in one
   transaction and hands the step to its dispatcher. A local step runs at once, through its
   dispatcher, held back only by a sign-out, Pause, and the active hours. A day runs from local
   midnight to local midnight, as the clock tells local time: a run's cost belongs to the day it
-  started, and every run still working counts what it reserved against today's cap whatever
-  day it started.
+  started, and every run still working counts what it reserved against today's cap whatever day it
+  started.
 - **The dispatch seam** (`dispatch.go`): a narrow `Dispatcher` per part, keyed by the catalog's
-  dispatcher names (`EngineConfig.Dispatchers`: triage, notices, github, verify, merging, review),
-  and the agent part's `Runner` (`Dispatch` starts a run, `Stop` and `StopAll` stop at once,
-  `Alive`), whose ends come back through `Engine.RunEnded`. A `Job` carries the match, the run, the
-  routine, the item's copy, the head it is pinned to, the step, and the budget; a `Result` says it
-  runs on, how it ended (an Only if outcome), whether GitHub took a write, and when the item's sheet
-  no longer offers the action or offers it with warnings. A step with no dispatcher registered can't
-  run, and the Service keeps a routine with such a step in Dry run (`Offers`, the catalog's own by
-  default, which a test hands in with fakes). The triage steps are offered: the engine registers its
-  own triage dispatcher over `EngineConfig.Triage` (core's `inboxTriage`, [Local
-  actions](local-actions.md)) unless `Dispatchers` names one; so are the notices (Notify me and Tell
-  me, [Notices](notices.md)), whose dispatcher core registers, the agent step, whose `Runner` core
-  registers ([Agents in the terminal](agents-in-the-terminal.md)), and the GitHub step and Mark the
-  GitHub notification done ([The GitHub step](github-step.md)), whose dispatcher the engine
-  registers over the Service's `GitHubActions`; a routine with any other step still runs in Dry run,
-  and the engine records what it would run. A `Result` may also say the step didn't start and what
-  the match waits on instead (`Wait`, `WaitWords`, and a `Hold` the user confirms), or that it goes
-  back to the queue (`Requeue`), and what a launch started (`Launched`, recorded on the run,
-  `RecordRunLaunch`). For the notices, a job also carries when its match was made, the routine's own
-  banner switches (`Notices`), why it matched (`Reason`, from the trace), and how the steps before
-  it went (`Before`). `dispatch` hands a job over only while `Engine.Enabled` says Autopilot (beta)
-  is on, asked on the worker right before `Dispatch`, so no part (the agent runner's starts
-  included) is handed a step after it was turned off; the freshness read before an agent's start or
-  a GitHub action asks it too, so nothing is read from GitHub for a start Autopilot turned off
-  since.
+  dispatcher names (`EngineConfig.Dispatchers`: triage, notices, github, merging, review; `verify`
+  is the engine's own), and the agent part's `Runner` (`Dispatch` starts a run, `Stop` and `StopAll`
+  stop at once, `Alive`), whose ends come back through `Engine.RunEnded`. A `Job` carries the match,
+  the run, the routine, the item's copy, the head it is pinned to, the step, and the budget; a
+  `Result` says it runs on, how it ended (an Only if outcome), whether GitHub took a write, and when
+  the item's sheet no longer offers the action or offers it with warnings. A step with no dispatcher
+  registered can't run, and the Service keeps a routine with such a step in Dry run (`Offers`, the
+  catalog's own by default, which a test hands in with fakes). The triage steps are offered: the
+  engine registers its own triage dispatcher over `EngineConfig.Triage` (core's `inboxTriage`,
+  [Local actions](local-actions.md)) unless `Dispatchers` names one; so are the notices (Notify me
+  and Tell me, [Notices](notices.md)), whose dispatcher core registers, the agent step, whose
+  `Runner` core registers ([Agents in the terminal](agents-in-the-terminal.md)), and the GitHub step
+  and Mark the GitHub notification done ([The GitHub step](github-step.md)), whose dispatcher the
+  engine registers over the Service's `GitHubActions`, as it does Merge it's and Post the agent's
+  review's (`registerWrites`); Run one of my scripts goes to `EngineConfig.Scripts`. A routine with
+  a step no dispatcher runs would still run in Dry run, and the engine records what it would run. A
+  `Result` may also say the step didn't start and what the match waits on instead (`Wait`,
+  `WaitWords`, and a `Hold` the user confirms), or that it goes back to the queue (`Requeue`), and
+  what a launch started (`Launched`, recorded on the run, `RecordRunLaunch`). For the notices, a job
+  also carries when its match was made, the routine's own banner switches (`Notices`), why it
+  matched (`Reason`, from the trace), and how the steps before it went (`Before`). `dispatch` hands
+  a job over only while `Engine.Enabled` says Autopilot (beta) is on, asked on the worker right
+  before `Dispatch`, so no part (the agent runner's starts included) is handed a step after it was
+  turned off; the freshness read before an agent's start or a GitHub action asks it too, so nothing
+  is read from GitHub for a start Autopilot turned off since.
 - **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`, counting
   no try), one the user stopped closes `dismissed`, one the engine stopped because its item merged
   or closed closes `closed` (counting no try), one out of usage (`RunOutOfUsage`) rests its profile

@@ -95,7 +95,7 @@ Cards** can make every card one line instead (**Compact cards**, below).
   ready to merge** with **Merge**. Workflow runs held for your approval on it come first, in
   amber: **1 run awaits your approval · you approved**, with **Open**.
 - **Asked again.** Either way, once your review is requested again it is an ordinary review
-  request: **Your review** (or **Re-review** after a push).
+  request: **Your review** (or **Review re-requested** after a push).
 - **An issue and its fix.** GitHub ties a pull request to the issue it closes once it merges
   when its description says so (**Closes #12**, **Fixes #12**) or someone links them in its
   Development panel. An issue's card then links to the pull request: **#14** after the
@@ -202,13 +202,12 @@ merge never brings the dot back, and so is a card you took yourself off on GitHu
 **Remove me as reviewer**). **Mark as read** and **Mark as unread**, in the card's **⋯** menu under
 **Inbox actions** and in its details, set it by hand: an unread card keeps its dot until you open it
 again. Something you do on github.com itself still lights the dot, since GitHub's last activity
-doesn't say who acted. Updating the app marks every item already in your inbox read, and so does
-your first sign-in for everything it brings; an item that arrives later starts unread, unless only a
-routine's search found it. **Settings → Cards** → **Unread dots** turns the dots off and on (on to
-start with); off, the cards show no dot and their menus no **Mark as** item, but what you open is
-still marked, so the dots are right when you turn them back on. All of it stays on this Mac: nothing
-is sent to GitHub, it doesn't mark your [GitHub notifications](github-notifications.md) read, and
-theirs don't drive it.
+doesn't say who acted. Your first sign-in marks everything it brings read; an item that arrives
+later starts unread, unless only a routine's search found it. **Settings → Cards** → **Unread dots**
+turns the dots off and on (on to start with); off, the cards show no dot and their menus no **Mark
+as** item, but what you open is still marked, so the dots are right when you turn them back on. All
+of it stays on this Mac: nothing is sent to GitHub, it doesn't mark your [GitHub
+notifications](github-notifications.md) read, and theirs don't drive it.
 
 ## Hidden labels
 
@@ -248,15 +247,15 @@ matched clone, are left alone.
 ## Where the details come from
 
 Each refresh reads them with a second GraphQL query that asks for the listed items by node ID.
-Asking for these fields inside the inbox query's three searches would cost about 12 points a
-refresh, because GitHub prices nested lists per result slot; asking for the listed items alone costs
-about one point per request. GitHub answers these requests at roughly 150 ms per item, so they go
-out in batches of at least 10 items, up to 4 at a time, and the details of the items already listed
-are read alongside the inbox query rather than after it. Only items new to the lists wait for a
-request of their own, so a refresh takes no longer than before once its items are known. The details
-are stored with each item and read again on every refresh, since checks finish without the item
-itself changing. A card whose details no refresh has read yet, right after updating the app for
-instance, says so.
+Asking for these fields inside the inbox query's searches (three when it was measured) would cost
+about 12 points a refresh, because GitHub prices nested lists per result slot; asking for the listed
+items alone costs about one point per request. GitHub answers these requests at roughly 150 ms per
+item, so they go out in batches of at least 10 items, up to 4 at a time, and the details of the
+items already listed are read alongside the inbox query rather than after it. Only items new to the
+lists wait for a request of their own, so a refresh takes no longer than before once its items are
+known. The details are stored with each item and read again on every refresh, since checks finish
+without the item itself changing. A card whose details no refresh has read yet, right after updating
+the app for instance, says so.
 
 ## Watching a refresh
 
@@ -314,7 +313,7 @@ request:
 - **Model** and **Effort:** each offers its default first, with its value and source, as in
   "Default · Sonnet (prompt)", then the chosen agent's models and effort levels. Codex's models
   come from its own local model cache, so the list needs no request.
-- **Start in a worktree** and **Start in plan mode** (**Read-only** for Codex), each showing
+- **Start in a worktree** and **Start in plan mode** (**Start read-only** for Codex), each showing
   where its default comes from. On an outside contributor's item, plan mode is checked and
   locked until **Use profile permissions for this item** is ticked.
 - **Preview:** exactly what the launch runs, planned without writing anything: the filled-in
@@ -400,14 +399,14 @@ the command, and says **On** once the projects show.
 ### How they are read
 
 The projects and their fields come with each issue's other details, in the same requests, so they
-never add one. GitHub prices the field values per project an issue is in, so with them a batch of 50
-issues costs about four points of the GraphQL budget instead of one; only a token with the scope
-pays it. Sub-issue counts cost nothing extra. A token that reports its scopes is asked for projects
-only when it has the scope. The details of the items already listed are asked for before this
-refresh knows the token's scopes, the way the last refresh read them. When the scope was just
-granted, every item's details are read again once the scopes are known, so the first refresh after
-`gh auth refresh` shows every issue's projects. When it was taken away, GitHub refuses the projects,
-and those requests are sent again without them, so the refresh still succeeds and the cards show
-none. A token that reports no scopes, such as a fine-grained token, is asked too; once GitHub
-refuses it the projects, the app stops asking it. Refreshing one card reads its projects when the
-last whole refresh could.
+never add one. GitHub prices the field values per project an issue is in, so with them a batch of
+issues costs a few points of the GraphQL budget instead of one; only a token with the scope pays it.
+Sub-issue counts cost nothing extra. A token that reports its scopes is asked for projects only when
+it has the scope. The details of the items already listed are asked for before this refresh knows
+the token's scopes, the way the last refresh read them. When the scope was just granted, every
+item's details are read again once the scopes are known, so the first refresh after `gh auth
+refresh` shows every issue's projects. When it was taken away, GitHub refuses the projects, and
+those requests are sent again without them, so the refresh still succeeds and the cards show none. A
+token that reports no scopes, such as a fine-grained token, is asked too; once GitHub refuses it the
+projects, the app stops asking it. Refreshing one card reads its projects when the last whole
+refresh could.

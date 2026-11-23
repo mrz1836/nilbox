@@ -114,11 +114,11 @@ core hands the worktrees too (`ErrNoGit` when it can't); an ls-remote's environm
 `CheckoutSetup`, and a setup's `Checkout`, the same allowing no transport) with `GIT_DIR` and
 `GIT_WORK_TREE` set to the clone's folders, which beat its config, and `GIT_NO_REPLACE_OBJECTS=1`,
 so a replace ref can't have a checkout of the commit the launch checked write another's files; and
-every setting, `Hardening` (`core.hooksPath` at an empty folder, so no hooks folder's hook runs, and
-`hook.<event>.enabled=false` for every event git fires, `hookEvents`, which git 2.56 documents as
-turning off every hook of the event, the user's own config hooks too, but which a git whose config
-hooks predate that switch may read as one hook's switch: the clone's own `hook.*` settings are
-refused regardless; no fsmonitor or submodule recursion), `fetchHardening`
+every setting, `Hardening` (`core.hooksPath=/dev/null`, where git finds no hook, so no hooks
+folder's hook runs, and `hook.<event>.enabled=false` for every event git fires, `hookEvents`, which
+git 2.56 documents as turning off every hook of the event, the user's own config hooks too, but
+which a git whose config hooks predate that switch may read as one hook's switch: the clone's own
+`hook.*` settings are refused regardless; no fsmonitor or submodule recursion), `fetchHardening`
 (`core.alternateRefsCommand=true`, so a fetch from a clone with alternates runs nothing to learn
 their refs, an empty one making git try to run "" on every fetch; `maintenance.auto=false` and
 `gc.auto=0`, so no fetch or merge starts maintenance), `credentialHardening`

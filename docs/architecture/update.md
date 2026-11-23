@@ -38,25 +38,26 @@ its platform is the build's, its version a release's (no prerelease) and newer t
 releases no longer offer is dropped, so deleting a release's manifest withdraws it from every
 install (the lever for pulling a bad release).
 
-Where the app can update itself is `Location` (`OK` only in `/Applications` or `~/Applications`, in
-a folder it can write); elsewhere checks still run and tell, nothing downloads on its own, and
-`Download` and `Restart` refuse with `ErrLocation` ("Move Nilbox to Applications to update it.").
-`Location.Movable` says a move helps (a build that updates, its bundle outside every Applications
-folder), and the bound `MoveToApplications` moves it: the target worked out again (`/Applications`
-when writable, else `~/Applications`, made when missing), a copy of the app already there, by its
-`Info.plist`'s bundle identifier (`bundleID`, never a link followed), never replaced (`MoveExists`,
-for `OpenInApplications`, which checks that copy's signature against the running app's requirement
-and opens it), anything else there refused (`ErrTargetTaken`), and otherwise the copy made and
-checked in a hidden folder of the move's own beside the target (`stage`, `stagePrefix`, its marker
-and an empty bundle in it), through the `Mover` the shell attaches (`AttachMover`), and only then
-renamed into the target, never over anything that appeared there (`place`, `renameNew`: RENAME_EXCL
-on macOS), so a copy cut off or never checked is never where the app goes, and a failed copy's
-removal (`discard`, that folder alone) never touches what was there; a later move removes such a
-folder a cut-off move left (`sweepLeftovers`: named so, marked before the copy began by
-`stageMarker`, the bundle ID and the move's process, holding nothing else but the copy however far
-it got, and its maker this run or gone by `procs.Probe`, or, when that can't be told, older than
-`leftoverAfter`); then the Mover quits the normal way and opens the copy once the app has quit
-(`MoveMoved`).
+Where the app can update itself is `Location` (`OK` only in `/Applications` or `~/Applications`, or,
+for a rehearsal, in its own folder, `RehearsalFolder`, in a folder it can write); elsewhere checks
+still run and tell, nothing downloads on its own, and `Download` and `Restart` refuse with
+`ErrLocation` ("Move Nilbox to Applications to update it."). `Location.Movable` says a move helps (a
+build that updates, its bundle outside every Applications folder), and the bound
+`MoveToApplications` moves it: the target worked out again (`/Applications` when writable, else
+`~/Applications`, made when missing), a copy of the app already there, by its `Info.plist`'s bundle
+identifier (`bundleID`, never a link followed), never replaced (`MoveExists`, for
+`OpenInApplications`, which checks that copy's signature against the running app's requirement and
+opens it), anything else there refused (`ErrTargetTaken`), and otherwise the copy made and checked
+in a hidden folder of the move's own beside the target (`stage`, `stagePrefix`, its marker and an
+empty bundle in it), through the `Mover` the shell attaches (`AttachMover`), and only then renamed
+into the target, never over anything that appeared there (`place`, `renameNew`: RENAME_EXCL on
+macOS), so a copy cut off or never checked is never where the app goes, and a failed copy's removal
+(`discard`, that folder alone) never touches what was there; a later move removes such a folder a
+cut-off move left (`sweepLeftovers`: named so, marked before the copy began by `stageMarker`, the
+bundle ID and the move's process, holding nothing else but the copy however far it got, and its
+maker this run or gone by `procs.Probe`, or, when that can't be told, older than `leftoverAfter`; or
+empty, cut off before it was marked, and older than `leftoverAfter`); then the Mover quits the
+normal way and opens the copy once the app has quit (`MoveMoved`).
 
 `OpenInApplications` refuses a copy macOS would open from a hidden folder (`Mover.Translocates`,
 `ErrQuarantined`), leaving its mark, before the check, and a check that couldn't read the app's own

@@ -6,11 +6,11 @@
   or Settings), and **Stop all** if agents are working. Open the routine's Activity to see each
   match and why, **Undo** what it changed on your Mac, put it back in **Dry run**, fix its
   conditions or limits, and **Test** before you turn it back on.
-- **It seems to do nothing.** Settings → Autopilot's **Last checked** says whether the engine
-  ran, and *another copy runs it* means this one doesn't hold the lock. **This Mac** says what
-  is missing. The routine's **Watching** list shows whether its search finds the item, and the
-  item's **⋯** menu → **Autopilot ▸** → **Why didn't a routine run?** gives each condition with
-  its value, and the ledger's view.
+- **It seems to do nothing.** Settings → Autopilot's **Last checked** says whether the engine ran,
+  and *Autopilot is running in another copy of Nilbox* means this one doesn't hold the lock. **This
+  Mac** says what is missing. The routine's **Watching** list shows whether its search finds the
+  item, and the item's **⋯** menu → **Autopilot ▸** → **Why didn't a routine run?** gives each
+  condition with its value, and the ledger's view.
 - **A run is stuck.** **Stop** asks the agent to stop, then SIGTERM, then SIGKILL. A run still
   marked working after a restart is followed again if its process lives, else *interrupted*,
   its match back under Needs you with **Take over**. Its worktree can be cleaned up in the

@@ -20,8 +20,9 @@ terminal to `agentRuns`. Its `Dispatch` is a launch's, with three differences:
    `--json-schema` for the report, `--append-system-prompt` with the unattended note, and
    `--system-prompt-snapshot off`), a profile's extra arguments refused where they set what
    the fence sets or would loosen it (`agent.CheckFenced`). Its holds are a launch's own (`heldBack`): a
-   session or a run in the worktree, the pull request's files under the unattended scope, and
-   a dirty worktree, each confirmed only by the routine's user; after `EnsureWorktree`,
+   session or a run in the worktree, which no one confirms (the start waits for it to end), and
+   the pull request's files under the unattended scope and a dirty worktree, each confirmed only
+   by the routine's user; after `EnsureWorktree`,
    `Backgrounds.Made` holds the worktree made as `heldBack` held the one planned, and a
    worktree off the head the plan checked waits (`waiting: dirty_worktree`). Then
    `Backgrounds.Fenced` works the run's fence out for the worktree made (`agent.PrepareFence`

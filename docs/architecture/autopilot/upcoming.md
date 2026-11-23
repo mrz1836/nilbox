@@ -10,8 +10,8 @@ which `evaluateItem` checked first. Each becomes an `Upcoming` (the routine, its
 waits for an OK, `waitsForOK`: Ask first with a step `asksFirst` names, its trigger, `When` and
 `At`, and its steps as a match's show before they start, `plannedSteps`, once a cycle). A pass that
 decided every routine replaces the engine's map by item whole (`keepUpcoming`, under `Engine.mu`);
-turning Autopilot off empties it. So `Service.Upcoming` is a map lookup, no database, no GitHub, and
-the `autopilot:updated` every cycle sends keeps the window's copy current. `LeaveAlone(routine,
-item)` inserts the routine's hands-off row (`whyLeftAlone`), which Activity's Left alone line and
-`LetActAgain` already handle, forgets the item's entry at once (`dropUpcoming`), and wakes the
-engine.
+turning Autopilot off empties it. So `Service.Upcoming` reads Autopilot's settings, then looks in a
+map: no other read, no GitHub, and the `autopilot:updated` every cycle sends keeps the window's copy
+current. `LeaveAlone(routine, item)` inserts the routine's hands-off row (`whyLeftAlone`), which
+Activity's Left alone line and `LetActAgain` already handle, forgets the item's entry at once
+(`dropUpcoming`), and wakes the engine.

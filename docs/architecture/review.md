@@ -64,7 +64,7 @@ push-time file rules, Copilot's review, and a linear history for squash or rebas
 protection neither requires deployments nor locks the branch; BLOCKED, `viewerCanMergeAsAdmin`, and
 `REVIEW_REQUIRED`; the rollup SUCCESS with each required check (the rules' and classic protection's)
 present by name and passed; and no review thread unresolved. A list longer than its page, and a
-null, fail closed. GitHub still working it out (UNKNOWN, a rollup pending or missing) is
+null, fail closed. GitHub still working it out (UNKNOWN, a rollup pending, expected, or missing) is
 `ErrPastRulesNotYet`; anything else `ErrPastRulesRefused`, which wraps `ErrNotOffered`. A state
 GitHub would merge anyway merges as any other.
 
@@ -301,9 +301,10 @@ Unassign me, on the card), and so is an edit that would leave more than ten assi
 the cache's assignees with GitHub's answer (`cacheStore.setAssignees`: one transaction of `GetDiff`,
 the new list, `fitContext`, and `SetDiffContext` with the row's own `context_at`, so the next
 refresh is no sooner), and the window rebuilds the sheet with no read; a cache it can't rewrite is
-expired instead (`settle`), so the next refresh reads it. The inbox's card is not touched: it knows
-only whether the user is assigned, which its next refresh reads. Each person assigned is recorded as
-assigned in the repository. A read already under way when an edit lands can overwrite the rewritten
-list with the one it read; the next read puts it right. `PeopleSummary` and `ForgetPeople`
-(`people.go`) count and empty the People directory for Settings › Reviewing › People; forgetting
-answers with what is left, so the row needs no second read.
+expired instead (`settle`), so the next refresh reads it. The inbox's card is not touched unless the
+edit assigns the user: GitHub's answer then tells the inbox (`Acted.SelfAssigned`), and the card
+reads as assigned to them at once. Each person assigned is recorded as assigned in the repository. A
+read already under way when an edit lands can overwrite the rewritten list with the one it read; the
+next read puts it right. `PeopleSummary` and `ForgetPeople` (`people.go`) count and empty the People
+directory for Settings › Reviewing › People; forgetting answers with what is left, so the row needs
+no second read.

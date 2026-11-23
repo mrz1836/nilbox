@@ -62,7 +62,7 @@ again**.
 
 **The simulator** runs the triage steps through the inbox's real triage (`sim.Triage`, the
 adapter core's `inboxTriage` is, over the app the scenario built), and its scenarios include
-the *Snooze passing bot PRs* template as `spec/testdata/templates` writes it (the inbox reasons,
+the *Snooze passing bot PRs* template as the template gallery holds it (the inbox reasons,
 Checks pass, a trusted bot's patch or minor update: snooze three days, once per head commit,
 waking by the user's rules, at once in Ask first, a record alone in Dry run), Undo after the
 user changed some of the items, and hands off and **Let it act again**.

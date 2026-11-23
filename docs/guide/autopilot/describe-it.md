@@ -110,16 +110,16 @@ switched off.
 ## How Claude works here
 
 Each message is one turn of Claude Code, run headless on its profile's own sign-in (with an API key
-from your shell only while **Use an API key when one is set** is on), in an empty folder of Nilbox's
-own, with none of Claude Code's own tools, none of your or a folder's settings, hooks, MCP servers,
-or `CLAUDE.md`, and no tool but Nilbox's: its tool server, the app's own binary in a tool mode,
-which reads how Autopilot works and the snapshot of your setup Nilbox writes, checks a proposal, and
-writes it for the tab. The tool server reads nothing but that snapshot and the proposals' own
-folders, runs nothing, reaches no network, and asks GitHub nothing; only a card's **Test** reads
-GitHub, on your click. A turn whose own setup isn't that (Nilbox's tools didn't start, or another
-tool showed up) stops before Claude goes on, and says so. Each turn may spend $2, as Claude Code
-counts it, and stops there (*The turn reached its budget of $2 before it finished.*); turns count
-toward none of Autopilot's limits, its daily cap included. A turn running shows in Claude Code's own
-list of sessions as *Nilbox: Describe it*, and no session pill follows it. What Claude reads is
-generated from this version of Nilbox's own catalog, so an update teaches it what Autopilot can do
-from the next turn on.
+from your shell only while **Use an API key for Claude Code when one is set** is on), in an empty
+folder of Nilbox's own, with none of Claude Code's own tools, none of your or a folder's settings,
+hooks, MCP servers, or `CLAUDE.md`, and no tool but Nilbox's: its tool server, the app's own binary
+in a tool mode, which reads how Autopilot works and the snapshot of your setup Nilbox writes, checks
+a proposal, and writes it for the tab. The tool server reads nothing but that snapshot and the
+proposals' own folders, runs nothing, reaches no network, and asks GitHub nothing; only a card's
+**Test** reads GitHub, on your click. A turn whose own setup isn't that (Nilbox's tools didn't
+start, or another tool showed up) stops before Claude goes on, and says so. Each turn may spend $2,
+as Claude Code counts it, and stops there (*The turn reached its budget of $2 before it finished.*);
+turns count toward none of Autopilot's limits, its daily cap included. A turn running shows in
+Claude Code's own list of sessions as *Nilbox: Describe it*, and no session pill follows it. What
+Claude reads is generated from this version of Nilbox's own catalog, so an update teaches it what
+Autopilot can do from the next turn on.

@@ -5,7 +5,8 @@
 Each release is built, signed, and published by
 [`desktop-release.yml`](../../.github/workflows/desktop-release.yml) on macOS runners. It is the one
 workflow that may use macOS: a repository test (`TestNoMacOSRunners`) holds every other to
-ubuntu, and this one to a single pinned `macos-<version>` label. GoFortress still runs every
+ubuntu, and another (`TestMacOSRunnerExceptionIsOnlyTheReleaseWorkflow`) holds this one to a
+single pinned `macos-<version>` label. GoFortress still runs every
 check on the tag, but publishes nothing itself (`ENABLE_RELEASE=false` in
 `.github/env/90-project.env`), so a release never shows without its files. Another repository
 test (`TestGoFortressReadsEnableRelease`) fails while that line is set but GoFortress's synced

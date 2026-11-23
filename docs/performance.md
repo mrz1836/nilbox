@@ -237,8 +237,9 @@ number.
 `bin/Nilbox Dev.app/Contents/MacOS/nilbox`: 22,949,712 bytes, or 22.9 MB in decimal megabytes.
 The whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
 (24,226,109 bytes).
-The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend. Measured once the GitHub notifications' clearing landed.
+The binary was built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
+built frontend. Measured once the GitHub notifications' clearing landed, before a build from source
+carried the inspector: it now adds the `devtools` tag, which a release leaves out.
 
 The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.31 MB without source
 maps (2,311,405 bytes). Before its first paint the window loads 844,221 bytes of script
@@ -344,7 +345,8 @@ larger requests up to 100 items, then requests of 25 items; each costs a point. 
 details read each pull request's merge state too (`mergeStateStatus`, which GitHub works out
 per pull request, about 90 ms each, measured in November 2026), a request stops at 25 items,
 where it took 4.6 s; at 50 it came near GitHub's 10-second limit. Asking for
-the same details inside the inbox query's three searches would cost 12 points a refresh
+the same details inside the inbox query's searches, three when this was measured, would cost 12
+points a refresh
 (2.9% of the budget), because GitHub prices nested lists by the result slots asked for, not
 the items returned; that dry-run cost is why the details are a separate query. Before the
 cards read details, a refresh cost 1 point (0.24%).
@@ -515,19 +517,19 @@ tick after it runs, finds every occurrence recorded and writes nothing. The inbo
 the items' facts is measured apart (`BenchmarkRefreshCycle`), so the benchmark hands them over
 ready.
 
-**How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a
-real database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle,
-`BenchmarkEngineFirstCycle` the first. `BenchmarkLedgerKeys` times building the ledger's keys in
-memory from the database (`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of
-them (`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path
-patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
-`internal/autopilot/eval`, which prepares each routine once and decides it on every item, as a
-cycle does. Measured on the M1 Max (2026-11-17) while other branches built and tested on it (a
-load average of about 30), the steady cycle before and after the change run one after the
-other, so the numbers are high rather than low. The routines prepared once a cycle were
-measured on 2026-11-21 under a heavier load still (a load average of 30 to 160): the commits
-before and after built as test binaries and run in turn, ten runs each with `-benchmem`, once
-on every core and once with `-cpu 1`, and compared with `benchstat`.
+**How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a real
+database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle, `BenchmarkEngineFirstCycle`
+the first. `-bench BenchmarkLedgerKeys` times building the ledger's keys in memory from the database
+(`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of them
+(`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path patterns
+run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in `internal/autopilot/eval`,
+which prepares each routine once and decides it on every item, as a cycle does. Measured on the M1
+Max (2026-11-17) while other branches built and tested on it (a load average of about 30), the
+steady cycle before and after the change run one after the other, so the numbers are high rather
+than low. The routines prepared once a cycle were measured on 2026-11-21 under a heavier load still
+(a load average of 30 to 160): the commits before and after built as test binaries and run in turn,
+ten runs each with `-benchmem`, once on every core and once with `-cpu 1`, and compared with
+`benchstat`.
 
 **Results.** The evaluation takes 10 ms (10.2 ms, the median of ten runs, against 15.9 ms just
 before each routine was prepared once a cycle, run in turn with it: 36% less; 39% less with

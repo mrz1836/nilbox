@@ -11,7 +11,8 @@ leaf, held by `TestLeafImports` to the routines core's `catalog`, `spec`, and `w
 `textutil`, and `uierr`: it reads no database, starts nothing, and never asks GitHub. What a
 draft's checks read beyond the draft comes through the `Setup` it is handed (`Library`, the
 prompts as a routine names them; `Scripts`, the user's own, read only for a spec with a script
-step; `StarterNames`, for the sentence), a read that fails skipping its checks, and what this
+step; `StarterNames`, for the sentence; `PastRules`, whether the past-the-rules switch is on, for a
+warning), a read that fails skipping its checks, and what this
 build runs through `Offers` (nil is the catalog's own, `CatalogOffers`; a test hands in fakes).
 
 - **A reading.** `Read(ctx, spec, mode, setup, offers)` returns what the builder shows

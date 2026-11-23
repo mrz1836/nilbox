@@ -48,8 +48,9 @@ unless you say so. So by default every launch unsets the variables that would si
 a key instead: Claude Code's `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, and Codex's
 `OPENAI_API_KEY`, `CODEX_API_KEY`, and `CODEX_ACCESS_TOKEN` (either of the last two signs Codex in
 over a ChatGPT sign-in), which a profile's own environment can't set either; the launch menu's
-Preview lists them (`unset ANTHROPIC_API_KEY`). **Use an API key when one is set**, under **Settings
-→ Launching**, one switch per agent, off at first, lets a key from your shell through for that
+Preview lists them (`unset ANTHROPIC_API_KEY`). **Use an API key for Claude Code when one is set**
+and **Use an API key for Codex when one is set**, under **Settings → Launching**, off at first,
+each lets a key from your shell through for that
 agent's launches, billed to that key. The same rule decides the environment of every launch: from
 the launch menu, a resume, and an Autopilot routine's. Nothing logs a variable's value.
 
@@ -283,7 +284,8 @@ configuration [asks first](sensitive-files.md).
 The first launch in iTerm2 makes macOS ask once whether the app may control iTerm2 (macOS's
 Automation permission, which has nothing to do with [Autopilot](autopilot/README.md)): "“Nilbox”
 wants access to control “iTerm”", followed by the app's reason: Nilbox opens your terminal app
-(such as iTerm2) to start coding sessions in your local clones. Choose **Allow**. Terminal.app
+(such as iTerm2) to start coding sessions in your local clones, and asks Finder to move a copy of
+a tool to the Trash when you choose to. Choose **Allow**. Terminal.app
 launches never ask. An Autopilot routine's run in your terminal, and **Take over**, open
 iTerm2 the same way, so allow it before you leave a routine to run while you're away.
 

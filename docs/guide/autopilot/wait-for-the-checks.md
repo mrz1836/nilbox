@@ -11,9 +11,9 @@ only when nothing did for two minutes, or while the push isn't seen yet.
 
 | Verdict | When | Says |
 |---|---|---|
-| **Fixed** | Every check passes on its commit, once they settled (**Settle for**, 2 minutes) | *Fixed: checks pass on 4f2a9c1.* |
+| **Fixed** | Every check passes on its commit, once they settled (the step's **settle** time, 2 minutes) | *Fixed: checks pass on 4f2a9c1.* |
 | **Still failing** | A check fails on it | *Still failing: CodeQL.*, naming up to three; on the routine's last try, *Gave up after 2 tries.* too |
-| **Unknown** | No verdict within **Give up after** (2 hours), no check ran on it within ten minutes, or its workflow runs wait for a maintainer to approve them | *Unknown: the checks on 4f2a9c1 hadn't finished after 2 hours.* |
+| **Unknown** | No verdict within its **give up after** time (2 hours), no check ran on it within ten minutes, or its workflow runs wait for a maintainer to approve them | *Unknown: the checks on 4f2a9c1 hadn't finished after 2 hours.* |
 | **Overtaken** | Someone else pushed after it, a Dependabot rebase say | *Pushed 4f2a9c1, but someone else pushed after it, so its fix wasn't checked.* |
 | **Push rejected** | It committed, but the branch moved while it worked, and it never force-pushes | *Its push was rejected: the branch moved while it worked.* |
 | **No push** | It pushed nothing | *No push:* and the agent's own words |

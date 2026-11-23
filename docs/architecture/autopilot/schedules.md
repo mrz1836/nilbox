@@ -32,36 +32,35 @@ routine, *3 Dependabot pull requests need you*, *2 failing, 1 waiting for review
 #88, …* (five named, the rest counted), keyed by the routine, when it was made, and a hash of
 its matches, so a digest told again after a quit is told once and a later one is its own.
 
-**Run one of my scripts** (`scripts.go`, `catalog.StepScript`, `spec.ScriptStep`: the
-script's ID, and the name it was picked under, for the sentence and an export). It is an
-asks-first step of the scripts part (`catalog.DispatchScripts`), recorded as a run under
-runner `script` (`autopilot_runs`' check takes that runner) and handed to `EngineConfig.Scripts`, a `Runner`, as
-an agent's is: Dispatch starts it and returns Running, and its end comes through `RunEnded`;
-the engine routes a run's `Alive`, a Stop, and Stop all by its runner (`runnerFor`). Its limits
-are a GitHub action's: the tries, the routine's runs a day, Pause, the active hours, an outside
-contributor's item waiting for the user, and one run per item; it takes no agent's slot and
-counts toward neither the agents' caps nor the GitHub actions' (`isAgentRunner`). The user's
-own scripts reach the engine and the builder through `MyScripts` (core's `myScripts`, over
-`scripts.Routines.Mine`), which the bound `MyScripts` lists, and which `Save` and `Describe`
-check a step's ID against (the draft leaf's `scriptProblems`). **Ask before running** is the
-engine's to honor,
-since Repo scripts' Run leaves it to its window: the gate's first check (`scriptAsks`) holds a
-script step whose script asks until the step's `Confirmed` holds `ScriptKey(id, look)`, the
-script as the user saw it (its look hashes its name, command, place, and the setting), whatever
-the mode, a manual run's and an approved match's too, waiting `script_asks` with the hold's key
-on the step, which `Approve` confirms (`confirmHold`); a script edited since asks again.
-Core's runner (`adapters_scriptsteps.go`, `scriptSteps`) checks it once more as it starts
-(`ScriptAsks`), finds the item's clone as a launch does (`launcher.CloneTarget`), and runs it
-through `scripts.Routines.Run`, the same spec Repo scripts' Run works out, always in the app,
-refusing a script saved otherwise since its check (`ErrChanged`), its end told back from the
+**Run one of my scripts** (`scripts.go`, `catalog.StepScript`, `spec.ScriptStep`: the script's ID,
+and the name it was picked under, for the sentence and an export). It is an asks-first step of the
+scripts part (`catalog.DispatchScripts`), recorded as a run under runner `script` (`autopilot_runs`'
+check takes that runner) and handed to `EngineConfig.Scripts`, a `Runner`, as an agent's is:
+Dispatch starts it and returns Running, and its end comes through `RunEnded`; the engine routes a
+run's `Alive`, a Stop, and Stop all by its runner (`runnerFor`). Its limits are a GitHub action's:
+the tries, the routine's runs a day, Pause, the active hours, an outside contributor's item waiting
+for the user, and one run per item; it takes no agent's slot and counts toward neither the agents'
+caps nor the GitHub actions' (`isAgentRunner`). The user's own scripts reach the engine and the
+builder through `MyScripts` (core's `myScripts`, over `scripts.Routines.Mine`), which the bound
+`MyScripts` lists, and which `Save` and `Describe` check a step's ID against (the draft leaf's
+`scriptProblems`). **Ask before running** is the engine's to honor, since Repo scripts' Run leaves
+it to its window: the gate's first check that applies to a script step (`scriptAsks`, after the
+three that hold only a Merge it) holds a script step whose script asks until the step's `Confirmed`
+holds `ScriptKey(id, look)`, the script as the user saw it (its look hashes its name, command,
+place, and the setting), whatever the mode, a manual run's and an approved match's too, waiting
+`script_asks` with the hold's key on the step, which `Approve` confirms (`confirmHold`); a script
+edited since asks again. Core's runner (`adapters_scriptsteps.go`, `scriptSteps`) checks it once
+more as it starts (`ScriptAsks`), finds the item's clone as a launch does (`launcher.CloneTarget`),
+and runs it through `scripts.Routines.Run`, the same spec Repo scripts' Run works out, always in the
+app, refusing a script saved otherwise since its check (`ErrChanged`), its end told back from the
 run engine's `Recorded` with how it ended (`RoutineEnd`, from its `Finish`: the user's Stop, its
-time limit, the app's quit, which interrupts it). A busy clone waits queued, Scripts turned off
-or a script that can't run waits not ready, no clone waits for the user, and a script gone or
-not showing in the clone fails the step. A step names its script by its ID and the name it was
-picked under: a script saved under another name waits not ready, and `Save` and `Describe` say
-so (`renamedWords`), since an ID a routine brought from another Mac (an export, a backup) may
-name another script here; the builder offers it to be picked again. After a restart, `Alive` reads the run engine's record
-of the run's `script_run_id` and tells the engine an end it didn't hear.
+time limit, the app's quit, which interrupts it). A busy clone waits queued, Scripts turned off or a
+script that can't run waits not ready, no clone waits for the user, and a script gone or not showing
+in the clone fails the step. A step names its script by its ID and the name it was picked under: a
+script saved under another name waits not ready, and `Save` and `Describe` say so (the draft leaf's
+`RenamedWords`), since an ID a routine brought from another Mac (an export, a backup) may name
+another script here; the builder offers it to be picked again. After a restart, `Alive` reads the
+run engine's record of the run's `script_run_id` and tells the engine an end it didn't hear.
 
 ## Run on the matches now (`runon.go`)
 
@@ -84,7 +83,7 @@ reports as the API's price; the window says *about* for every figure), and the t
 never started counts nowhere. A run in the terminal reports neither, and its session's tokens are
 the session panel's (`internal/sessions`' `Usage`, from the agent's own files). A background run's
 session reads its run's instead: `Usage` asks its `RunTokens` (core's `backgroundTokens`, over
-`Engine.BackgroundTokens`, by the run engine's run through the index `0016` adds on
+`Engine.BackgroundTokens`, by the run engine's run through the index `0103_autopilot` makes on
 `script_run_id`), which the runner keeps current (`Engine.RunUsage`), never the transcript, and
 marks them `FromRun`.
 

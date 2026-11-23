@@ -12,7 +12,7 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **Agents at once** | 2 | The most coding agents your routines will run at the same time, at most 3 |
 | **Agent runs a day** | 20 | The most coding agent runs your routines will start in a day, together |
 | **GitHub actions a day** | 500 | The most actions on GitHub your routines will send in a day, together, up to 2,000 |
-| **GitHub actions an hour** | 120 | The most they send in an hour, 60 to 300, and a sixth of that a minute: GitHub allows about 500 writes an hour, which your own clicks and tools share |
+| **GitHub actions an hour** | 120 | The most they send in an hour, 10 to 300, and a sixth of that a minute: GitHub allows about 500 writes an hour, which your own clicks and tools share |
 | **Daily cap** | Off | The most your routines' coding agents will use in a day, in dollars ($1 to $500) or tokens (100,000 to 50 million); see [budgets and caps](budgets-and-caps.md) |
 | **Keep the Mac awake while agents work** | Off | Keeps the Mac from going to sleep on its own while a routine's agent works |
 | **Hold agent starts while their provider reports an outage** | On | Holds a routine's agent while its provider's status page reports a major outage |

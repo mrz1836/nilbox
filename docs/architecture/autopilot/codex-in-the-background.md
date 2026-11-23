@@ -38,7 +38,7 @@ codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
   any host: the hook refuses the network tools, but a test program isn't held to GitHub and the
   registries as Claude Code's sandbox holds it. The profile's own is a click's access. Every
   preset passes `approval_policy="never"`, `web_search="disabled"`, and the fence hook as
-  `-c hooks.PreToolUse=[{hooks=[{type="command",command=...}]}]` with
+  `--config hooks.PreToolUse=[{hooks=[{type="command",command=...,timeout=30}]}]` with
   `--dangerously-bypass-hook-trust`, without which a `-c` hook silently doesn't run; a hook
   with no matcher runs on every call. The hook's protocol is Claude Code's (`--fence-hook-v1`),
   and the policy knows Codex's tools: `Bash`, `apply_patch` (its patch's files decided as

@@ -2,15 +2,15 @@
 
 [Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/store`](../architecture/store.md), [`internal/setup`](../architecture/setup.md) · See also: [A sandbox on fresh data](../development/build-targets.md#a-sandbox-on-fresh-data)
 
-**Settings → About → Reset Nilbox…** starts the app over on fresh data, once you type `reset`
-to confirm. It saves a backup of your whole setup first, as an import does (to
-`backups/nilbox before reset <UTC time>.json`), refusing the reset when that fails, and it
-waits while runs are going in the app. Then it asks for the reset, quits, and opens again; the
-start carries the reset out before anything opens the database, and opens on the
-[first-run setup](first-run-setup.md), whose Welcome says what came back. From a terminal,
-`magex app:reset` does the same for [Nilbox Dev](../development/build-targets.md#nilbox-dev-a-build-from-source): it quits the
-running Nilbox Dev, asks for the reset, and opens it. The release and Nilbox Dev share one data
-folder, so a reset in either starts both over.
+**Settings → About → Reset Nilbox…** starts the app over on fresh data, once you type `reset` to
+confirm. It saves a backup of your whole setup first, as an import does (to `backups/nilbox before
+reset <UTC time>.json`), refusing the reset when that fails, and it refuses while runs are going in
+the app. Then it asks for the reset, quits, and opens again; the start carries the reset out before
+anything opens the database, and opens on the [first-run setup](first-run-setup.md), whose Welcome
+says what came back. From a terminal, `magex app:reset` starts [Nilbox
+Dev](../development/build-targets.md#nilbox-dev-a-build-from-source) over the same way, without
+saving a backup first: it quits the running Nilbox Dev, asks for the reset, and opens it. The
+release and Nilbox Dev share one data folder, so a reset in either starts both over.
 
 | Starts over | Stays |
 |---|---|

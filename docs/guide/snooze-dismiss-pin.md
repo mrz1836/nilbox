@@ -18,12 +18,13 @@ on its own tab.
   **Dismissed** tab, most recently dismissed first, however much it changes on GitHub.
 - **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its list right
   away.
-- **Pin** (the pushpin, at the right end of the card's buttons) keeps an item at the top of its
-  list, above everything not pinned. With more than one pinned, the most
-  recently pinned comes first; the rest keep their order by last activity. A pinned card
-  shows its pin filled, in the accent color, without hovering; click it to unpin, and the item
-  goes back to its place. A pin outlasts a snooze or a dismissal: the item waits in its tab,
-  pin showing, and comes back pinned, so **Undo** leaves the pin as it was.
+- **Pin** (the pushpin, the last of the card's triage buttons, just before its **⋯**) keeps an item
+  at the top of its list, above everything not pinned. With more than one pinned, the most recently
+  pinned comes first; the rest keep their order by last activity. A pinned card shows a filled pin
+  before its title, in the accent color, without hovering; hover the card and click the pin among
+  its buttons to unpin, and the item goes back to its place. A pin outlasts a snooze or a dismissal:
+  the item waits in its tab, pin showing, and comes back pinned, so **Undo** leaves the pin as it
+  was.
 
 Every one of these is also in the card's [menu](item-menu.md), under
 **Inbox actions**, and in the header of the [review sheet](reviewing-a-pull-request.md) and the

@@ -183,7 +183,8 @@ timers on only in itself or a `beforeEach`, undoes neither, and never undoes its
 `components/Picker.tsx` is the one picker both sheets edit with: an Edit button that opens a modal
 of rows to check and uncheck, filtered by its field, which sends only what differs from the item
 (`changes`, by `Wanted`, what to have rather than what to flip), moved out of
-`issue/IssuePickers.tsx`, whose label and assignee pickers build on it. A row may carry an icon (an
+`issue/IssuePickers.tsx`, whose label picker builds on it; `AssigneePicker.tsx` builds both sheets'
+assignee picker on its `PickerDialog`. A row may carry an icon (an
 avatar) and a section heading; ↑ and ↓ move the active row from the field (`aria-activedescendant`),
 Enter checks or unchecks it, ⌘↩ applies, and a busy note shows under the `loading-bar`.
 `review/ReviewerPicker.tsx` builds the review sheet's on it, from `ReviewerCandidates` (a local read

@@ -13,9 +13,9 @@ that failed on the head commit, from the last read of them. A terminal run has n
 see, so nothing follows it but a notice, and the step ends as the terminal opens. Ask first suits
 it best: on Autopilot, the builder warns, it opens a terminal tab while you work.
 
-Right before each start, in this order: this Mac must be [ready](this-mac.md) for the routine;
-an [outside contributor](../outside-contributors.md)'s item takes an agent only where its org or
-repository allows it, planning only; the step's prompt must still be in your library and fit
+Right before each start, in this order: an [outside contributor](../outside-contributors.md)'s
+item takes an agent only where its org or repository allows it, planning only; this Mac must be
+[ready](this-mac.md) for the routine; the step's prompt must still be in your library and fit
 the item; while **Hold agent starts while their provider reports an outage** is on, the agent's
 provider's status page must not report a major outage on the part it depends on (Claude Code's,
 or Codex CLI's); the repository needs a clone, and the tools its files say it needs (a `go.mod`

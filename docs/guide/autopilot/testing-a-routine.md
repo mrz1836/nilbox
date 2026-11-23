@@ -32,8 +32,8 @@ routine's own match for what it matches now, so it never runs on that again. It 
 for the routine as saved, and runs only while it is on; in Dry run, each records what it would
 do.
 
-**Preview ▸** on an item of a routine with an agent step shows the exact launch it would make
-there, built and not started: the agent, profile, model, and effort it resolves to and where
-each came from, the filled-in prompt, the folder and its worktree, the permissions, the
-environment changes, and the command line. It is the launch menu's own Preview of the same
-request a start makes, so what it shows is what runs.
+For a routine with an agent step, **Preview <repo> #<n>** under the rows shows the exact launch it
+would make on the first item that matches (else the first), built and not started: the agent,
+profile, model, and effort it resolves to and where each came from, the filled-in prompt, the folder
+and its worktree, the permissions, the environment changes, and the command line. It is the launch
+menu's own Preview of the same request a start makes, so what it shows is what runs.

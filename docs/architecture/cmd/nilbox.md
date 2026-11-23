@@ -38,7 +38,7 @@ Download <version> Manually…, `UpdateManual`, which opens the release page thr
 the one that didn't install, `menubar.ManualURL`), their clicks `Shell.UpdateAction`: a check runs
 as tracked work, and Restart to Update, Update to X…, and Try Updating to X Again bring the window
 forward and emit `event.UpdateRestartRequested` (`updates:restart`), so every restart runs the
-window's one flow (`restartToUpdate` in `frontend/src/lib/useUpdate.ts`: download first, then
+window's one flow (`useRestartToUpdate` in `frontend/src/lib/useUpdate.ts`: download first, then
 `Restart(false)`, whose refusal names the runs going for the window to ask about, sheets counted
 then; with text a sheet hasn't sent, it asks first, naming the runs it lists; a confirmation calls
 `Restart(false)` again and goes on to `Restart(true)` only when the question named every run that

@@ -33,18 +33,17 @@ reads; a read that fails leaves it pushed to, and is asked again next time. It d
 ask GitHub for `review:changes_requested`, which matches the overall decision, someone
 else's request included.
 
-Each row keeps the verdict (`viewer_review_state`, `viewer_review_commit`), so the card says
-**Pushed since your review** in any list (`Details.PushedSinceReview`, also while `review_left_at`
-holds it back), and hands the card the verdict itself (`Details.ViewerVerdict`: `changes`,
-`approved`, or `""` with none, read from `viewer_review_state`, so it costs no request), which lets
-a card whose user requested changes and whose author hasn't pushed since say it waits on the author,
-and one the user approved say so; one past the fourth search's page holds none, and its card falls
-back to the other rules. A pull request the fourth search returns alone and not pushed to is in no
-list: its details are never read (`nodeIDs`, `fileTargets`), and no file check runs. `UpsertItem`
-gates `reason_pushed` by `review_left_at` as it gates the request, so a review the user leaves from
-the inbox (`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they
-saw) takes it out at once and a refresh whose search trails it keeps it out until the pull request
-moves.
+Each row keeps the verdict (`viewer_review_state`, `viewer_review_commit`), so the card's next step
+says **Re-review** in any list (`Details.PushedSinceReview`, also while `review_left_at` holds it
+back), and hands the card the verdict itself (`Details.ViewerVerdict`: `changes`, `approved`, or
+`""` with none, read from `viewer_review_state`, so it costs no request), which lets a card whose
+user requested changes and whose author hasn't pushed since say it waits on the author, and one the
+user approved say so; one past the fourth search's page holds none, and its card falls back to the
+other rules. A pull request the fourth search returns alone and not pushed to is in no list: its
+details are never read (`nodeIDs`, `fileTargets`), and no file check runs. `UpsertItem` gates
+`reason_pushed` by `review_left_at` as it gates the request, so a review the user leaves from the
+inbox (`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they saw)
+takes it out at once and a refresh whose search trails it keeps it out until the pull request moves.
 
 A read of the pull request alone reads the verdict too, at no extra point (`opinionsField` in the
 item query beside one node, never in the followers' batches, where it would cost a point more per
@@ -79,11 +78,10 @@ edit, which asks others, is recorded at once too, but only its answer (`Acted.Re
 step (`setReviewRequests`), and nothing else, so it stays in whatever list it was in; two tries of
 one edit keep the later answer (`Acted.with`). A pull request pushed to since that asks the user by
 name again, as the details last read it (`review_users`), whoever asked, is
-`Details.ReviewRequestedAgain`, and its card says **Review re-requested** in place of **Pushed since
-your review**: at once after the user's own re-request, and through a refresh whose search trails
-it, which lists it as pushed to again until the next. It was listed already, so the next refresh
-tells no arrival; it tells the outcome sink nothing (`pullOutcomes`), since it is no review, merge,
-or close.
+`Details.ReviewRequestedAgain`, and its card says **Review re-requested** in place of **Re-review**:
+at once after the user's own re-request, and through a refresh whose search trails it, which lists
+it as pushed to again until the next. It was listed already, so the next refresh tells no arrival;
+it tells the outcome sink nothing (`pullOutcomes`), since it is no review, merge, or close.
 
 Autopilot's facts and searches keep GitHub's own three lists. The snapshot alone partitions them
 (`addItems`): an item that asks for the user's review, or was pushed to since the user requested
@@ -262,7 +260,8 @@ and details read) is logged at Debug and kept for `Routines.LastWatchPass` and
 
 ## What keeps watched items out of the inbox
 
-Every query that reads the three reason flags is decided in `reasonFlagDecisions` (`flags_test.go`),
+Every query that reads or writes the five reason flags (the three lists', `reason_pushed`, and
+`reason_reviewed`) is decided in `reasonFlagDecisions` (`flags_test.go`),
 and `TestEveryReasonFlagQueryIsDecided` fails on a query it doesn't list: the lists, the snapshot,
 and the arrivals read listed items alone, so a watched item is in no list, no count, and not the
 menu bar's; `PruneFiles` keeps a watched item's file check; `ListRepoCounts` counts watched items,
@@ -367,32 +366,32 @@ GitHub.
 (`UpsertItem`), an item's own read and the follower's (`UpdateItem`, `UnlistItem`, which also drops
 a closed or gone item's watch rows), the closed items a refresh's searches returned (`SetRefState`),
 the routines' searches and a test's (`SetRefStateBefore` for their closed results), and the states
-the worktree sweep and the notifications mirror read (`Store.NoteStates`, through core's
-`itemStates` and `stateNoter`). Every one of them stamps `fetched_at`, and none writes over a
-`MERGED`, which is final: not `UpsertItem`, `UpdateItem`, `UnlistItem`, `UpsertWatchedItem`,
-`SetRefState`, `SetRefStateBefore`, or `SetItemState`. A close can open again, so it is ordered
-rather than guarded: another service numbers its read in the inbox's write order as it goes out
-(`Store.StartRead`, a `StateRead`; core hands the Service its Store as `Config.Store`, so the two
-share one order), and `NoteStates` stores by it as a pass does: an item stored at or after the read
-went out keeps that newer read (`SetRefStateBefore`), an item's own read that went out before it
-stores nothing over it (`stated`), and a whole refresh still fetching that went out before it
-applies the state again on top of its own. `review_requested_at` and `assigned_at` keep when the
-inbox first saw an item ask for the user's review and assigned to them while it stays so, cleared
-once it leaves (`ClearArrivalStamps`, and every query that takes it out), for the routines' fire
-keys. Each whole refresh prunes, in its own transaction, the items in no list, watched by no search,
-with no triage, that no read brought for 30 days (`PruneItems`); what else refers to an item comes
-from `Config.Keep` (`ItemKeeper`), read before the transaction, so a later owner of a reference, as
-a routine's ledger, extends the rule there. Core hands it `inbox.Keepers` (one failing fails the
-whole, and then the refresh prunes nothing, keeping everything, logs why, and goes on) over the
-agent sessions' items (`sessions.Store.KeptItems`: `agent_sessions.item_id` has no foreign key, so a
-pruned item would leave a dangling id, or a reused one) and the notifications'
-(`notify.Store.KeptItems`: `notifications.item_id` would be cleared, and the entry would no longer
-open its item). A worktree record and a GitHub notification thread name their item by repository and
-number, so a pruned item comes back for them with the next read. The rows that hang off an item by
-its id go with it, by their foreign keys' cascade: its details, file check, and check names, and the
-review sheet's `review_diffs` (with `review_diff_files`) and the issue sheet's `issue_views`, which
-are only caches and are read again on the next visit. (An item with watch rows or local state is
-never pruned.)
+the worktree sweep, the notifications mirror, and Autopilot's engine read (`Store.NoteStates`,
+through core's `itemStates` and `stateNoter`). Every one of them stamps `fetched_at`, and none
+writes over a `MERGED`, which is final: not `UpsertItem`, `UpdateItem`, `UnlistItem`,
+`UpsertWatchedItem`, `SetRefState`, `SetRefStateBefore`, or `SetItemState`. A close can open again,
+so it is ordered rather than guarded: another service numbers its read in the inbox's write order as
+it goes out (`Store.StartRead`, a `StateRead`; core hands the Service its Store as `Config.Store`,
+so the two share one order), and `NoteStates` stores by it as a pass does: an item stored at or
+after the read went out keeps that newer read (`SetRefStateBefore`), an item's own read that went
+out before it stores nothing over it (`stated`), and a whole refresh still fetching that went out
+before it applies the state again on top of its own. `review_requested_at` and `assigned_at` keep
+when the inbox first saw an item ask for the user's review and assigned to them while it stays so,
+cleared once it leaves (`ClearArrivalStamps`, and every query that takes it out), for the routines'
+fire keys. Each whole refresh prunes, in its own transaction, the items in no list, watched by no
+search, with no triage, that no read brought for 30 days (`PruneItems`); what else refers to an item
+comes from `Config.Keep` (`ItemKeeper`), read before the transaction, so another owner of a
+reference extends the rule there. Core hands it `inbox.Keepers` (one failing fails the whole, and
+then the refresh prunes nothing, keeping everything, logs why, and goes on) over the agent sessions'
+items (`sessions.Store.KeptItems`: `agent_sessions.item_id` has no foreign key, so a pruned item
+would leave a dangling id, or a reused one) and the notifications' (`notify.Store.KeptItems`:
+`notifications.item_id` would be cleared, and the entry would no longer open its item), and
+Autopilot's ledger, which core hands in as the third. A worktree record and a GitHub notification
+thread name their item by repository and number, so a pruned item comes back for them with the next
+read. The rows that hang off an item by its id go with it, by their foreign keys' cascade: its
+details, file check, and check names, and the review sheet's `review_diffs` (with
+`review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read again
+on the next visit. (An item with watch rows or local state is never pruned.)
 
 ## Held workflow runs (migration `0101_inbox`)
 
@@ -411,7 +410,8 @@ waiting for approval on GitHub**; a run that doesn't count is in neither, so its
 are, its worst detail and rule 15 never see it, and a fork's approved pull request whose only held
 run is one a review started reads **Approved · ready to merge**. A routine's facts count every held
 run (`checks.awaitingApproval`), ignored or not, since either way the checks haven't all run. A row
-stored before 0023 counts every held run as approvable, and one stored before 0024 has no names, so
+stored before the squashed `0023_checks_awaiting_on_github` counts every held run as approvable,
+and one stored before `0024_checks_held` has no names, so
 its runs match no ignored workflow, until the next whole refresh reads its details again.
 
 ## The reads for Autopilot
@@ -429,7 +429,7 @@ current and a test only looks, and its card is stored all the same; nothing is s
 is under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into `item_checks`,
 returning what it cost, which a test adds to its points, and `ErrLowBudget` too).
 
-## A routine's triage (`triage_routine.go`, migration `0103_autopilot`)
+## A routine's triage (`triage_routine.go`, migrations `0101_inbox` and `0103_autopilot`)
 
 Autopilot's local steps run the inbox's own triage through `inbox.Routines`, never the bound
 Service: `Triage` runs a Pin, a Snooze (for the routine's length, recording the item's activity as
@@ -509,14 +509,14 @@ says the rest have too, at the newest time read.
 
 Each request's context names what it was sent for (`github.WithPurpose`): the refresh is
 `PurposeInbox`, the watch pass `PurposeWatches`, the checks follower and the follow of a merge
-`PurposeFollower`, and `SearchNow` and `ReadChecks` `PurposeAutopilot`; anything else is
-`PurposeOther`. The client hands the purpose to the `Tracker` with each reading
-(`RateReading.Purpose`, which the tracker strips before it keeps the reading), and the tracker
-splits each budget's spend by it (`Reading.Purposes`, kept across runs, a state saved before the
-split, and a purpose this build doesn't know, counting as the rest), so the shares add up to
-`Spent`. The budget menu's one line for Autopilot is `watches` and `autopilot` together, shown only
-while they are above zero; the follower's rounds, which read the watched pull requests a routine
-follows in the listed ones' requests, stay `follower`.
+`PurposeFollower`, and `SearchNow` and `ReadChecks` `PurposeAutopilot`, as are the reads and writes
+core makes for Autopilot's engine and its steps; anything else is `PurposeOther`. The client hands
+the purpose to the `Tracker` with each reading (`RateReading.Purpose`, which the tracker strips
+before it keeps the reading), and the tracker splits each budget's spend by it (`Reading.Purposes`,
+kept across runs, a state saved before the split, and a purpose this build doesn't know, counting as
+the rest), so the shares add up to `Spent`. The budget menu's one line for Autopilot is `watches`
+and `autopilot` together, shown only while they are above zero; the follower's rounds, which read
+the watched pull requests a routine follows in the listed ones' requests, stay `follower`.
 
 ## What a repository's launch reads
 

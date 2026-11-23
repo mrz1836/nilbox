@@ -7,11 +7,11 @@ fence: its **Tools** preset, which says what it may do whatever its profile allo
 
 | Preset | The agent may | It never |
 |---|---|---|
-| **Read only** | Read, search, and plan | Edits a file or runs a command |
+| **Read only** | Read, search, and plan | Edits a file or runs a command (Codex may run one that only reads) |
 | **GitHub tasks only** | Read, and run `gh` to read the item, comment on it, add or remove a label, and run its failed jobs again, on that item alone | Edits a file, or runs anything but `gh` and git's reads |
 | **Edit and test, no push** | Edit the worktree, and run the repository's tools (from its files: `go`, `magex`, `pnpm`, `make`, ...), everyday commands, and git's own work in the worktree | Pushes |
-| **Edit, test, and push to the PR's branch** | All of the above, and push once, exactly `git push <remote> HEAD:refs/heads/<branch>`: the pull request's own branch, on the clone's remote for the repository | Pushes any other way: no `--force`, no other branch or remote, no push inside another command |
-| **The profile's own permissions** | What a click would let it, from its profile (the builder warns when that is nothing) | Crosses the hard lines below |
+| **Edit, test, and push to the PR's branch** | All of the above, and push once, exactly `git push <remote> HEAD:refs/heads/<branch>` or `git push <remote> HEAD:<branch>`: the pull request's own branch, on the clone's remote for the repository | Pushes any other way: no `--force`, no other branch or remote, no push inside another command |
+| **The profile's own permissions** | What a click would let it, from its profile (on Autopilot, the builder warns that nobody is there to answer) | Crosses the hard lines below |
 
 ## The hard lines, under every preset
 
@@ -76,10 +76,10 @@ contributor's item, when a person lets an agent at it, runs Read only, whatever 
 
 When a background run ends, the files its commits changed are checked against the sensitive
 categories. A run that changed agent configuration (a hook, an MCP server, instructions) holds the
-next launch on that pull request at that head, and the next background run on it, under **Needs your
-OK**, as an outside contributor's pull request would, whoever opened it: the head the run started
-from, whose worktree holds its commits, and its own last commit, which a push makes the pull
-request's head.
+next launch on that pull request at that head, and the next background run on it, in Needs you's
+**Waiting for your OK**, as an outside contributor's pull request would, whoever opened it: the head
+the run started from, whose worktree holds its commits, and its own last commit, which a push makes
+the pull request's head.
 
 ## What a fence doesn't do
 

@@ -61,7 +61,7 @@ Anything else opens on GitHub, which the **↗** beside it says.
 
 Write in **Your comment** and press **Comment**, or **⌘↩**. **Replies** above it fills the text in
 from one of your [comment replies](prompts.md#review-replies) for issues, filled in for this issue,
-with **No reply** to empty it and **Manage replies…** to edit them; none is picked for you, so
+with **Manage replies…** to edit them; none is picked for you, so
 **⌘↩** never posts text you didn't write or choose. The button's menu also offers **Close as
 completed…** and **Close as not planned…**, which become the button once chosen, and **Unassign
 me**. When a fix has merged, the button starts as **Close as completed…**. Every close asks first,

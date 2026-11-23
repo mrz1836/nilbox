@@ -23,19 +23,19 @@ the clone again finds it free.
 
 After `Released`, once the run has let go of its clone and its slot, the engine's own
 `Config.Failed` hears each run whose end is recorded as failed (one stopped at its time limit
-included), of every kind, in the app or the terminal, started now or settled after a restart (by a
-`Verifier` or by how it ended), and never one that couldn't start (its start's error says so), one
-the user or the quit stopped, one a hang-up, Control-C, or SIGTERM ended (exit 129, 130, or 143,
-unless the engine sent it at the time limit), one interrupted, one that succeeded, or one left
-`Unsettled`: once, since the record that ends a run changes only a row still recorded as going. It
-gets a `scriptrun.Failure`, worded there ("Checks failed: Checks · all files", the run's folder in
-place of a repository it lacks, with the run's summary or "Timed out after 30 minutes."), which core
-(`runFailures`) hands the notify `Dispatcher`'s `Gather` as a `run_failed` notification about no
-item: recorded at once, its banner held `GatherWindow` (2 s) with those of the failures that follow,
-so a burst past `MaxBanners` (Install and update all, a restart's reconcile) shows one summary,
-under the same rules as every kind's banner; core's `Close` drops the banners still held (the
-history keeps their entries) and cuts short a batch already showing (each batch shows within the
-gathering's lifetime, which `Close` ends), waiting for it to end, before the database closes.
+included), of every kind but `KindAgent`, in the app or the terminal, started now or settled after a
+restart (by a `Verifier` or by how it ended), and never one that couldn't start (its start's error
+says so), one the user or the quit stopped, one a hang-up, Control-C, or SIGTERM ended (exit 129,
+130, or 143, unless the engine sent it at the time limit), one interrupted, one that succeeded, or
+one left `Unsettled`: once, since the record that ends a run changes only a row still recorded as
+going. It gets a `scriptrun.Failure`, worded there ("Checks failed: Checks · all files", the run's
+folder in place of a repository it lacks, with the run's summary or "Timed out after 30 minutes."),
+which core (`runFailures`) hands the notify `Dispatcher`'s `Gather` as a `run_failed` notification
+about no item: recorded at once, its banner held `GatherWindow` (2 s) with those of the failures
+that follow, so a burst past `MaxBanners` (Install and update all, a restart's reconcile) shows one
+summary, under the same rules as every kind's banner; core's `Close` drops the banners still held
+(the history keeps their entries) and cuts short a batch already showing (each batch shows within
+the gathering's lifetime, which `Close` ends), waiting for it to end, before the database closes.
 
 The entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
 `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and

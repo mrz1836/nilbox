@@ -9,13 +9,13 @@ run** (a starter prompt travels by its key, as every Mac has it). The file holds
 repository names, so it is yours to share or not; it never holds a routine's history or your
 account, and Nilbox never sends it anywhere.
 
-**Import routines…** reads such a file and shows what would arrive, changing nothing: each
-routine, its sentence, and the name it takes here (another when you have a routine of the
-name); each prompt it brings (*added to your prompts* when no prompt of yours has its nickname,
-else *yours is the same* or *yours differs, and yours is kept*); and **What this Mac doesn’t
-have**: a prompt, a profile, or an agent its routines name that this Mac lacks, each with a
-choice of what to use instead or **Inherit** (the item's own default prompt, or the profile a
-click would use). An agent whose program this Mac lacks inherits by itself. **Import** brings
-the prompts in first, then every routine, switched off, at the end of your list; a file that
-changed since it was read is read again rather than imported unseen, and a routine a newer
-Nilbox made arrives as it was, unable to run until you update.
+**Import routines…** reads such a file and shows what would arrive, changing nothing: each routine,
+its sentence, and the name it takes here (another when you have a routine of the name); each prompt
+it brings (*added to your prompts* when no prompt of yours has its nickname, else *yours is the
+same* or *yours differs, and yours is kept*); and **What this Mac doesn’t have**: a prompt, a
+profile, or an agent its routines name that this Mac lacks, each with a choice of what to use
+instead or **Inherit** (the item's own default prompt, or the profile a click would use). An agent
+whose program this Mac lacks inherits by itself. **Import** brings the prompts in first, then every
+routine, switched off, at the end of your list; a file that changed since it was read is refused,
+with word to read it again, rather than imported unseen, and a routine a newer Nilbox made arrives
+as it was, unable to run until you update.

@@ -108,10 +108,10 @@ is each entry left out.
 | Field | Setting |
 |---|---|
 | `defaultAgent`, `defaultProfiles` | The coding agent launches use, and each agent's profile (by name). |
-| `terminal`, `worktreeDefault`, `followSessions`, `codexEffort`, `codexFast` | Launching: the terminal app, *Start in a worktree*, following sessions, and Codex's effort and Fast mode. |
+| `terminal`, `worktreeDefault`, `followSessions`, `codexEffort`, `codexFast`, `claudeApiKey`, `codexApiKey` | Launching: the terminal app, *Start in a worktree*, following sessions, Codex's effort and Fast mode, and whether an API key in your shell may sign Claude Code or Codex in. |
 | `worktreeAutoCleanup`, `branches` | Cleaning up worktrees, and the branch rules (`own`, `pullRequest`, `merged`, `protected`). |
 | `trustedBots` | The bots whose items are trusted, by login. |
-| `snoozeDays`, `snoozeWake` | Snoozing (`commits`, `reviews`, `comments`). |
+| `snoozeDays`, `snoozeWake` | Snoozing (`commits`, `reviews`, `comments`, `ready`). |
 | `sensitiveScope`, `sensitiveOff`, `sensitivePatterns` | Sensitive files: whose are checked, the built-in categories turned off, and your own patterns. |
 | `menuBar`, `bannersOff` | The menu bar icon, and the kinds of notification whose banners are off. |
 | `githubNotifications` | The GitHub notification rules: `read`, `auto`, `action`, `triggersOff`, `watching`, `botActivity`. |

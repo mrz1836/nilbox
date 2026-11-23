@@ -45,7 +45,8 @@ the sheet's hint. `ReleasePage` holds the sort the user picks in local state ove
 (`picked ?? releaseSort`), so the groups reorder at once while App stores it with
 `settings.SetReleaseSort` (`scripts.releaseSort`) and takes the settings it returns.
 
-`components/scripts/GroupHeading`, which Release, Hooks, Repo scripts, and Deps share, is sticky at
+`components/scripts/GroupHeading`, which Release, Hooks, Repo scripts, Deps, and the Worktrees
+page's clones share, is sticky at
 the top of the page's scroll container, over the page's background, so a group's heading stays in
 view while its rows scroll under it, and its `note` may be a node, given the rest of the heading's
 width, as the readiness summary is.

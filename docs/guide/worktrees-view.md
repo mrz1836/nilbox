@@ -95,7 +95,8 @@ list` each time it lists or sweeps:
 
 - a record is matched to its worktree by path, else by its branch, so a worktree moved with `git
   worktree move` is followed;
-- a record whose worktree is gone, removed outside the app or pruned, or whose clone is gone, is
+- a record whose worktree is gone, removed outside the app or pruned, or whose clone is gone from a
+  folder that is still there (a clone on a drive that isn't plugged in keeps its records), is
   forgotten, so neither the inbox nor a launch preview ever claims a worktree that isn't there;
 - a worktree on an item's own `worktree-pr-<n>` or `worktree-issue-<n>` branch with no record is
   recorded once GitHub links it to its item.
@@ -125,12 +126,12 @@ A worktree made for an item is linked to it: exactly, from the app's record, or 
 name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's worktree folder) or its own branch, and
 the clone's GitHub remotes. A worktree with none of these, on a branch pushed to one of the clone's
 GitHub remotes, is linked by that branch to the pull request it heads in that same repository, the
-one updated last, so a fork's branch of the same name never links it. One whose commits were copied
-onto a pushed branch is linked to that branch's pull request ([copied work](#copied-work), below).
-One GraphQL request, for one point, asks GitHub whether each is open, merged, or closed, and the row
-links to it; the branches ride in that same request, and one is asked about again only once it
-moves, or now and then while no pull request heads it. Each linked worktree gets a stage, which
-places its row (**Rows**, above):
+open one when there is one, else the one updated last, so a fork's branch of the same name never
+links it. One whose commits were copied onto a pushed branch is linked to that branch's pull request
+([copied work](#copied-work), below). GraphQL requests, a point for each fifty, ask GitHub whether
+each is open, merged, or closed, and the row links to it; the branches ride in that same request,
+and one is asked about again only once it moves, or now and then while no pull request heads it.
+Each linked worktree gets a stage, which places its row (**Rows**, above):
 
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
@@ -298,9 +299,9 @@ the branches of pull requests that merged, so the branches in a clone you work i
 pile up. **Settings → Worktrees** sets what each starts with; every dialog shows a box per branch,
 ticked as those settings say, and you can change any before you confirm.
 
-- **The worktree's own branch**, `worktree-pr-<n>` or `worktree-issue-<n>`, the branch the app
-  made for it. On by default.
-- **The pull request's branch**, such as `feature-x`, when a session checked it out in the
+- **Delete the worktree's own branch**: `worktree-pr-<n>` or `worktree-issue-<n>`, the branch the
+  app made for it. On by default.
+- **Delete the pull request's branch**: such as `feature-x`, when a session checked it out in the
   worktree (with `gh pr checkout`, say). On by default.
 - **Merged branches.** **Clean up merged branches…** lists each clone's local branches whose
   pull request merged. It asks GitHub, in GraphQL requests of up to 50 branch names each across

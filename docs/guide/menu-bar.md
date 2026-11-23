@@ -56,7 +56,8 @@ check finds it:
 | Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
 | Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
 | Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C, or closing its terminal window, included), and one a quit or a restart interrupted never notify |
-| Service status | A part you watch of [GitHub, Claude, or Codex](window.md) goes down (*Claude: Partial outage*, with the parts affected and the incident), or is back (*Claude: Operational again*). The first check after the app opens, or after you change what you watch, never notifies |
+| Service status | A part you watch of [GitHub, Claude, or OpenAI](window.md) goes down (*Claude: Partial outage*, with the parts affected and the incident), or is back (*Claude: Operational again*). The first check after the app opens, or after you turn a service on, never notifies |
+| New version | A new version of Nilbox is downloaded and ready to restart into, or, with **Just tell me**, out to download; you hear of each version once |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -87,7 +88,7 @@ then.
 
 ## Banners
 
-Each kind can also show a native macOS banner. All eight are on by default, and each has its own
+Each kind can also show a native macOS banner. All nine are on by default, and each has its own
 switch in Settings → Notifications. Autopilot's five kinds have switches of their own there, under
 **Autopilot**, while Autopilot (beta) is on, all on by default too (see [Autopilot's
 notifications](autopilot/notifications-and-menu-bar.md)). Two more switches there show a banner when

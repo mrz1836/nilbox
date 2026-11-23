@@ -65,7 +65,9 @@ a nil list, and words every refusal with `uierr`.
   whose checks `Save` shares (`draft.Problems`), saving nothing and asking GitHub nothing:
   the spec normalized, encoded, and loaded as `Save` does, its problems (the spec's,
   then the prompts'), each with its part and field, the steps this build runs only in Dry run,
-  its warnings (a Pin, Snooze, Dismiss, or Restore over a watch that is only searches; on
+  its warnings (a Pin, Snooze, Dismiss, or Restore over a watch that is only searches; a
+  background agent step's row or fallback whose agent can't keep its tools preset, or budget its
+  own agent can't keep; a Merge it past the rules while that switch is off; on
   Autopilot, an agent in the terminal or with the profile's own permissions, unless the routine
   is held in Dry run), and, only while it has no problem, its sentence, so the builder keeps
   the last one that read.
