@@ -40,9 +40,9 @@ const MaxReviewRequests = 50
 // ID: its labels and comment count; for a pull request, its size, commits, merge state,
 // check results, and reviews; and for an issue, how it is planned and the pull requests
 // that close it (closingPullsField). It is a separate request from the inbox query
-// because GitHub prices nested lists per result slot: inside the three 100-result
-// searches these fields would cost about 12 points, while asking only for the items the
-// inbox returned costs one or two.
+// because GitHub prices nested lists per result slot: inside the inbox query's 100-result
+// searches (three when it was measured) these fields would cost about 12 points, while
+// asking only for the items the inbox returned costs one or two.
 //
 // The counts per check state come without listing the checks themselves, and review
 // requests and latest reviews come with their logins so a reviewer is counted once. The
@@ -178,9 +178,10 @@ const detailFieldsTail = `
 // renamed or deleted answers no status.
 //
 // GitHub prices the field values once per project item, so the first five projects are
-// read, which covers an issue in practice: a batch of 50 issues costs four points, where
-// it costs one without the projects. Each value names its field and the field's type, so
-// the built-in fields (the title, labels, assignees, and so on) can be told apart.
+// read, which covers an issue in practice: a batch of issues costs a few points, where it
+// costs one without the projects (four for 50, when batches were that big). Each value
+// names its field and the field's type, so the built-in fields (the title, labels,
+// assignees, and so on) can be told apart.
 const issueProjectFields = `
     projectItems(first: 5, includeArchived: false) {
       nodes {

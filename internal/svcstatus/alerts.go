@@ -29,13 +29,13 @@ type Alert struct {
 
 // alertState is what one provider's alerts remember, in memory alone.
 //
-// The first reading after a start, or after the provider was turned on or what is watched
-// on it changed, only sets the baseline, so a restart during an incident never shows its
-// banner again. After that, a state that rises into minor, major, or critical, above the
-// level already known, shows a banner, and a state that falls back to operational or
-// maintenance after one shows another, that it works again. A state that improves within
-// trouble shows none, and keeps the level, so a flapping incident shows its banner once; a
-// check that fails changes nothing.
+// The first reading after a start, or after the provider was turned on, only sets the
+// baseline, and a change of what is watched on it sets the baseline at once from the reading
+// kept, so a restart during an incident never shows its banner again. After that, a state
+// that rises into minor, major, or critical, above the level already known, shows a banner,
+// and a state that falls back to operational or maintenance after one shows another, that
+// it works again. A state that improves within trouble shows none, and keeps the level, so
+// a flapping incident shows its banner once; a check that fails changes nothing.
 type alertState struct {
 	based bool
 	level State

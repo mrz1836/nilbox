@@ -112,8 +112,8 @@ fall back on. `pnpm build` runs that typecheck before `vite build`, so `magex fr
 frontend:gate`) runs the format check, lint, the typecheck, the tests with coverage, the render
 check, and the production build, which `chunkLimit` in `vite.config.ts` fails on a JS chunk over
 `chunkSizeWarningLimit` (750 kB, above the biggest chunk, the entry, which holds the inbox, about
-467 kB), where Vite only warns; then it checks the first paint against its budgets
-(`magefiles/firstpaint.go`: the entry, the shared chunk of about 377 kB it preloads, which holds
+473 kB), where Vite only warns; then it checks the first paint against its budgets
+(`magefiles/firstpaint.go`: the entry, the shared chunk of about 394 kB it preloads, which holds
 most of what the first paint and the pages share, and Rolldown's runtime, held to 950,000 bytes of
 script, 325,000 gzipped, and the CSS to 140,000, 25,000 gzipped). The bundle targets Safari 16.4,
 the WebKit of the oldest supported macOS, 13.3.

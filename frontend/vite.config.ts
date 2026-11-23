@@ -69,8 +69,8 @@ export default defineConfig({
     // root's color-scheme switches, as Safari 16.4 has no light-dark().
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. Before its first paint the
-    // window loads the entry chunk, the inbox's, about 467 kB, and the shared chunk it
-    // preloads (codeSplitting below), about 377 kB: about 844 kB of JS in all, with 118 kB
+    // window loads the entry chunk, the inbox's, about 473 kB, and the shared chunk it
+    // preloads (codeSplitting below), about 394 kB: about 867 kB of JS in all, with 120 kB
     // of CSS, which magex frontend:gate holds to a budget after this build
     // (magefiles/firstpaint.go). The other pages are chunks of their own, loaded on their
     // first visit (App.tsx), and so are the review and issue sheets, the inbox-nil party,
