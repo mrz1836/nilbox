@@ -21,17 +21,17 @@ const reviewNick = "Review"
 
 // knows finds the starters by nickname, as the import would among the library's prompts:
 // Review for pull requests, Work on it for issues.
-func (h *harness) knows(nickname string, kind item.Kind) bool {
+func (h *harness) knows(_, nickname string, kind item.Kind) bool {
 	id, ok := h.promptID(nickname)
 
 	return ok && (kind == item.KindPR && id == h.review || kind == item.KindIssue && id == h.work)
 }
 
 // find is knows inside an import's transaction.
-func (h *harness) find(_ context.Context, nickname string, kind item.Kind) (int64, bool, error) {
+func (h *harness) find(_ context.Context, _, nickname string, kind item.Kind) (int64, bool, error) {
 	id, _ := h.promptID(nickname)
 
-	return id, h.knows(nickname, kind), nil
+	return id, h.knows("", nickname, kind), nil
 }
 
 // importKept plans kept under mode and applies it as an import does, clearing first under
@@ -220,7 +220,7 @@ func (h *harness) lookups(t *testing.T) (launchdefaults.Known, launchdefaults.Pr
 
 	ids := h.ids(t)
 
-	known := func(nickname string, kind item.Kind) bool {
+	known := func(_, nickname string, kind item.Kind) bool {
 		for _, p := range all {
 			if p.Nickname == nickname {
 				return !p.IsReply() && p.AppliesTo.Covers(kind)
@@ -230,8 +230,8 @@ func (h *harness) lookups(t *testing.T) (launchdefaults.Known, launchdefaults.Pr
 		return false
 	}
 
-	find := func(_ context.Context, nickname string, kind item.Kind) (int64, bool, error) {
-		return ids[nickname], known(nickname, kind), nil
+	find := func(_ context.Context, _, nickname string, kind item.Kind) (int64, bool, error) {
+		return ids[nickname], known("", nickname, kind), nil
 	}
 
 	return known, find

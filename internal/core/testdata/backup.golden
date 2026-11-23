@@ -160,6 +160,19 @@
         "comment": "Question",
         "nudge": "Nudge",
         "request_changes": "Needs changes"
+      },
+      "uuids": {
+        "approve": "<uuid>",
+        "approve_bots": "<uuid>",
+        "changes_requested": "<uuid>",
+        "checks_failing": "<uuid>",
+        "comment": "<uuid>",
+        "conflicts": "<uuid>",
+        "issue": "<uuid>",
+        "nudge": "<uuid>",
+        "pr": "<uuid>",
+        "request_changes": "<uuid>",
+        "rereview": "<uuid>"
       }
     },
     "startersAdded": [

@@ -206,8 +206,8 @@ so the file always ends up holding the latest rows. It is written:
   has gone doesn't stop it); a failure is logged, never returned, since the change is stored and
   the next one writes the copy again (`TestACopyThatCannotBeWrittenIsLoggedNotFailed`), and a save
   the checks refuse writes nothing (`TestARefusedChangeLeavesTheCopy`);
-- after every change to the prompt library, since the copy names prompts by nickname and one may
-  have been renamed (`prompts.Config.Changed`, core's `kept.saveDefaults`);
+- after every change to the prompt library, since the copy names prompts by nickname, beside their
+  UUIDs, and one may have been renamed (`prompts.Config.Changed`, core's `kept.saveDefaults`);
 - once a backup's launch defaults are committed (`BackupPart.BackupDone`);
 - at startup, only when the file is missing or the prompt library was just brought back
   (`kept.keep`), so a database that came back without the user's rows never overwrites a copy that
@@ -218,7 +218,11 @@ The format is a document of `Kept` rows (`EncodeKept`: `format`, `version`, `sav
 `KeptFormat` (`<slug>.launch-defaults`) and `KeptVersion`, 2. A `Kept` names its six default
 prompts by nickname (`prPrompt`, `issuePrompt`, `checksPrompt`, `conflictsPrompt`, `changesPrompt`,
 `rereviewPrompt`) rather than by ID, so it can be matched to a library brought back under new IDs;
-a prompt that is gone is written as `""`, which inherits. It keeps `profiles`, `models`, and
+a prompt that is gone is written as `""`, which inherits. Beside them, `promptUUIDs` holds each
+named prompt's UUID, keyed by its slot (`pr`, `issue`, `checks`, `conflicts`, `changes`,
+`rereview`; `keptPrompt.key`), left out when none is named, so a restore finds a prompt whose
+nickname was cleaned or renamed on the way back; adding it left `KeptVersion` at 2, since an older
+build ignores it. It keeps `profiles`, `models`, and
 `extraArgs` per agent (lists, not a line), and leaves `autopilotOutside` and the four situations'
 prompts out when they inherit. `DecodeKept` reads any version up to `KeptVersion`: another `format`
 or a version below 1 is `ErrNotKept`, a newer version `ErrNewerKept`, and a version 1 copy's single
@@ -234,19 +238,21 @@ When the database is set aside, damaged, or deleted, core (`internal/core/kept.g
 back during `Bootstrap`, after the prompt library and before the starters are seeded, and only when
 the library came back (`prompts.Restore`, which runs only on a new library, found a source).
 `kept.readDefaults` reads them from where the prompts came from: the database set aside, through
-`ReadSnapshot`, when `prompts.Restored.Nicknames` is set; else, or when that database can't be read,
+`ReadSnapshot`, when `prompts.Restored.Nicknames` is set (with `PromptUUIDs`, each old ID's UUID); else, or when that database can't be read,
 the copy, through `File.Load`, where a copy that isn't there holds none. `ReadSnapshot` opens a
 database file of any schema read-only (`store.OpenSnapshot`) and reads `launch_defaults` by the
 columns of every build (`defaultsColumns`): the per-agent `profiles`, `models`, and `agent_args`,
 and the single `profile`, `model`, and `extra_args` of the builds before them, which were Claude
 Code's (`prompts.SnapshotModels`, `prompts.SnapshotArgs`). A column it lacks inherits, and each
-prompt ID is named by its nickname in that database (`TestReadSnapshotReadsAnOlderSchema`).
+prompt ID is named by its nickname and its UUID in that database
+(`TestReadSnapshotReadsAnOlderSchema`).
 
 `Restore(ctx, store, kept, promptID)` then stores the rows in one transaction, all or none
 (`TestRestoreIsAllOrNothing`), and only into a table that holds no row
 (`TestRestoreLeavesLaunchDefaultsThatExist`), and returns how many it stored, which the window's
-notice counts (`appinfo.Restored.LaunchDefaults`). Each prompt is found by its nickname among the
-restored prompts (`prompts.Restored.IDs`), and one not found inherits. A profile is kept by name
+notice counts (`appinfo.Restored.LaunchDefaults`). Each prompt is found among the restored prompts
+by its UUID (`prompts.Restored.UUIDs`), else by its nickname (`prompts.Restored.IDs`), and one not
+found inherits. A profile is kept by name
 even when no profile has it now, as on a Mac without that config directory yet: the launch menu
 warns that it is missing, and it works again once the profile is back. What this build would
 refuse is left out (`restorable`): an agent it doesn't know inherits, an effort no agent takes is
@@ -278,12 +284,15 @@ import's prompts section is applied (`backup.How.Prompts`: an agent prompt that 
 then, unless a Replace takes the prompts too, in the library by nickname ignoring case. A target
 the file holds twice keeps its first row, and a row that sets nothing is left out, each with a
 note. Each row kept is a `backup.ChangeAdd`, `ChangeUpdate`, or `ChangeSame` (`sameKept`), so an
-import of the rows already here changes nothing (`TestImportOfTheSameRowsChangesNothing`).
+import of the rows already here changes nothing (`TestImportOfTheSameRowsChangesNothing`);
+`sameKept` leaves the UUIDs out, which a file from before them, or from another Mac, holds
+otherwise, so the preview stays as it was.
 
 `ClearTx` deletes every row inside the import's transaction, which a Replace does first (core's
 `backupDefaults.Clear`, a `backup.Clearer`), so the prompts part may then delete what the rows
 named. `ApplyBackup` stores each planned row inside the same transaction, its prompts found through
-`find` (core's: the IDs the prompts part linked to the file's nicknames, else the library by
+`find` (core's: the IDs the prompts part linked to the file's nicknames, so the file's own prompts
+win, else the prompt with the row's UUID in the transaction's library, else the library by
 nickname), and a row whose prompts aren't found and that then sets nothing removes this Mac's row
 for its target, which then inherits every setting. `BackupDone` rewrites the copy once the import
 commits.

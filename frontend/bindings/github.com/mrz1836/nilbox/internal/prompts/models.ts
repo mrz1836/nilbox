@@ -123,6 +123,14 @@ export interface BundleDefaults {
      * default is none of the file's prompts.
      */
     "replies"?: { [_ in ReplySlot]?: string } | null;
+
+    /**
+     * UUIDs names each default's prompt by its UUID too, by its slot, so an import finds it
+     * whatever it is called: among the file's prompts first, then in the library. Left out
+     * of a file an older build wrote, and of a slot whose default is none of the file's
+     * prompts.
+     */
+    "uuids"?: { [_ in DefaultSlot]?: string } | null;
 }
 
 /**

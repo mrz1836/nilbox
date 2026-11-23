@@ -25,13 +25,13 @@ import (
 var updateGolden = flag.Bool("update", false, "rewrite the golden files from the current output") //nolint:gochecknoglobals // a test flag
 
 // uuidValue matches a UUID a backup holds, which a database gives each prompt, script, and
-// routine anew on every run.
-var uuidValue = regexp.MustCompile(`"uuid": "[0-9a-f-]{36}"`)
+// routine anew on every run, as a record's own uuid or as the UUID of what a default names.
+var uuidValue = regexp.MustCompile(`"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"`)
 
 // withoutUUIDs returns a backup with every UUID in it written as one placeholder, so it
 // reads the same on every run.
 func withoutUUIDs(data []byte) []byte {
-	return uuidValue.ReplaceAll(data, []byte(`"uuid": "<uuid>"`))
+	return uuidValue.ReplaceAll(data, []byte(`"<uuid>"`))
 }
 
 // backupOptions are testOptions with a fixed clock and version, so a backup reads the same

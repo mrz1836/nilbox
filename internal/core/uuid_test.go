@@ -1,6 +1,8 @@
 package core
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,8 +14,11 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/backup"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/scripts"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fixChecksNick is the Fix checks starter's nickname, and fixCI the one the user gave it.
@@ -225,4 +230,66 @@ func TestDescribeItReadsARoutineWithoutTheUUIDsTheAppKeeps(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, words.Words, saved.Spec.Steps[0].Agent.Prompt.UUID)
 	assert.NotContains(t, words.Words, `"uuid"`)
+}
+
+func TestALaunchDefaultsCopyFindsItsPromptByUUIDWhateverItsNicknameSays(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t, ".claude")
+	ctx := t.Context()
+
+	c, err := Bootstrap(ctx, opts)
+	require.NoError(t, err)
+
+	quick := promptNamed(t, c, "Quick look")
+	_, err = c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &quick.ID})
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+
+	// The copy names the prompt by a nickname the library gives another prompt by the time it
+	// comes back, as an edit by hand or a clash on the way back may leave it.
+	data, err := os.ReadFile(opts.Paths.LaunchDefaults)
+	require.NoError(t, err)
+	require.Contains(t, string(data), quick.UUID, "the copy names the prompt by its UUID too")
+
+	edited := strings.Replace(string(data), `"prPrompt": "Quick look"`, `"prPrompt": "Review"`, 1)
+	require.NotEqual(t, string(data), edited)
+	testutil.WriteFile(t, opts.Paths.LaunchDefaults, edited)
+
+	// The database is lost: the prompts come back from their copy, then the launch defaults.
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		require.NoError(t, os.RemoveAll(opts.Paths.DB+suffix))
+	}
+
+	again := bootstrap(t, opts)
+
+	org := launchDefaultsByTarget(t, again)[boundOwner]
+	require.NotNil(t, org.PRPromptID)
+	assert.Equal(t, promptNamed(t, again, "Quick look").ID, *org.PRPromptID,
+		"the UUID finds the prompt, never the one with the nickname the copy says")
+}
+
+func TestABackupsLaunchDefaultFollowsAPromptRenamedSince(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, backupOptions(t))
+	ctx := t.Context()
+
+	quick := promptNamed(t, c, "Quick look")
+	_, err := c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &quick.ID})
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "backup.json")
+	_, err = c.Backup.Export(ctx, path, backup.Sections())
+	require.NoError(t, err)
+
+	// The user renamed the prompt since, and cleared the row.
+	renamedTo(t, c, quick, "look-first")
+	require.NoError(t, c.LaunchDefaults.Remove(ctx, boundOwner, ""))
+
+	importBackup(t, c, path, backup.ModeMerge, backup.SectionLaunchDefaults)
+
+	org := launchDefaultsByTarget(t, c)[boundOwner]
+	require.NotNil(t, org.PRPromptID, "found by its UUID, it doesn't inherit")
+	assert.Equal(t, quick.ID, *org.PRPromptID)
 }

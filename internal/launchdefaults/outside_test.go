@@ -99,7 +99,7 @@ func TestTheOutsideContributorsChoiceOutlivesTheDatabase(t *testing.T) {
 	assert.Equal(t, launchdefaults.OutsideOn, kept[0].AutopilotOutside)
 
 	fresh := launchdefaults.NewStore(testutil.DB(t), nil)
-	n, err := launchdefaults.Restore(ctx, fresh, kept, func(string) (int64, bool) { return 0, false })
+	n, err := launchdefaults.Restore(ctx, fresh, kept, func(string, string) (int64, bool) { return 0, false })
 	require.NoError(t, err)
 	assert.Equal(t, 1, n, "the choice alone is a row worth restoring")
 

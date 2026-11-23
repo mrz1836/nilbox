@@ -212,13 +212,22 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-08T17:00:00Z", got.ExportedAt)
 	assert.Equal(t, "v1.2.3", got.App)
-	assert.Equal(t, BundleDefaults{
+
+	want := BundleDefaults{
 		PR: "Review", Issue: "Work on it", ChecksFailing: "Fix checks", Conflicts: "Resolve conflicts",
 		ChangesRequested: "Address review", Rereview: "Re-review", Replies: map[ReplySlot]string{
 			SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
 			SlotNudge: "Nudge",
 		},
-	}, got.Defaults)
+	}
+
+	uuids := uuidsByNickname(t, s)
+	for _, slot := range DefaultSlots() {
+		want.setUUID(slot, uuids[want.For(slot)])
+	}
+
+	require.Len(t, want.UUIDs, len(DefaultSlots()))
+	assert.Equal(t, want, got.Defaults, "each default by its prompt's nickname, and its UUID")
 	assert.ElementsMatch(t, []string{
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,

@@ -471,10 +471,12 @@ func TestRestoreFromAnOlderFileFillsEachSituationOnce(t *testing.T) {
 	b, err := NewBackupPart(from).Bundle(t.Context())
 	require.NoError(t, err)
 
-	// A file an older build wrote names no situation's default and no slot filled.
+	// A file an older build wrote names no situation's default, by nickname or UUID, and no
+	// slot filled.
 	b.SlotsSeeded = nil
 	for _, slot := range situationSlots() {
 		b.Defaults.Set(slot, "")
+		delete(b.Defaults.UUIDs, slot)
 	}
 
 	s, db := empty(t, nil)

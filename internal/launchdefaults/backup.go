@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // BackupPart is the launch defaults' part of a backup of the user's setup: every org's and
@@ -36,13 +37,13 @@ func (bp *BackupPart) Kept(ctx context.Context) ([]Kept, error) {
 	return keepAll(ctx, s.store, s.prompts)
 }
 
-// Known reports whether a prompt nickname will name an agent prompt for kind once an
-// import is applied.
-type Known func(nickname string, kind item.Kind) bool
+// Known reports whether a default prompt named by its UUID and its nickname will name an
+// agent prompt for kind once an import is applied.
+type Known func(uuid, nickname string, kind item.Kind) bool
 
-// PromptFinder finds, inside an import's transaction, the agent prompt for kind a nickname
-// names, and whether there is one.
-type PromptFinder func(ctx context.Context, nickname string, kind item.Kind) (int64, bool, error)
+// PromptFinder finds, inside an import's transaction, the agent prompt for kind a default
+// names by its UUID and its nickname, and whether there is one.
+type PromptFinder func(ctx context.Context, uuid, nickname string, kind item.Kind) (int64, bool, error)
 
 // BackupPlan is what importing a backup's launch defaults does, as PlanBackup works it out.
 type BackupPlan struct {
@@ -119,7 +120,7 @@ func (p *BackupPlan) planRow(raw Kept, known Known, seen map[string]bool) (Kept,
 	var marks promptIDs
 
 	for _, f := range promptsOf(&k, &marks) {
-		*f.nickname = resolvePrompt(&p.Plan, k.target(), f, known)
+		*f.nickname = resolvePrompt(&p.Plan, k.target(), f, k.PromptUUIDs[f.key], known)
 		*f.id = promptMark(*f.nickname)
 	}
 
@@ -189,7 +190,7 @@ func applyRow(ctx context.Context, st *Store, k Kept, find PromptFinder) error {
 	)
 
 	for _, f := range promptsOf(&k, &ids) {
-		if *f.id, err = findPrompt(ctx, find, *f.nickname, f.kind); err != nil {
+		if *f.id, err = findPrompt(ctx, find, k.PromptUUIDs[f.key], *f.nickname, f.kind); err != nil {
 			return err
 		}
 	}
@@ -257,10 +258,18 @@ func cleanKept(k Kept) (Kept, []string, bool) {
 	return k, notes, true
 }
 
-// trimPrompts trims the nickname of each of k's default prompts.
+// trimPrompts trims the nickname of each of k's default prompts, and keeps the UUID of
+// each that names one, in its canonical form, dropping one that isn't a UUID.
 func trimPrompts(k *Kept) {
+	uuids := k.PromptUUIDs
+	k.PromptUUIDs = nil
+
 	for _, f := range promptsOf(k, new(promptIDs)) {
 		*f.nickname = strings.TrimSpace(*f.nickname)
+
+		if u, ok := textutil.CanonicalUUID(strings.TrimSpace(uuids[f.key])); ok && *f.nickname != "" {
+			setUUID(k, f.key, u)
+		}
 	}
 }
 
@@ -290,10 +299,11 @@ func dropped(where, what string, given, kept map[agent.ID]string) []string {
 }
 
 // resolvePrompt returns the nickname of f, one of the default prompts of the row for
-// where, when known finds it for f's kind, and otherwise "", noting that it inherits.
-func resolvePrompt(p *backup.Plan, where string, f keptPrompt, known Known) string {
+// where, named by uuid too, when known finds it for f's kind, and otherwise "", noting that
+// it inherits.
+func resolvePrompt(p *backup.Plan, where string, f keptPrompt, uuid string, known Known) string {
 	nickname := *f.nickname
-	if nickname == "" || known(nickname, f.kind) {
+	if nickname == "" || known(uuid, nickname, f.kind) {
 		return nickname
 	}
 
@@ -302,13 +312,14 @@ func resolvePrompt(p *backup.Plan, where string, f keptPrompt, known Known) stri
 	return ""
 }
 
-// findPrompt returns the ID find finds for nickname, or nil for "" or one it doesn't find.
-func findPrompt(ctx context.Context, find PromptFinder, nickname string, kind item.Kind) (*int64, error) {
+// findPrompt returns the ID find finds for the default named by uuid and nickname, or nil
+// for a nickname "" (one that inherits) or one it doesn't find.
+func findPrompt(ctx context.Context, find PromptFinder, uuid, nickname string, kind item.Kind) (*int64, error) {
 	if nickname == "" {
 		return nil, nil //nolint:nilnil // no prompt is no error
 	}
 
-	id, ok, err := find(ctx, nickname, kind)
+	id, ok, err := find(ctx, uuid, nickname, kind)
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -328,10 +339,13 @@ func promptMark(nickname string) *int64 {
 	return &mark
 }
 
-// sameKept reports whether two kept defaults set the same.
+// sameKept reports whether two kept defaults set the same, whatever UUIDs they name their
+// prompts by beside their nicknames, as a file from before UUIDs, or from another Mac,
+// names them otherwise.
 func sameKept(a, b Kept) bool {
 	norm := func(k Kept) Kept {
 		k.Profiles, k.Models, k.ExtraArgs = trimmed(k.Profiles), trimmed(k.Models), agent.CloneArgs(k.ExtraArgs)
+		k.PromptUUIDs = nil
 
 		return k
 	}

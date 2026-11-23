@@ -68,6 +68,12 @@ type Kept struct {
 	ChangesPrompt   string `json:"changesPrompt,omitempty"`
 	RereviewPrompt  string `json:"rereviewPrompt,omitempty"`
 
+	// PromptUUIDs names each default prompt by its UUID too, by its slot ("pr", "issue",
+	// "checks", "conflicts", "changes", "rereview"), so a restore or an import finds it
+	// whatever its nickname became; left out when it names none, and in an older build's
+	// copy.
+	PromptUUIDs map[string]string `json:"promptUUIDs,omitempty"`
+
 	Models    map[agent.ID]string   `json:"models"`
 	Effort    string                `json:"effort"`
 	PlanMode  *bool                 `json:"planMode"`
@@ -301,34 +307,47 @@ func keep(ctx context.Context, d Defaults, library PromptLookup) (Kept, error) {
 	}
 
 	for _, p := range promptsOf(&k, &ids) {
-		name, err := nickname(ctx, library, *p.id)
+		found, err := lookup(ctx, library, *p.id)
 		if err != nil {
 			return Kept{}, err
 		}
 
-		*p.nickname = name
+		*p.nickname = found.Nickname
+		setUUID(&k, p.key, found.UUID)
 	}
 
 	return k, nil
 }
 
-// nickname returns the nickname of the prompt with id, or "" for nil or a prompt that is
-// gone.
-func nickname(ctx context.Context, library PromptLookup, id *int64) (string, error) {
+// lookup returns the prompt with id, or none for nil or a prompt that is gone.
+func lookup(ctx context.Context, library PromptLookup, id *int64) (prompts.Prompt, error) {
 	if id == nil {
-		return "", nil
+		return prompts.Prompt{}, nil
 	}
 
 	p, err := library.Lookup(ctx, *id)
 
 	switch {
 	case errors.Is(err, prompts.ErrPromptNotFound):
-		return "", nil
+		return prompts.Prompt{}, nil
 	case err != nil:
-		return "", err
+		return prompts.Prompt{}, err
 	default:
-		return p.Nickname, nil
+		return p, nil
 	}
+}
+
+// setUUID names u the UUID of k's default prompt in the slot key; "" names none.
+func setUUID(k *Kept, key, u string) {
+	if u == "" {
+		return
+	}
+
+	if k.PromptUUIDs == nil {
+		k.PromptUUIDs = map[string]string{}
+	}
+
+	k.PromptUUIDs[key] = u
 }
 
 // defaultsColumns are the columns a backup's launch defaults are read from: both the
@@ -343,9 +362,9 @@ func defaultsColumns() []string {
 }
 
 // ReadSnapshot reads the launch defaults in the database file at path, whichever build
-// wrote it, without changing it. promptNickname names the prompt each of its prompt IDs
-// stood for in that database, "" for one it does not know.
-func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64) string) ([]Kept, error) {
+// wrote it, without changing it. promptOf names the prompt each of its prompt IDs stood
+// for in that database, by its nickname and its UUID, "" for what it does not know.
+func ReadSnapshot(ctx context.Context, path string, promptOf func(id int64) (nickname, uuid string)) ([]Kept, error) {
 	snap, err := store.OpenSnapshot(ctx, path)
 	if err != nil {
 		return nil, err
@@ -358,28 +377,27 @@ func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64
 		return nil, err
 	}
 
-	named := func(row store.Row, column string) string {
-		if id, ok := row.Int(column); ok {
-			return promptNickname(id)
-		}
-
-		return ""
-	}
-
 	out := make([]Kept, 0, len(rows))
 
 	for _, row := range rows {
-		out = append(out, Kept{
+		k := Kept{
 			Owner: row.Text("owner"), Name: row.Text("name"), Agent: agent.ID(row.Text("agent")),
 			Profiles: prompts.SnapshotModels(row, "profiles", "profile"),
-			PRPrompt: named(row, "pr_prompt_id"), IssuePrompt: named(row, "issue_prompt_id"),
-			ChecksPrompt: named(row, "checks_prompt_id"), ConflictsPrompt: named(row, "conflicts_prompt_id"),
-			ChangesPrompt: named(row, "changes_prompt_id"), RereviewPrompt: named(row, "rereview_prompt_id"),
-			Models: prompts.SnapshotModels(row, "models", "model"), Effort: row.Text("effort"),
+			Models:   prompts.SnapshotModels(row, "models", "model"), Effort: row.Text("effort"),
 			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"),
 			ExtraArgs:        prompts.SnapshotArgs(row, "agent_args", "extra_args"),
 			AutopilotOutside: outsideOf(new(row.Text("autopilot_outside"))),
-		})
+		}
+
+		for _, p := range promptsOf(&k, new(promptIDs)) {
+			if id, ok := row.Int(p.key + "_prompt_id"); ok {
+				nickname, u := promptOf(id)
+				*p.nickname = nickname
+				setUUID(&k, p.key, u)
+			}
+		}
+
+		out = append(out, k)
 	}
 
 	return out, nil
@@ -388,13 +406,13 @@ func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64
 // Restore stores kept launch defaults in a database that holds none, as after the
 // database was set aside, damaged, or deleted, all of them or, when a write fails, none.
 // It returns how many it stored, and stores nothing when any launch defaults are stored
-// already. promptID finds the prompt a nickname names now; a nickname it does not find
-// inherits. A profile is kept by name even when no profile has it now, as on a Mac
+// already. promptID finds the prompt a default names now, by its UUID first, else its
+// nickname; one it does not find inherits. A profile is kept by name even when no profile has it now, as on a Mac
 // without that config directory yet: the launch menu warns that it is missing, and it
 // works again once the profile is back, where dropping it would lose the user's choice. A
 // setting this build would refuse is left out, as is a row for no valid org or
 // repository.
-func Restore(ctx context.Context, st *Store, kept []Kept, promptID func(nickname string) (int64, bool)) (int, error) {
+func Restore(ctx context.Context, st *Store, kept []Kept, promptID PromptMatcher) (int, error) {
 	inputs := make([]restoring, 0, len(kept))
 
 	for _, k := range kept {
@@ -449,10 +467,16 @@ type promptIDs struct {
 	pr, issue, checks, conflicts, changes, rereview *int64
 }
 
-// keptPrompt is one of the default prompts a Kept names: where the Kept names it by
-// nickname, where a promptIDs holds its ID, the kind of item it must be a prompt for (a
-// situation's is a pull request's), and the words a note names it with.
+// PromptMatcher finds the prompt a kept default names now, by its UUID first, else its
+// nickname, and whether there is one.
+type PromptMatcher func(uuid, nickname string) (int64, bool)
+
+// keptPrompt is one of the default prompts a Kept names: its slot's key, which keys its
+// UUID, where the Kept names it by nickname, where a promptIDs holds its ID, the kind of
+// item it must be a prompt for (a situation's is a pull request's), and the words a note
+// names it with.
 type keptPrompt struct {
+	key      string
 	nickname *string
 	id       **int64
 	kind     item.Kind
@@ -465,22 +489,22 @@ func promptsOf(k *Kept, ids *promptIDs) []keptPrompt {
 	situation := func(slot prompts.DefaultSlot) string { return "its prompt " + slot.When() }
 
 	return []keptPrompt{
-		{&k.PRPrompt, &ids.pr, item.KindPR, "its prompt for " + item.KindPR.Plural()},
-		{&k.IssuePrompt, &ids.issue, item.KindIssue, "its prompt for " + item.KindIssue.Plural()},
-		{&k.ChecksPrompt, &ids.checks, item.KindPR, situation(prompts.DefaultSlotChecksFailing)},
-		{&k.ConflictsPrompt, &ids.conflicts, item.KindPR, situation(prompts.DefaultSlotConflicts)},
-		{&k.ChangesPrompt, &ids.changes, item.KindPR, situation(prompts.DefaultSlotChangesRequested)},
-		{&k.RereviewPrompt, &ids.rereview, item.KindPR, situation(prompts.DefaultSlotRereview)},
+		{"pr", &k.PRPrompt, &ids.pr, item.KindPR, "its prompt for " + item.KindPR.Plural()},
+		{"issue", &k.IssuePrompt, &ids.issue, item.KindIssue, "its prompt for " + item.KindIssue.Plural()},
+		{"checks", &k.ChecksPrompt, &ids.checks, item.KindPR, situation(prompts.DefaultSlotChecksFailing)},
+		{"conflicts", &k.ConflictsPrompt, &ids.conflicts, item.KindPR, situation(prompts.DefaultSlotConflicts)},
+		{"changes", &k.ChangesPrompt, &ids.changes, item.KindPR, situation(prompts.DefaultSlotChangesRequested)},
+		{"rereview", &k.RereviewPrompt, &ids.rereview, item.KindPR, situation(prompts.DefaultSlotRereview)},
 	}
 }
 
 // restorable returns kept defaults as this build would store them, and whether there is
 // anything to store: a row for a valid org or repository that sets something.
-func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring, bool) {
+func restorable(k Kept, promptID PromptMatcher) (restoring, bool) {
 	var ids promptIDs
 
 	for _, p := range promptsOf(&k, &ids) {
-		*p.id = idFor(*p.nickname, promptID)
+		*p.id = idFor(k.PromptUUIDs[p.key], *p.nickname, promptID)
 	}
 
 	return restorableWith(k, ids)
@@ -543,14 +567,14 @@ func keepKnown[V any](m map[agent.ID]V, ok func(agent.ID, V) bool) map[agent.ID]
 	return out
 }
 
-// idFor returns the ID promptID finds for a nickname, or nil for "" or one it does not
-// find.
-func idFor(nickname string, promptID func(nickname string) (int64, bool)) *int64 {
-	if nickname == "" {
+// idFor returns the ID promptID finds for a default named by uuid and nickname, or nil for
+// one that names none or one it does not find.
+func idFor(uuid, nickname string, promptID PromptMatcher) *int64 {
+	if nickname == "" && uuid == "" {
 		return nil
 	}
 
-	id, ok := promptID(nickname)
+	id, ok := promptID(uuid, nickname)
 	if !ok {
 		return nil
 	}

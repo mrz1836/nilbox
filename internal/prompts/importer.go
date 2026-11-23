@@ -612,26 +612,33 @@ func readSnapshotBundle(ctx context.Context, path string) (Bundle, error) {
 	return b, err
 }
 
-// readSnapshot is readSnapshotBundle that also returns each prompt's nickname by its ID
-// in the backup, for what in the backup names prompts by ID.
-func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, error) {
+// snapshotIDs are what a backup's prompt IDs stood for there: each prompt's nickname and
+// its UUID, by its ID, for what in the backup names prompts by ID.
+type snapshotIDs struct {
+	nicknames map[int64]string
+	uuids     map[int64]string
+}
+
+// readSnapshot is readSnapshotBundle that also returns each prompt's nickname and UUID by
+// its ID in the backup.
+func readSnapshot(ctx context.Context, path string) (Bundle, snapshotIDs, error) {
 	snap, err := store.OpenSnapshot(ctx, path)
 	if err != nil {
-		return Bundle{}, nil, err
+		return Bundle{}, snapshotIDs{}, err
 	}
 
 	defer func() { _ = snap.Close() }()
 
 	rows, err := snap.Rows(ctx, promptsTable, promptColumns()...)
 	if err != nil {
-		return Bundle{}, nil, err
+		return Bundle{}, snapshotIDs{}, err
 	}
 
 	b := Bundle{
 		Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, SlotsSeeded: []string{},
 		Prompts: []BundlePrompt{},
 	}
-	nicknames := map[int64]string{}
+	ids := snapshotIDs{nicknames: map[int64]string{}, uuids: map[int64]string{}}
 
 	for _, row := range rows {
 		models, args := snapshotSettings(row)
@@ -644,7 +651,7 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 		}
 
 		if id, ok := row.Int("id"); ok {
-			nicknames[id] = p.Nickname
+			ids.nicknames[id], ids.uuids[id] = p.Nickname, p.UUID
 		}
 
 		b.Prompts = append(b.Prompts, p)
@@ -652,25 +659,21 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 
 	// The library's own records come back too where the backup has them; the prompts come
 	// back without them.
-	b.Defaults, b.StartersAdded, b.SlotsSeeded = snapshotRecords(ctx, snap.DB(), nicknames)
+	b.Defaults, b.StartersAdded, b.SlotsSeeded = snapshotRecords(ctx, snap.DB(), ids)
 
-	return b, nicknames, nil
+	return b, ids, nil
 }
 
 // snapshotRecords reads a backup's default prompts, its situations' prompts, and its
-// default replies, by the nicknames of the prompts with those IDs, the starters it had
-// added, and the situations' slots it had filled. A backup without them, as an older
-// build's, or whose prefs can't be read, has none.
-func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string) (BundleDefaults, []string, []string) {
-	keys := make([]string, 0, 4+len(situationSlots())+len(ReplySlots()))
-	keys = append(keys, prefSeeded, prefSeededSlots, prefDefaultPR, prefDefaultIssue)
+// default replies, by the nicknames and the UUIDs of the prompts with those IDs, the
+// starters it had added, and the situations' slots it had filled. A backup without them, as
+// an older build's, or whose prefs can't be read, has none.
+func snapshotRecords(ctx context.Context, db *sql.DB, ids snapshotIDs) (BundleDefaults, []string, []string) {
+	keys := make([]string, 0, 2+len(DefaultSlots()))
+	keys = append(keys, prefSeeded, prefSeededSlots)
 
-	for _, slot := range situationSlots() {
-		keys = append(keys, situationPrefKey(slot))
-	}
-
-	for _, slot := range ReplySlots() {
-		keys = append(keys, replyPrefKey(slot))
+	for _, slot := range DefaultSlots() {
+		keys = append(keys, slotPrefKey(slot))
 	}
 
 	values, err := prefs.New(db, nil).GetMany(ctx, keys...)
@@ -678,15 +681,13 @@ func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string
 		return BundleDefaults{}, []string{}, []string{}
 	}
 
-	defaults := BundleDefaults{PR: nicknames[idText(values[prefDefaultPR])], Issue: nicknames[idText(values[prefDefaultIssue])]}
+	var defaults BundleDefaults
 
-	for _, slot := range situationSlots() {
-		defaults.Set(slot, nicknames[idText(values[situationPrefKey(slot)])])
-	}
-
-	for _, slot := range ReplySlots() {
-		if nickname := nicknames[idText(values[replyPrefKey(slot)])]; nickname != "" {
-			defaults.setReply(slot, nickname)
+	for _, slot := range DefaultSlots() {
+		id := idText(values[slotPrefKey(slot)])
+		if nickname := ids.nicknames[id]; nickname != "" {
+			defaults.Set(slot, nickname)
+			defaults.setUUID(slot, ids.uuids[id])
 		}
 	}
 
@@ -739,6 +740,21 @@ func SnapshotArgs(row store.Row, perAgent, single string) map[agent.ID][]string 
 	}
 
 	return agent.CloneArgs(map[agent.ID][]string{agent.Claude: row.Strings(single)})
+}
+
+// slotPrefKey returns the preference holding slot's default: a kind's, a situation's, or a
+// reply's.
+func slotPrefKey(slot DefaultSlot) string {
+	switch {
+	case slot == DefaultSlotPR:
+		return prefDefaultPR
+	case slot == DefaultSlotIssue:
+		return prefDefaultIssue
+	case slot.situation():
+		return situationPrefKey(slot)
+	default:
+		return replyPrefKey(ReplySlot(slot))
+	}
 }
 
 // idText reads a stored prompt ID, or 0.

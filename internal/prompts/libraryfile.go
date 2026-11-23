@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // LibraryFile is the copy of the prompt library the app keeps in a plain file beside its
@@ -79,10 +80,15 @@ type Restored struct {
 	// what names prompts by nickname, such as the launch defaults' copy, can find them.
 	IDs map[string]int64
 
-	// Nicknames maps each prompt's ID in the database set aside to its nickname there, so
-	// what that database names by ID can be matched to IDs; it is nil when the prompts
-	// came from the library file.
-	Nicknames map[int64]string
+	// UUIDs maps each restored prompt's UUID to its ID, so what names prompts by UUID finds
+	// them first, whatever the restore made of their nicknames.
+	UUIDs map[string]int64
+
+	// Nicknames and PromptUUIDs map each prompt's ID in the database set aside to its
+	// nickname and its UUID there, so what that database names by ID can be matched to IDs;
+	// they are nil when the prompts came from the library file.
+	Nicknames   map[int64]string
+	PromptUUIDs map[int64]string
 }
 
 // Restore brings back a library the app lost. It runs only on a library that is new,
@@ -103,10 +109,10 @@ func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile)
 	var errs []error
 
 	if setAside != "" {
-		b, nicknames, readErr := readSnapshot(ctx, setAside)
+		b, ids, readErr := readSnapshot(ctx, setAside)
 		if readErr == nil {
 			restored, restoreErr := restoreBundle(ctx, st, b, setAside)
-			restored.Nicknames = nicknames
+			restored.Nicknames, restored.PromptUUIDs = ids.nicknames, ids.uuids
 
 			return restored, restoreErr
 		}
@@ -137,7 +143,10 @@ func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile)
 // it or, when a write fails, none. A file without the slots filled, as an older build's,
 // leaves Seed to fill each slot once. from is the file b was read from.
 func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Restored, error) {
-	var ids map[string]int64
+	var (
+		ids   map[string]int64
+		uuids map[string]int64
+	)
 
 	err := st.inTx(ctx, func(tx *Store) error {
 		var (
@@ -157,6 +166,10 @@ func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Resto
 			return err
 		}
 
+		if uuids, err = uuidsOf(ctx, tx); err != nil {
+			return err
+		}
+
 		_, err = restoreDefaults(ctx, tx, b.Defaults, ids)
 
 		return err
@@ -165,7 +178,24 @@ func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Resto
 		return Restored{}, fmt.Errorf("restore the prompts: %w", err)
 	}
 
-	return Restored{Count: len(b.Prompts), From: from, IDs: ids}, nil
+	return Restored{Count: len(b.Prompts), From: from, IDs: ids, UUIDs: uuids}, nil
+}
+
+// uuidsOf maps the UUID of every prompt st holds to its ID.
+func uuidsOf(ctx context.Context, st *Store) (map[string]int64, error) {
+	all, err := st.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]int64, len(all))
+	for _, p := range all {
+		if p.UUID != "" {
+			out[p.UUID] = p.ID
+		}
+	}
+
+	return out, nil
 }
 
 // restorePrompts adds every prompt in b, as it was, under a free nickname where two
@@ -213,7 +243,7 @@ func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, id
 	changed := 0
 
 	for _, slot := range DefaultSlots() {
-		p, ok, findErr := fittingPrompt(ctx, st, ids, slot, defaults.For(slot))
+		p, ok, findErr := fittingPrompt(ctx, st, ids, defaults, slot)
 
 		switch {
 		case findErr != nil:
@@ -234,16 +264,45 @@ func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, id
 	return changed, nil
 }
 
-// fittingPrompt returns the prompt restored under nickname, when there is one and it fits
-// slot (see DefaultSlot.takes), and whether it does.
-func fittingPrompt(ctx context.Context, st *Store, ids map[string]int64, slot DefaultSlot, nickname string,
+// fittingPrompt returns the prompt that is slot's default in defaults here (defaultPrompt),
+// when there is one and it fits slot (see DefaultSlot.takes), and whether it does.
+func fittingPrompt(ctx context.Context, st *Store, ids map[string]int64, defaults BundleDefaults, slot DefaultSlot,
 ) (Prompt, bool, error) {
-	p, ok, err := restoredPrompt(ctx, st, ids, nickname)
+	p, ok, err := defaultPrompt(ctx, st, ids, defaults, slot)
 	if err != nil || !ok || !slot.takes(p.Purpose, p.ReplyAction, p.AppliesTo) {
 		return Prompt{}, false, err
 	}
 
 	return p, true, nil
+}
+
+// defaultPrompt returns the prompt that is slot's default in defaults here, and whether
+// there is one: the one the source's nickname for it was restored or imported under (ids,
+// the source's own prompts first), else the prompt with its UUID in the library st holds,
+// as for a prompt left out of an import that the library holds already.
+func defaultPrompt(ctx context.Context, st *Store, ids map[string]int64, defaults BundleDefaults, slot DefaultSlot,
+) (Prompt, bool, error) {
+	if p, ok, err := restoredPrompt(ctx, st, ids, defaults.For(slot)); err != nil || ok {
+		return p, ok, err
+	}
+
+	u, ok := textutil.CanonicalUUID(defaults.UUIDs[slot])
+	if !ok {
+		return Prompt{}, false, nil
+	}
+
+	all, err := st.All(ctx)
+	if err != nil {
+		return Prompt{}, false, err
+	}
+
+	for _, p := range all {
+		if p.UUID == u {
+			return p, true, nil
+		}
+	}
+
+	return Prompt{}, false, nil
 }
 
 // setSlot stores id as slot's default; 0 leaves a reply slot or a situation's with none,

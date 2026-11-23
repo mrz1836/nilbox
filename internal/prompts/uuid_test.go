@@ -318,3 +318,59 @@ func TestARoutinesUseNamesThePromptWithItsUUIDWhateverItIsCalledNow(t *testing.T
 	require.True(t, ok, "a prompt a routine runs by its UUID can't be deleted: %v", err)
 	assert.Equal(t, []string{"Look first"}, inUse.Usage.Routines)
 }
+
+func TestAFilesDefaultFindsItsPromptByUUID(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	// The file's default for pull requests names its prompt by a nickname the file doesn't
+	// give it, and by its UUID.
+	p := mine(mineName)
+	p.UUID = fileUUID
+	b := bundleOf(p)
+	b.Defaults = BundleDefaults{PR: "Old name", UUIDs: map[DefaultSlot]string{DefaultSlotPR: fileUUID}}
+
+	offered := previewAll(t, s, b).Defaults
+	require.Len(t, offered, 1, "the UUID finds the file's prompt")
+	assert.Equal(t, DefaultSlotPR, offered[0].Slot)
+	assert.Equal(t, mineName, offered[0].Nickname)
+
+	_, err := s.Import(ctx, b.Prompts, b.Defaults)
+	require.NoError(t, err)
+
+	defaults, err := s.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, byNickname(t, s, mineName).ID, defaults.PR)
+
+	// A default whose prompt the import leaves out finds the prompt the library holds under
+	// its UUID.
+	quick := byNickname(t, s, "Quick look")
+	res, err := s.Import(ctx, nil, BundleDefaults{
+		PR: "Gone", UUIDs: map[DefaultSlot]string{DefaultSlotPR: quick.UUID},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Defaults)
+
+	defaults, err = s.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, quick.ID, defaults.PR)
+}
+
+func TestRestoreSaysWhereEachUUIDCameBack(t *testing.T) {
+	t.Parallel()
+
+	from, _, dir := keeping(t)
+	want := uuidsByNickname(t, from)
+	review := byNickname(t, from, reviewNick)
+
+	s, _ := empty(t, nil)
+
+	restored, err := Restore(t.Context(), s.store, filepath.Join(dir, "app.db"), nil)
+	require.NoError(t, err)
+	assert.Len(t, restored.UUIDs, len(want))
+	assert.Equal(t, byNickname(t, s, reviewNick).ID, restored.UUIDs[review.UUID], "each UUID finds its restored prompt")
+	assert.Equal(t, review.UUID, restored.PromptUUIDs[review.ID], "and each old ID its UUID")
+	assert.Equal(t, reviewNick, restored.Nicknames[review.ID])
+}

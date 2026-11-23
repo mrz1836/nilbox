@@ -209,22 +209,7 @@ func (b backupDefaults) Prepare(ctx context.Context, raw json.RawMessage, how ba
 		return backup.Prepared{}, err
 	}
 
-	known := func(nickname string, kind item.Kind) bool {
-		if k, ok := how.Prompts[nickname]; ok {
-			return !k.Reply && prompts.AppliesTo(k.AppliesTo).Covers(kind)
-		}
-
-		// Replace leaves the library only the prompts the file brings.
-		if how.Prompts != nil && how.Mode == backup.ModeReplace {
-			return false
-		}
-
-		p, ok := named(lib, nickname)
-
-		return ok && launchable(p, kind)
-	}
-
-	plan, err := b.defaults.PlanBackup(ctx, kept, how.Mode, known)
+	plan, err := b.defaults.PlanBackup(ctx, kept, how.Mode, knownPrompts(lib, how))
 	if err != nil {
 		return backup.Prepared{}, err
 	}
@@ -241,7 +226,9 @@ func (b backupDefaults) Clear(ctx context.Context, tx *sql.Tx) error {
 func (b backupDefaults) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared, links backup.Links) (backup.Count, error) {
 	st := b.prompts.WithTx(tx)
 
-	find := func(ctx context.Context, nickname string, kind item.Kind) (int64, bool, error) {
+	// A prompt is found among the file's own prompts first, then by its UUID in the library
+	// the transaction holds, whatever it is called now, then by its nickname.
+	find := func(ctx context.Context, uuid, nickname string, kind item.Kind) (int64, bool, error) {
 		if id, ok := links[nickname]; ok {
 			found, err := st.Lookup(ctx, id)
 			if err != nil {
@@ -256,7 +243,10 @@ func (b backupDefaults) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared
 			return 0, false, err
 		}
 
-		found, ok := named(lib, nickname)
+		found, ok := withUUID(lib, uuid)
+		if !ok {
+			found, ok = named(lib, nickname)
+		}
 
 		return found.ID, ok && launchable(found, kind), nil
 	}
@@ -415,6 +405,42 @@ func stateOf[T any](p backup.Prepared) T {
 func named(lib []prompts.Prompt, nickname string) (prompts.Prompt, bool) {
 	for _, p := range lib {
 		if strings.EqualFold(p.Nickname, nickname) {
+			return p, true
+		}
+	}
+
+	return prompts.Prompt{}, false
+}
+
+// knownPrompts reports whether a launch default's prompt, by its UUID and its nickname, will
+// name an agent prompt for a kind once the import is applied: among the prompts the same
+// import brings first, then, unless a Replace takes the prompts too, in lib by its UUID,
+// whatever it is called now, then by its nickname.
+func knownPrompts(lib []prompts.Prompt, how backup.How) launchdefaults.Known {
+	return func(uuid, nickname string, kind item.Kind) bool {
+		if k, ok := how.Prompts[nickname]; ok {
+			return !k.Reply && prompts.AppliesTo(k.AppliesTo).Covers(kind)
+		}
+
+		// Replace leaves the library only the prompts the file brings.
+		if how.Prompts != nil && how.Mode == backup.ModeReplace {
+			return false
+		}
+
+		p, ok := withUUID(lib, uuid)
+		if !ok {
+			p, ok = named(lib, nickname)
+		}
+
+		return ok && launchable(p, kind)
+	}
+}
+
+// withUUID returns the prompt of lib with the UUID u, and whether there is one; "" names
+// none.
+func withUUID(lib []prompts.Prompt, u string) (prompts.Prompt, bool) {
+	for _, p := range lib {
+		if u != "" && p.UUID == u {
 			return p, true
 		}
 	}

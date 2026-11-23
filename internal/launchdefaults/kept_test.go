@@ -52,6 +52,12 @@ func load(t *testing.T, path string) []launchdefaults.Kept {
 	return kept
 }
 
+// restoredID finds a restored prompt by its nickname alone, as promptID does, whatever UUID
+// a default names it by.
+func (h *harness) restoredID(_, nickname string) (int64, bool) {
+	return h.promptID(nickname)
+}
+
 // nicknames finds the starters by nickname.
 func (h *harness) promptID(nickname string) (int64, bool) {
 	switch nickname {
@@ -79,11 +85,14 @@ func TestEveryChangeRewritesTheCopy(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	uuids := h.uuids(t)
 	assert.Equal(t, []launchdefaults.Kept{{
 		Owner: acme, Agent: agent.Codex, Profiles: map[agent.ID]string{agent.Claude: "work", agent.Codex: profileAlt},
-		PRPrompt: "Review", IssuePrompt: "Work on it", Models: claude(opusModel), Effort: "xhigh", Worktree: &on,
+		PRPrompt: "Review", IssuePrompt: "Work on it",
+		PromptUUIDs: map[string]string{"pr": uuids["Review"], "issue": uuids["Work on it"]},
+		Models:      claude(opusModel), Effort: "xhigh", Worktree: &on,
 		ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}, agent.Codex: {"--search"}},
-	}}, load(t, path), "prompts are named by nickname")
+	}}, load(t, path), "prompts are named by nickname, and by UUID beside it")
 
 	_, err = svc.Save(t.Context(), launchdefaults.Input{Owner: acme, Name: exampleRepo, Models: claude("sonnet")})
 	require.NoError(t, err)
@@ -174,7 +183,7 @@ func TestRestoreMatchesPromptsByNickname(t *testing.T) {
 		{Owner: "other-org", IssuePrompt: "Renamed away"},
 		{Owner: "not an org!", Models: claude(opusModel)},
 		{Owner: acme, Name: "../escape", Models: claude(opusModel)},
-	}, h.promptID)
+	}, h.restoredID)
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 
@@ -207,7 +216,7 @@ func TestRestoreLeavesLaunchDefaultsThatExist(t *testing.T) {
 	_, err := h.svc.Save(t.Context(), launchdefaults.Input{Owner: acme, Models: claude(opusModel)})
 	require.NoError(t, err)
 
-	n, err := launchdefaults.Restore(t.Context(), h.store, []launchdefaults.Kept{{Owner: "other-org", Models: claude("sonnet")}}, h.promptID)
+	n, err := launchdefaults.Restore(t.Context(), h.store, []launchdefaults.Kept{{Owner: "other-org", Models: claude("sonnet")}}, h.restoredID)
 	require.NoError(t, err)
 	assert.Zero(t, n)
 
@@ -226,7 +235,7 @@ WHEN NEW.owner = 'second-org' BEGIN SELECT RAISE(ABORT, 'refused by the test'); 
 
 	_, err = launchdefaults.Restore(t.Context(), h.store, []launchdefaults.Kept{
 		{Owner: acme, Models: claude(opusModel)}, {Owner: "second-org", Models: claude(opusModel)},
-	}, h.promptID)
+	}, h.restoredID)
 	require.ErrorContains(t, err, "restore the launch defaults")
 
 	all, err := h.svc.List(t.Context())
@@ -254,12 +263,12 @@ func TestReadSnapshotReadsAnOlderSchema(t *testing.T) {
 
 	require.NoError(t, raw.Close())
 
-	got, err := launchdefaults.ReadSnapshot(t.Context(), path, func(id int64) string {
+	got, err := launchdefaults.ReadSnapshot(t.Context(), path, func(id int64) (string, string) {
 		if id == 4 {
-			return "Review"
+			return "Review", ""
 		}
 
-		return ""
+		return "", ""
 	})
 	require.NoError(t, err)
 
@@ -312,19 +321,24 @@ func TestReadSnapshotReadsThePerAgentSchema(t *testing.T) {
 	_, err = h.db.ExecContext(t.Context(), "VACUUM INTO ?", backup)
 	require.NoError(t, err)
 
-	got, err := launchdefaults.ReadSnapshot(t.Context(), backup, func(id int64) string {
+	uuids := h.uuids(t)
+
+	got, err := launchdefaults.ReadSnapshot(t.Context(), backup, func(id int64) (string, string) {
 		for nickname, known := range ids {
 			if known == id {
-				return nickname
+				return nickname, uuids[nickname]
 			}
 		}
 
-		return ""
+		return "", ""
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Kept{{
 		Owner: acme, Agent: agent.Codex, Profiles: map[agent.ID]string{agent.Codex: profileAlt}, PRPrompt: "Review",
 		ChecksPrompt: "Fix checks", RereviewPrompt: "Re-review",
+		PromptUUIDs: map[string]string{
+			"pr": uuids["Review"], "checks": uuids["Fix checks"], "rereview": uuids["Re-review"],
+		},
 		Models: map[agent.ID]string{agent.Codex: "gpt-6-sol"}, ExtraArgs: map[agent.ID][]string{agent.Codex: {"--search"}},
 	}}, got)
 }
@@ -344,9 +358,24 @@ func (h *harness) ids(t *testing.T) map[string]int64 {
 	return out
 }
 
-// finder finds a prompt in ids by nickname, as a restore does.
-func finder(ids map[string]int64) func(nickname string) (int64, bool) {
-	return func(nickname string) (int64, bool) {
+// uuids returns the UUID of each prompt in the harness's library, by nickname.
+func (h *harness) uuids(t *testing.T) map[string]string {
+	t.Helper()
+
+	all, err := h.library.All(t.Context())
+	require.NoError(t, err)
+
+	out := map[string]string{}
+	for _, p := range all {
+		out[p.Nickname] = p.UUID
+	}
+
+	return out
+}
+
+// finder finds a prompt in ids by nickname alone, as a restore from before UUIDs does.
+func finder(ids map[string]int64) launchdefaults.PromptMatcher {
+	return func(_, nickname string) (int64, bool) {
 		id, ok := ids[nickname]
 
 		return id, ok
@@ -375,17 +404,23 @@ func TestTheCopyKeepsTheSituationsPrompts(t *testing.T) {
 	require.NoError(t, err)
 
 	kept := load(t, path)
+	uuids := h.uuids(t)
 	assert.Equal(t, []launchdefaults.Kept{
 		{
 			Owner: acme, ChecksPrompt: "Fix checks", ConflictsPrompt: "Resolve conflicts", ChangesPrompt: "Address review",
 			RereviewPrompt: "Re-review", Profiles: map[agent.ID]string{}, Models: map[agent.ID]string{},
 			ExtraArgs: map[agent.ID][]string{},
+			PromptUUIDs: map[string]string{
+				"checks": uuids["Fix checks"], "conflicts": uuids["Resolve conflicts"], "changes": uuids["Address review"],
+				"rereview": uuids["Re-review"],
+			},
 		},
 		{
 			Owner: acme, Name: exampleRepo, PRPrompt: "Review", Profiles: map[agent.ID]string{},
 			Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
+			PromptUUIDs: map[string]string{"pr": uuids["Review"]},
 		},
-	}, kept, "each situation's prompt is named by nickname")
+	}, kept, "each situation's prompt is named by nickname, and by UUID beside it")
 
 	data, err := os.ReadFile(path) //nolint:gosec // a file the test wrote
 	require.NoError(t, err)
@@ -425,7 +460,7 @@ func TestAnOlderCopyWithoutTheSituationsPromptsInherits(t *testing.T) {
 
 	h := newHarness(t)
 
-	_, err := launchdefaults.Restore(t.Context(), h.store, kept, h.promptID)
+	_, err := launchdefaults.Restore(t.Context(), h.store, kept, h.restoredID)
 	require.NoError(t, err)
 
 	all, err := h.svc.List(t.Context())

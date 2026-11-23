@@ -263,7 +263,12 @@ never a situation's), records its key, and returns the copy. A key this build do
 export, an import's file, `prompts.json`, a backup's prompts section, and the prompts an Autopilot
 export carries. It names prompts and defaults by nickname, never by ID (`BundleDefaults`), and
 writes every field; each prompt carries its `uuid` too (`omitempty`, so a file an older build
-wrote has none, which adding the field didn't need a new version for). `BundleFormat` is
+wrote has none, which adding the field didn't need a new version for), and the defaults name
+each default's prompt by UUID beside its nickname (`BundleDefaults.UUIDs`). An import's offers
+find a default's prompt among the file's by UUID, then by nickname (`sourcePrompt`), and
+`restoreDefaults` and `replaceDefaults` find it through one helper (`defaultPrompt`): the
+nickname the file's prompt ended up under here (the links, the file's own prompts first), then
+the prompt with its UUID in the library, as for one left out of an import. `BundleFormat` is
 `brand.Slug + ".prompts"`; `BundleVersion` is 4, raised only
 for a change an older build would misread (2: each agent's settings; 3: replies; 4: prompts for
 repositories), and `BundlePrompt.UnmarshalJSON` reads version 1's single `model` and `extraArgs`
@@ -295,8 +300,9 @@ planner in its `faithful` mode (nothing skipped or saved over; a second copy of 
 the user's own), the source's `startersAdded` with each starter it stored, its `slotsSeeded` (none
 from a file without them, so `Seed` fills each situation once), and its defaults where their prompts
 fit (`restoreDefaults`). `Restored` says how many came back and from where, with the ID each
-nickname got (`IDs`) and, from a database, each old ID's nickname (`Nicknames`), which core's
-`kept.restoreDefaults` matches the launch defaults to.
+nickname got (`IDs`) and each UUID (`UUIDs`), and, from a database, each old ID's nickname and UUID
+(`Nicknames`, `PromptUUIDs`), which core's `kept.restoreDefaults` matches the launch defaults to,
+by UUID first.
 
 ## Export, import, and restore from a backup (`transfer.go`, `importer.go`)
 

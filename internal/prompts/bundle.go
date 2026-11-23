@@ -116,6 +116,25 @@ type BundleDefaults struct {
 	// Replies names the default reply for each slot by nickname, leaving out a slot whose
 	// default is none of the file's prompts.
 	Replies map[ReplySlot]string `json:"replies,omitempty"`
+
+	// UUIDs names each default's prompt by its UUID too, by its slot, so an import finds it
+	// whatever it is called: among the file's prompts first, then in the library. Left out
+	// of a file an older build wrote, and of a slot whose default is none of the file's
+	// prompts.
+	UUIDs map[DefaultSlot]string `json:"uuids,omitempty"`
+}
+
+// setUUID names u the UUID of slot's default; "" names none.
+func (d *BundleDefaults) setUUID(slot DefaultSlot, u string) {
+	if u == "" {
+		return
+	}
+
+	if d.UUIDs == nil {
+		d.UUIDs = map[DefaultSlot]string{}
+	}
+
+	d.UUIDs[slot] = u
 }
 
 // setReply names nickname the default reply for slot.
@@ -201,22 +220,13 @@ func newBundle(lib Library, kept records, ids []int64, now time.Time, app string
 	return b
 }
 
-// name records p by nickname wherever defaults makes it a default.
+// name records p by nickname, and by UUID, wherever defaults makes it a default.
 func (d *BundleDefaults) name(defaults DefaultPrompts, p Prompt) {
-	if p.ID == defaults.PR {
-		d.PR = p.Nickname
-	}
-
-	if p.ID == defaults.Issue {
-		d.Issue = p.Nickname
-	}
-
-	for _, slot := range defaults.situations(p.ID) {
-		d.Set(slot, p.Nickname)
-	}
-
-	for _, slot := range defaults.Replies.Slots(p.ID) {
-		d.setReply(slot, p.Nickname)
+	for _, slot := range DefaultSlots() {
+		if p.ID != 0 && defaults.Slot(slot) == p.ID {
+			d.Set(slot, p.Nickname)
+			d.setUUID(slot, p.UUID)
+		}
 	}
 }
 

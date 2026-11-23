@@ -520,7 +520,7 @@ func replaceDefaults(ctx context.Context, st *Store, before DefaultPrompts, defa
 	changed := 0
 
 	for _, slot := range DefaultSlots() {
-		p, ok, err := fittingPrompt(ctx, st, links, slot, defaults.For(slot))
+		p, ok, err := fittingPrompt(ctx, st, links, defaults, slot)
 		if err != nil {
 			return 0, err
 		}
