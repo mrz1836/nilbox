@@ -1,5 +1,7 @@
 # Performance
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [`internal/budget` and `internal/github`](architecture/budget-and-github.md)
+
 The first milestone set five targets before any further feature work: a fast cold start, a
 fast inbox refresh, a fast agent launch, a small app, and a small share of the GitHub API
 budget. This page records what was measured, on what, and how, so anyone can reproduce the
@@ -183,7 +185,7 @@ repository `acme-org/example-repo`, without fetching anything. It stores one pul
 outside contributor, so the session starts in plan mode (Codex: read-only), and launches it
 without a worktree through the real launch service and iTerm2. It launches Claude Code by
 default; `magex measure:launch agent=codex` launches Codex instead. A launch on an outside contributor's pull request
-first checks its [sensitive files](desktop.md#sensitive-files) on GitHub; the placeholder's
+first checks its [sensitive files](guide/sensitive-files.md) on GitHub; the placeholder's
 cannot be checked, so the launch is held back for confirmation, and the target confirms it at
 once and launches again, as a user would. The time includes both requests, so it is an upper
 bound for a pull request whose files check out. It then checks the process list (`ps`) and each new
@@ -235,8 +237,9 @@ number.
 `bin/Nilbox Dev.app/Contents/MacOS/nilbox`: 22,949,712 bytes, or 22.9 MB in decimal megabytes.
 The whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
 (24,226,109 bytes).
-The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend. Measured once the GitHub notifications' clearing landed.
+The binary was built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
+built frontend. Measured once the GitHub notifications' clearing landed, before a build from source
+carried the inspector: it now adds the `devtools` tag, which a release leaves out.
 
 The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.31 MB without source
 maps (2,311,405 bytes). Before its first paint the window loads 844,221 bytes of script
@@ -342,7 +345,8 @@ larger requests up to 100 items, then requests of 25 items; each costs a point. 
 details read each pull request's merge state too (`mergeStateStatus`, which GitHub works out
 per pull request, about 90 ms each, measured in November 2026), a request stops at 25 items,
 where it took 4.6 s; at 50 it came near GitHub's 10-second limit. Asking for
-the same details inside the inbox query's three searches would cost 12 points a refresh
+the same details inside the inbox query's searches, three when this was measured, would cost 12
+points a refresh
 (2.9% of the budget), because GitHub prices nested lists by the result slots asked for, not
 the items returned; that dry-run cost is why the details are a separate query. Before the
 cards read details, a refresh cost 1 point (0.24%).
@@ -367,7 +371,7 @@ latest approval or request for changes adds no point, with or without an issue's
 (`rateLimit.cost` 1 each, measured in November 2026). The followers' batches of 25 never ask
 for it, since there it would cost a point more per batch.
 
-The [sensitive-file check](desktop.md#sensitive-files) costs no GraphQL points: it reads a
+The [sensitive-file check](guide/sensitive-files.md) costs no GraphQL points: it reads a
 pull request's changed files from the REST API, whose separate budget is 5,000 requests an hour.
 It runs only for pull requests from outside the repository (and collaborators', by default),
 and only when one's head commit has moved since its last check: two requests for a pull request
@@ -375,7 +379,7 @@ of up to 100 files, plus one per further 100. A refresh that finds nothing pushe
 nothing, and one refresh checks at most 20 pull requests. A launch on such a pull request asks
 for its head once more, one request, and lists its files again only if it was pushed since.
 
-The [review sheet](desktop.md#reviewing-a-pull-request) spends nothing on the scheduler's
+The [review sheet](guide/reviewing-a-pull-request.md) spends nothing on the scheduler's
 budget: it reads only when you open a pull request, and nothing ahead of time.
 
 | What you do | Requests |
@@ -396,7 +400,7 @@ GitHub's file list names the commit it listed each file at, so a read whose file
 head the sheet asked for needs no separate request to confirm it, and the same list serves as
 the pull request's sensitive-file check when one is due.
 
-The [issue sheet](desktop.md#reading-an-issue) spends nothing on the scheduler's budget either:
+The [issue sheet](guide/reading-an-issue.md) spends nothing on the scheduler's budget either:
 it reads only when you open an issue. Its one read brings the description, the newest hundred
 entries of the conversation, and the details beside them, and costs 1 GraphQL point with the
 projects or without them (measured on a public issue of over a hundred entries).
@@ -425,7 +429,7 @@ people change rarely:
 | Type in it | None while Nilbox holds everyone who can be assigned (a repository of up to 100), or when a search that named everyone it matched covers the words (for a week, every longer search that starts with them) or the same words were searched in the last 10 minutes; otherwise 1 GraphQL point, 300 ms after you stop typing |
 | Forget what was learned (Settings) | None |
 
-[Following a release](desktop.md#release) to published costs at most 20 GraphQL points and 20
+[Following a release](guide/release.md) to published costs at most 20 GraphQL points and 20
 REST requests per release: a check a minute after the release ends, then one every three
 minutes, each one GraphQL query of 1 point (measured) for the tag's release and, until it is
 published, one REST request for the tag's own workflow runs. It stops once the release is
@@ -437,7 +441,7 @@ through the shared client, so the API budget gauge counts it.
 
 ### Routine searches
 
-**What is measured.** A refresh with five [routine searches](desktop.md#routine-searches)
+**What is measured.** A refresh with five [routine searches](guide/autopilot/routine-searches.md)
 after the inbox's own: the time to the inbox's store (the inbox query and the listed items'
 details, side by side, as without searches), then the watch pass after the store, which sends
 the searches' requests, reads the details of the watched items that are new or changed, and
@@ -513,19 +517,19 @@ tick after it runs, finds every occurrence recorded and writes nothing. The inbo
 the items' facts is measured apart (`BenchmarkRefreshCycle`), so the benchmark hands them over
 ready.
 
-**How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a
-real database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle,
-`BenchmarkEngineFirstCycle` the first. `BenchmarkLedgerKeys` times building the ledger's keys in
-memory from the database (`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of
-them (`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path
-patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
-`internal/autopilot/eval`, which prepares each routine once and decides it on every item, as a
-cycle does. Measured on the M1 Max (2026-11-17) while other branches built and tested on it (a
-load average of about 30), the steady cycle before and after the change run one after the
-other, so the numbers are high rather than low. The routines prepared once a cycle were
-measured on 2026-11-21 under a heavier load still (a load average of 30 to 160): the commits
-before and after built as test binaries and run in turn, ten runs each with `-benchmem`, once
-on every core and once with `-cpu 1`, and compared with `benchstat`.
+**How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a real
+database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle, `BenchmarkEngineFirstCycle`
+the first. `-bench BenchmarkLedgerKeys` times building the ledger's keys in memory from the database
+(`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of them
+(`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path patterns
+run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in `internal/autopilot/eval`,
+which prepares each routine once and decides it on every item, as a cycle does. Measured on the M1
+Max (2026-11-17) while other branches built and tested on it (a load average of about 30), the
+steady cycle before and after the change run one after the other, so the numbers are high rather
+than low. The routines prepared once a cycle were measured on 2026-11-21 under a heavier load still
+(a load average of 30 to 160): the commits before and after built as test binaries and run in turn,
+ten runs each with `-benchmem`, once on every core and once with `-cpu 1`, and compared with
+`benchstat`.
 
 **Results.** The evaluation takes 10 ms (10.2 ms, the median of ten runs, against 15.9 ms just
 before each routine was prepared once a cycle, run in turn with it: 36% less; 39% less with
@@ -576,7 +580,7 @@ for byte.
 
 ## Reproducing
 
-On a Mac signed in with the GitHub CLI (see [desktop.md](desktop.md) for the setup):
+On a Mac signed in with the GitHub CLI (see [Prerequisites](development/prerequisites.md) for the setup):
 
 ```bash
 cd ~/projects/nilbox

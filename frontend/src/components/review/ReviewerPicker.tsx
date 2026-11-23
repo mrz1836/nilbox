@@ -98,7 +98,7 @@ export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose 
     icon: r.team ? <TeamGlyph /> : <PersonAvatar login={r.author} />,
     hint: '',
     aside: r.state === '' ? '' : 'asked again',
-    locked: r.mine ? 'Take yourself off with Remove me as reviewer, in the action menu.' : '',
+    locked: r.mine ? 'Take yourself off with Remove me as reviewer, in the card’s menu.' : '',
     section: 'Requested',
   }))
   const personRows = (list: typeof people, section: string): Choice[] =>

@@ -32,7 +32,7 @@ const rows: readonly { kind: IntervalKind; label: string; description: string }[
     kind: 'checks',
     label: 'Running checks',
     description:
-      'The pull requests whose checks are still running, all in one request, about a point, until their checks end. Nothing is read while no checks run.',
+      'The pull requests whose checks are still running, read again in requests of up to 25, about a point each, until their checks end. Nothing is read while no checks run.',
   },
   {
     kind: 'releaseChecks',

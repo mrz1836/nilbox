@@ -1,10 +1,12 @@
 # Prompt files
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [Prompts](guide/prompts.md), [Backup files](backup-files.md)
+
 A prompt file holds prompts in a portable form, so you can move them between Macs, share them,
 or keep them in your own backups. The app writes one when you export prompts, reads one when
 you import, and keeps one beside its database as `prompts.json`, a copy of your whole library
 that it rewrites after every change. How the app uses that copy is in
-[Keeping your prompts](desktop.md#keeping-your-prompts). A [backup](backup-files.md) of your
+[Keeping your prompts](guide/prompts.md#keeping-your-prompts). A [backup](backup-files.md) of your
 whole setup holds one as its prompts section.
 
 A prompt file is UTF-8 JSON. The app writes every field, so a file you open shows every
@@ -59,7 +61,7 @@ setting a prompt has, and you can edit one by hand.
 | `version` | The format's version, `4`. Version `1`, `2`, and `3` files still import (see [Older versions](#older-versions)). |
 | `exportedAt` | When the file was written, as RFC 3339 in UTC. |
 | `app` | The version of the app that wrote it. Informational only. |
-| `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; its prompt for a pull request whose checks fail (`checksFailing`), that conflicts with its base (`conflicts`), that a reviewer asked to change (`changesRequested`), and that you're asked to review again (`rereview`), each by nickname and left out when none of the file's prompts is it (an older file has none); and `replies`, the default [review replies](desktop.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`, and `nudge`, the comment a card's **Nudge** posts to the author of a pull request you requested changes on), each by nickname; an older file has no `nudge`. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
+| `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; its prompt for a pull request whose checks fail (`checksFailing`), that conflicts with its base (`conflicts`), that a reviewer asked to change (`changesRequested`), and that you're asked to review again (`rereview`), each by nickname and left out when none of the file's prompts is it (an older file has none); and `replies`, the default [review replies](guide/prompts.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`, and `nudge`, the comment a card's **Nudge** posts to the author of a pull request you requested changes on), each by nickname; an older file has no `nudge`. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
 | `startersAdded` | The starter prompts the library had been given, by key. Restoring a library from the file keeps a starter you deleted from coming back. Only a whole-library file fills it in. |
 | `slotsSeeded` | The situations (`checks_failing`, `conflicts`, `changes_requested`, `rereview`) whose prompt the library had already set up, which it does once, on the situation's starter when it has one. Restoring a library from the file keeps a situation's prompt you cleared from coming back. Only a whole-library file fills it in, and it is left out when empty; a library restored from a file without it, as an older one, gives each situation its starter once. |
 | `prompts` | The prompts, at most 1,000. |
@@ -70,15 +72,15 @@ Each prompt:
 |---|---|
 | `name` | Its title, up to 80 characters on one line. |
 | `nickname` | The short label the launch button shows, up to 20 characters. Nicknames are unique in a library, ignoring case. |
-| `appliesTo` | `pr`, `issue`, or `any`, or `repo` for an agent prompt for repositories, which a launch fills in for a clone rather than for an item, as an [upgrade on Deps](desktop.md#deps) does, and which applies to no kind of item. A reply's is `pr`, but a comment reply's, which may be for issues too; a reply is never `repo`. |
-| `body` | The prompt's text: a Go [text/template](https://pkg.go.dev/text/template) using the variables in [Prompts](desktop.md#prompts). |
-| `purpose` | `agent` for a prompt a launch fills in, or `reply` for a [review reply](desktop.md#review-replies), the text a sheet fills in: a review's in the review sheet, or a comment's in the issue sheet. A reply has no launch settings. |
+| `appliesTo` | `pr`, `issue`, or `any`, or `repo` for an agent prompt for repositories, which a launch fills in for a clone rather than for an item, as an [upgrade on Deps](guide/deps.md) does, and which applies to no kind of item. A reply's is `pr`, but a comment reply's, which may be for issues too; a reply is never `repo`. |
+| `body` | The prompt's text: a Go [text/template](https://pkg.go.dev/text/template) using the variables in [Prompts](guide/prompts.md). |
+| `purpose` | `agent` for a prompt a launch fills in, or `reply` for a [review reply](guide/prompts.md#review-replies), the text a sheet fills in: a review's in the review sheet, or a comment's in the issue sheet. A reply has no launch settings. |
 | `action` | A reply's review: `approve`, `request_changes`, or `comment`; `""` for an agent prompt. |
 | `models` | The model it launches each coding agent with, keyed by agent: `claude` or `codex`. An agent left out inherits its model. |
 | `effort` | The effort level it launches with, shared by every agent, or `""` to inherit it. An agent that lacks the level, such as Claude Code for Codex's `ultra`, launches with its own default. |
 | `planMode`, `worktree` | `true` or `false` to turn plan mode or the worktree on or off, or `null` to inherit. |
 | `extraArgs` | Extra arguments for each coding agent, keyed by agent (`claude` or `codex`), one per list item, added after the profile's and the launch defaults'. Each agent only ever gets its own. |
-| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, `re-review`; the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`, `reply-nudge`; and the prompts for repositories, `deps-minor` and `deps-major`), or `""` for a prompt someone wrote. |
+| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, `re-review`; Autopilot's `heal-dependabot-pr`, `address-review`, `resolve-conflicts`, and `rerun-failed-jobs`; the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`, `reply-nudge`, and `reply-needs-repro`; and the prompts for repositories, `deps-minor` and `deps-major`), or `""` for a prompt someone wrote. |
 | `createdAt`, `updatedAt` | When it was added and last saved, as RFC 3339, or `""`. Informational only. |
 
 <br>
@@ -122,8 +124,8 @@ Each prompt:
 
 **Import from a file…** also reads a copy of the app's database file, such as a `nilbox.db`
 restored from a backup, whichever version of the app wrote it, without changing it. The
-databases the app keeps beside its own (`nilbox.db.backup-…` and `nilbox.db.broken-…`) are
-listed under **Restore from a backup…** instead.
+databases the app keeps beside its own (`nilbox.db.backup-…`, `nilbox.db.broken-…`, and
+`nilbox.db.reset-…`) are listed under **Restore from a backup…** instead.
 
 <br>
 

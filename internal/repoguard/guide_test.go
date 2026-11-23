@@ -11,26 +11,15 @@ import (
 )
 
 // guideMaxBytes caps the project guide, CLAUDE.md, which coding agents load whole into every
-// session. A package's design belongs in its section of docs/architecture.md, which the
+// session. A package's design belongs in its file under docs/architecture/, which the
 // guide's Layout links to in one line.
 const guideMaxBytes = 30_000
 
-// architectureDoc holds the design notes the guide links to.
-const architectureDoc = "docs/architecture.md"
-
-var (
-	// architectureLink matches a link into the design notes from another file.
-	architectureLink = regexp.MustCompile(`architecture\.md#([A-Za-z0-9_-]+)`)
-
-	// sameFileLink matches a link to a heading of the file it is in.
-	sameFileLink = regexp.MustCompile(`\]\(#([A-Za-z0-9_-]+)\)`)
-
-	// markdownHeading matches an ATX heading line.
-	markdownHeading = regexp.MustCompile(`^#{1,6}\s+(.+?)\s*#*\s*$`)
-)
+// markdownHeading matches an ATX heading line.
+var markdownHeading = regexp.MustCompile(`^#{1,6}\s+(.+?)\s*#*\s*$`)
 
 // TestProjectGuideStaysSmall keeps CLAUDE.md lean: it is loaded whole into every session, so
-// what one package does belongs in docs/architecture.md, not here.
+// what one package does belongs in its file under docs/architecture/, not here.
 func TestProjectGuideStaysSmall(t *testing.T) {
 	t.Parallel()
 
@@ -39,65 +28,69 @@ func TestProjectGuideStaysSmall(t *testing.T) {
 	require.True(t, ok, "CLAUDE.md is missing")
 
 	assert.LessOrEqual(t, len(text), guideMaxBytes,
-		"CLAUDE.md is %d bytes, over %d: put package detail in its %s section and keep one line in Layout",
-		len(text), guideMaxBytes, architectureDoc)
+		"CLAUDE.md is %d bytes, over %d: put package detail in its file under docs/architecture/ "+
+			"and keep one line in Layout", len(text), guideMaxBytes)
 }
 
-// TestProjectGuideLinksResolve checks that every link into docs/architecture.md, from the
-// guide, the README, the other docs, and the notes themselves, names one of its headings,
-// and that no two headings share an anchor.
-func TestProjectGuideLinksResolve(t *testing.T) {
-	t.Parallel()
+// markdownFence follows a markdown text's fenced code blocks, line by line: a fence of three
+// or more backticks or tildes, indented (as inside a list) or not, closed by a run of the
+// same character at least as long.
+type markdownFence struct {
+	open   bool
+	marker rune
+	length int
+}
 
-	root := moduleRoot(t)
+// inside reports whether line is part of a fenced code block, its fence lines included.
+func (f *markdownFence) inside(line string) bool {
+	trimmed := strings.TrimLeft(line, " \t")
+	marker, length := fenceRun(trimmed)
 
-	notes, ok, err := readTextFile(root, architectureDoc)
-	require.NoError(t, err)
-	require.True(t, ok, "%s is missing", architectureDoc)
-
-	anchors := map[string]int{}
-	for _, heading := range markdownHeadings(notes) {
-		anchors[headingAnchor(heading)]++
-	}
-
-	for anchor, n := range anchors {
-		assert.Equal(t, 1, n, "%s has %d headings with the anchor #%s", architectureDoc, n, anchor)
-	}
-
-	for _, link := range sameFileLink.FindAllStringSubmatch(notes, -1) {
-		_, found := anchors[link[1]]
-		assert.True(t, found, "%s links to #%s, which no heading has", architectureDoc, link[1])
-	}
-
-	for _, rel := range []string{"CLAUDE.md", "README.md", "docs/desktop.md", "docs/performance.md", "docs/prompt-files.md", "docs/backup-files.md"} {
-		text, found, readErr := readTextFile(root, rel)
-		require.NoError(t, readErr)
-
-		if !found {
-			continue
+	if !f.open {
+		if length < 3 {
+			return false
 		}
 
-		for _, link := range architectureLink.FindAllStringSubmatch(text, -1) {
-			_, known := anchors[link[1]]
-			assert.True(t, known, "%s links to %s#%s, which no heading has", rel, architectureDoc, link[1])
-		}
+		f.open, f.marker, f.length = true, marker, length
+
+		return true
 	}
+
+	if marker == f.marker && length >= f.length && strings.TrimSpace(trimmed[length:]) == "" {
+		f.open = false
+	}
+
+	return true
+}
+
+// fenceRun returns the backtick or tilde a line starts with and how many of it there are.
+func fenceRun(line string) (rune, int) {
+	if line == "" || (line[0] != '`' && line[0] != '~') {
+		return 0, 0
+	}
+
+	marker := line[0]
+	n := 0
+
+	for n < len(line) && line[n] == marker {
+		n++
+	}
+
+	return rune(marker), n
 }
 
 // markdownHeadings returns the text of every heading outside a fenced code block.
 func markdownHeadings(text string) []string {
 	var headings []string
 
-	fenced := false
+	var fence markdownFence
 
 	for line := range strings.SplitSeq(text, "\n") {
-		if strings.HasPrefix(line, "```") {
-			fenced = !fenced
-
+		if fence.inside(line) {
 			continue
 		}
 
-		if m := markdownHeading.FindStringSubmatch(line); m != nil && !fenced {
+		if m := markdownHeading.FindStringSubmatch(line); m != nil {
 			headings = append(headings, m[1])
 		}
 	}
@@ -132,9 +125,32 @@ func TestHeadingAnchor(t *testing.T) {
 		"Agents in the background":                            "agents-in-the-background",
 		"Verify, tries, the loop guard, and profile fallback": "verify-tries-the-loop-guard-and-profile-fallback",
 		"Merge it and Post the agent's review":                "merge-it-and-post-the-agents-review",
+		"📚 Documentation":                                     "-documentation",
+		"Settings → Autopilot":                                "settings--autopilot",
 	}
 
 	for heading, want := range tests {
 		assert.Equal(t, want, headingAnchor(heading), heading)
 	}
+}
+
+func TestMarkdownHeadingsSkipFences(t *testing.T) {
+	t.Parallel()
+
+	text := strings.Join([]string{
+		"# Title",
+		"- a list item:",
+		"",
+		"  ```bash",
+		"  # a shell comment",
+		"  ```",
+		"~~~~",
+		"## inside tildes",
+		"~~~",
+		"still inside",
+		"~~~~",
+		"## After",
+	}, "\n")
+
+	assert.Equal(t, []string{"Title", "After"}, markdownHeadings(text))
 }

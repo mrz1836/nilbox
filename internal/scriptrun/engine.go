@@ -114,14 +114,15 @@ type Config struct {
 	Progressed func(id int64)
 
 	// Failed is told of each run whose end is recorded as failed, one stopped at its time
-	// limit included, once that end is kept: every kind, in the app or in the terminal,
-	// started now or settled after a restart, as its kind's Verifier works it out or as the
-	// engine reads how it ended. A run the user stopped, one the quit stopped or a restart
-	// interrupted, one that succeeded, and one left Unsettled tell nothing, and no run tells
-	// twice: only the record that marks it ended tells, and a record that fails tells nothing
-	// until the next start settles the run. Core tells the user (notify's run_failed). It
-	// runs on the goroutine that recorded the run, after its Spec's Recorded, must return
-	// promptly, and must never call back into the engine. nil tells nothing.
+	// limit included, once that end is kept: every kind but KindAgent (Autopilot tells how an
+	// agent's run ended), in the app or in the terminal, started now or settled after a
+	// restart, as its kind's Verifier works it out or as the engine reads how it ended. A run
+	// the user stopped, one the quit stopped or a restart interrupted, one that succeeded,
+	// and one left Unsettled tell nothing, and no run tells twice: only the record that marks
+	// it ended tells, and a record that fails tells nothing until the next start settles the
+	// run. Core tells the user (notify's run_failed). It runs on the goroutine that recorded
+	// the run, after its Spec's Recorded, must return promptly, and must never call back into
+	// the engine. nil tells nothing.
 	Failed func(ctx context.Context, f Failure)
 
 	// Terminal opens runs in the user's terminal, and the terminal in a run's folder.
@@ -267,12 +268,12 @@ func (e *Engine) RegisterVerifier(kind Kind, v Verifier) {
 	e.verifiers[kind] = v
 }
 
-// Start starts the run spec describes and returns its ID. In order, it takes the clone's
-// lock, failing at once with a *clonelock.BusyError when another job holds it; takes a
-// slot, for a run in the app, waiting for one until ctx ends unless it is a release, which
-// fails at once with ErrNoSlot; runs spec.Before; records the run; and starts it, in the
-// app or in the terminal. A run that was recorded but couldn't start is recorded as failed,
-// and its ID comes back with the error.
+// Start starts the run spec describes and returns its ID. In order, it takes a slot, for a
+// run in the app, waiting for one until ctx ends unless it is a release, which fails at once
+// with ErrNoSlot, so no clone stays locked while a run waits; takes the clone's lock, failing
+// at once with a *clonelock.BusyError when another job holds it; runs spec.Before; records
+// the run; and starts it, in the app or in the terminal. A run that was recorded but couldn't
+// start is recorded as failed, and its ID comes back with the error.
 func (e *Engine) Start(ctx context.Context, spec Spec) (int64, error) {
 	if spec.RunsIn == "" {
 		spec.RunsIn = RunsInApp

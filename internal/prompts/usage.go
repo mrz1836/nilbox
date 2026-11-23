@@ -146,7 +146,8 @@ func names(p Prompt, use RoutineUse) bool {
 }
 
 // refuseRoutineUse returns an InUseError for the prompt id when a routine runs it, saying
-// which, and nil when none does or it can't be read: the store's own check still holds.
+// which, nil when none does, and the error when the routines can't be read, so a delete
+// never goes ahead unchecked.
 func (s *Service) refuseRoutineUse(ctx context.Context, id int64) error {
 	if s.routines == nil {
 		return nil

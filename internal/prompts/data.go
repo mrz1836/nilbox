@@ -255,7 +255,7 @@ type Variable struct {
 	// Name is the field, written {{.Name}} in a prompt.
 	Name string `json:"name"`
 
-	// Group is the cheat sheet section: Item, Repository, Pull request, or Session.
+	// Group is the cheat sheet section: Item, Repository, Pull request, Session, or Autopilot.
 	Group string `json:"group"`
 
 	// Type is "text", "number", or "yes/no".

@@ -836,7 +836,7 @@ export interface Variable {
     "name": string;
 
     /**
-     * Group is the cheat sheet section: Item, Repository, Pull request, or Session.
+     * Group is the cheat sheet section: Item, Repository, Pull request, Session, or Autopilot.
      */
     "group": string;
 

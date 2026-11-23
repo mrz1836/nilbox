@@ -335,7 +335,7 @@ func hardening() []string {
 
 // Hardening returns the settings, ahead of its subcommand, that every git command the app
 // runs to change a clone runs with: no hook from a hooks folder, the file system monitor
-// off, and no submodule recursion. core.hooksPath points the hooks folder at an empty one.
+// off, and no submodule recursion. core.hooksPath points at /dev/null, where git finds no hook.
 // It doesn't reach the hooks a config names (hook.<name>.command and .event, from git
 // 2.54): the clone's own hook.* settings refuse every command that could fire one
 // (cloneconfig.go), which is what keeps them from running. Beside that,

@@ -52,7 +52,7 @@ describe('RefreshingSection', () => {
       'Every 2 minutes',
     ])
     expect(screen.getByRole('combobox', { name: 'Running checks' })).toHaveAccessibleDescription(
-      /all in one request, about a point, until their checks end/,
+      /in requests of up to 25, about a point each, until their checks end/,
     )
     expect(labels('Release checks')).toEqual([
       'Off',

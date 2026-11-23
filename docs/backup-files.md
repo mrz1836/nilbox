@@ -1,12 +1,14 @@
 # Backup files
 
+[Docs](README.md) › [Reference](README.md#reference) · See also: [Backing up your setup](guide/backing-up.md), [Prompt files](prompt-files.md)
+
 A backup file holds your whole setup in a portable form, so you can move it to another Mac, or
 keep it with your own backups and bring it back later: your settings, your repositories, your
 prompts and review replies, your launch defaults, your own scripts, and your Autopilot
 routines (one an import adds or saves over arrives switched off, and one already the same stays
 as it is, on or off). The app writes one from
 **Settings → Back up and restore → Export…**, and reads one from **Import…** there. How an import
-treats what is already on the Mac is in [Backing up your setup](desktop.md#backing-up-your-setup).
+treats what is already on the Mac is in [Backing up your setup](guide/backing-up.md).
 
 A backup is UTF-8 JSON, at most 16 MB, written readable only by you. Each category you tick on
 export is a section of the file; one you leave unticked is absent.
@@ -89,8 +91,8 @@ as it was. The example leaves most out, as a file edited by hand may.
 | `settings` | Your settings ([below](#settings)). |
 | `repositories` | Your clone folder, other repository locations, and pinned and muted repositories and orgs ([below](#repositories)). |
 | `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults, `startersAdded`, and `slotsSeeded` included. |
-| `launchDefaults` | Your org and repository [launch defaults](desktop.md#launch-defaults), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
-| `scripts` | Your own [scripts](desktop.md#repo-scripts), in their order ([below](#scripts)). |
+| `launchDefaults` | Your org and repository [launch defaults](guide/launch-defaults.md), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
+| `scripts` | Your own [scripts](guide/repo-scripts.md), in their order ([below](#scripts)). |
 | `autopilot` | Your Autopilot routines, exactly as `autopilot.json` holds them ([below](#autopilot)). |
 
 Every section is an object, or absent. The prompts, launch defaults, and Autopilot sections
@@ -106,10 +108,10 @@ is each entry left out.
 | Field | Setting |
 |---|---|
 | `defaultAgent`, `defaultProfiles` | The coding agent launches use, and each agent's profile (by name). |
-| `terminal`, `worktreeDefault`, `followSessions`, `codexEffort`, `codexFast` | Launching: the terminal app, *Start in a worktree*, following sessions, and Codex's effort and Fast mode. |
+| `terminal`, `worktreeDefault`, `followSessions`, `codexEffort`, `codexFast`, `claudeApiKey`, `codexApiKey` | Launching: the terminal app, *Start in a worktree*, following sessions, Codex's effort and Fast mode, and whether an API key in your shell may sign Claude Code or Codex in. |
 | `worktreeAutoCleanup`, `branches` | Cleaning up worktrees, and the branch rules (`own`, `pullRequest`, `merged`, `protected`). |
 | `trustedBots` | The bots whose items are trusted, by login. |
-| `snoozeDays`, `snoozeWake` | Snoozing (`commits`, `reviews`, `comments`). |
+| `snoozeDays`, `snoozeWake` | Snoozing (`commits`, `reviews`, `comments`, `ready`). |
 | `sensitiveScope`, `sensitiveOff`, `sensitivePatterns` | Sensitive files: whose are checked, the built-in categories turned off, and your own patterns. |
 | `menuBar`, `bannersOff` | The menu bar icon, and the kinds of notification whose banners are off. |
 | `githubNotifications` | The GitHub notification rules: `read`, `auto`, `action`, `triggersOff`, `watching`, `botActivity`. |
