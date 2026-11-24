@@ -82,8 +82,13 @@ var ErrInvalidScript = errors.New("invalid script")
 // UserScript is one of the user's own scripts, saved in the app: a command they run from
 // Repo scripts, in every clone its scope includes, needing no trust (D13).
 type UserScript struct {
-	// ID names it; Save creates one whose ID is 0.
+	// ID names it on this Mac; Save creates one whose ID is 0.
 	ID int64 `json:"id"`
+
+	// UUID names it for good: it never changes once given, and comes back with the script
+	// from a backup or a database set aside, whose ID may differ, so a routine that runs the
+	// script finds it first by its UUID. Save gives a new script one.
+	UUID string `json:"uuid"`
 
 	// Name is what the page calls it, and Command the shell command it runs in the
 	// clone, as the user would type it in a terminal.

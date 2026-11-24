@@ -306,15 +306,15 @@ func TestAToolThatNeedsTheSnapshotSaysWhyItCantReadIt(t *testing.T) {
 	}{
 		{"none written yet", func(*testing.T, string) {}, "The user's setup isn't there to read yet"},
 		{"not JSON", writeText("{not json"), "The user's setup can't be read: the snapshot can't be read"},
-		{"another version", writeText(`{"version":2}`), "the snapshot is of another version"},
-		{"a key it doesn't have", writeText(`{"version":1,"inbox":{"titles":[]}}`), "The user's setup can't be read"},
+		{"another version", writeText(`{"version":1}`), "the snapshot is of another version"},
+		{"a key it doesn't have", writeText(`{"version":2,"inbox":{"titles":[]}}`), "The user's setup can't be read"},
 		{"a folder", func(t *testing.T, path string) {
 			t.Helper()
 			require.NoError(t, os.Mkdir(path, 0o700))
 		}, "not a regular file"},
 		{"larger than a snapshot may be", func(t *testing.T, path string) {
 			t.Helper()
-			require.NoError(t, os.WriteFile(path, []byte(`{"version":1}`), 0o600))
+			require.NoError(t, os.WriteFile(path, []byte(`{"version":2}`), 0o600))
 			require.NoError(t, os.Truncate(path, kit.MaxSnapshotBytes+1))
 		}, "larger than"},
 	}

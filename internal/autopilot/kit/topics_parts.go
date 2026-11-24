@@ -89,7 +89,7 @@ func keyWords(t reflect.Type, words map[string]string) []string {
 	out := make([]string, 0, t.NumField())
 
 	for field := range t.Fields() {
-		key, _, ok := jsonKeyOf(field)
+		key, _, ok := visibleKeyOf(t, field)
 		if ok && words[key] != "" {
 			out = append(out, tick(key)+": "+words[key])
 		}

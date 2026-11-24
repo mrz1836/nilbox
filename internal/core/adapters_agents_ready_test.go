@@ -379,15 +379,20 @@ func TestTheRoutinesPromptUsesSayWhatTheyCouldNotRead(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	uses := routinePrompts{
-		follower: autopilot.NewPromptFollower(autopilot.NewService(autopilot.Config{Pool: testutil.ClosedDB(t)})),
+	uses := routinePrompts{follow: &routineFollow{
+		follower: autopilot.NewFollower(autopilot.NewService(autopilot.Config{Pool: testutil.ClosedDB(t)})),
 		logger:   slog.New(slog.NewTextHandler(&logs, nil)),
-	}
+	}}
 
 	_, err := uses.RoutineUses(t.Context())
 	require.Error(t, err, "routines that can't be read are the library's error, not no uses")
 
 	uses.Renamed(t.Context(), "Triage", "Triage checks")
-	assert.Contains(t, logs.String(), "the routines could not follow a prompt renamed",
+	assert.Contains(t, logs.String(), "the routines could not follow their prompts and scripts",
 		"a rename the routines couldn't follow is logged")
+
+	none := routinePrompts{follow: &routineFollow{}}
+	got, err := none.RoutineUses(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, got, "before Autopilot is built, no routine names a prompt")
 }

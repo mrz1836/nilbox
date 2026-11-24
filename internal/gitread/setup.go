@@ -364,7 +364,7 @@ func (g *Git) LocalSetup(ctx context.Context, dir string) (Local, error) {
 	}
 
 	return Local{
-		Setup:   Setup{Git: git, Env: env, Settings: settings, SetAside: []string{}},
+		Git: git, Env: env, Settings: settings, SetAside: []string{},
 		Refused: cloneConfig(listed),
 	}, nil
 }

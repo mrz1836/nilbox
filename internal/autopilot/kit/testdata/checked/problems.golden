@@ -26,7 +26,7 @@ It reads: When checks fail on pull requests opened by you, once every check has 
 
 Routine 4, new:
 - Problem at routines[3].name: Give the routine a name.
-- Problem at routines[3].spec: The routine can't be read: Made by a newer version: update to edit it (version 2).
+- Problem at routines[3].spec: The routine can't be read: Made by a newer version: update to edit it (version 3).
 
 Settings: Agents at once 2 → 3; History kept 90 days → 5 days; Run logs kept 30 days → 5 days.
 - Problem at settings: Days of history is out of range: 5; choose 7 to 365.

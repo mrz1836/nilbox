@@ -388,7 +388,7 @@ func (g *Gatherer) freshen(ctx context.Context, f *Facts) {
 // tool reads magex's facts, or none without a source.
 func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 	if g.tools == nil {
-		return ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}}
+		return ToolFacts{Features: []integrations.Feature{}}
 	}
 
 	return g.tools.ReleaseTool(ctx)

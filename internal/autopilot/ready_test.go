@@ -246,7 +246,7 @@ func TestAPromptRenamedIsFollowedByTheRoutinesThatNameIt(t *testing.T) {
 	byName := r.save(t, draft("By name", mine))
 	byStarter := r.save(t, draft("By starter", agentSpec()))
 
-	follower := autopilot.NewPromptFollower(r.svc)
+	follower := autopilot.NewFollower(r.svc)
 
 	uses, err := follower.Uses(t.Context())
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestAPromptRenamedIsFollowedByTheRoutinesThatNameIt(t *testing.T) {
 		{Routine: "By name", Nickname: "Triage"}, {Routine: "By starter", Starter: "fix-checks"},
 	}, uses)
 
-	n, err := follower.Renamed(t.Context(), "TRIAGE", "Sort the checks")
+	n, err := follower.Follow(t.Context(), []autopilot.PromptRename{{From: "TRIAGE", To: "Sort the checks"}})
 	require.NoError(t, err)
 	assert.Equal(t, 1, n, "a nickname matches ignoring case; a starter's key follows its prompt on its own")
 
@@ -266,7 +266,7 @@ func TestAPromptRenamedIsFollowedByTheRoutinesThatNameIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fix-checks", kept.Spec.Steps[0].Agent.Prompt.Starter)
 
-	n, err = follower.Renamed(t.Context(), "Nothing named so", "Anything")
+	n, err = follower.Follow(t.Context(), []autopilot.PromptRename{{From: "Nothing named so", To: "Anything"}})
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }

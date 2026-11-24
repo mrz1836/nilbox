@@ -58,8 +58,8 @@ refresh brings it), and `Records`, every match of the routine on the item, newes
 ## Export and import (`transfer.go`)
 
 `Export(path, ids, withPrompts)` writes the routines with ids (all for none) as a `Bundle` through
-`appdata.WriteFile`, with `Bundle.Prompts` holding the prompts they name by nickname in the prompts'
-own format when asked (`PromptTransfer`, core's `routinePromptTransfer` over the prompts'
+`appdata.WriteFile`, with `Bundle.Prompts` holding the prompts they name by nickname (each found
+by its UUID first, and carried under its nickname now) in the prompts' own format when asked (`PromptTransfer`, core's `routinePromptTransfer` over the prompts'
 `RoutinePrompts`, a type of its own, never bound: `Bundled`, `Arrivals`, `AddNew`).
 `PreviewImport(path)` reads a bundle (`appdata.ReadFile`, at most `MaxBundleBytes`) and returns its
 SHA-256, each routine's sentence or why it won't load and the name it arrives under, each bundled

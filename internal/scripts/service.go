@@ -126,6 +126,11 @@ type Config struct {
 	Home   string
 	Clock  clock.Clock
 	Logger *slog.Logger
+
+	// Changed is told after every change to the user's own scripts, a script saved,
+	// deleted, or copied, so what names one, as a routine's step does, follows it: a
+	// routine that runs a script renamed writes its new name. Optional.
+	Changed func(context.Context)
 }
 
 // Service lists each clone's scripts and runs them, asking first for a command from the
@@ -148,6 +153,7 @@ type Service struct {
 	home      string
 	clock     clock.Clock
 	logger    *slog.Logger
+	changed   func(context.Context)
 
 	// listing lists one copy of magex's built-ins at a time, and asking asks one clone's
 	// origin for its branches at a time.
@@ -178,7 +184,7 @@ func NewService(cfg Config) *Service {
 		clones: cfg.Clones, git: cfg.Git, branchGit: cfg.BranchGit, branches: cfg.Branches, tools: cfg.Tools,
 		settings: cfg.Settings, runs: cfg.Runs, history: cfg.History, trust: newTrustStore(cfg.DB, cfg.Clock),
 		yours: newYourStore(cfg.DB, cfg.Clock), env: cfg.Env, shell: cfg.Shell, runner: cfg.Runner,
-		scratch: cfg.Scratch, home: cfg.Home, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		scratch: cfg.Scratch, home: cfg.Home, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed,
 		listed: map[string]listedBuiltins{}, mages: map[string]keptMagefiles{}, origins: map[string]keptOrigin{},
 		heads: map[string]keptHeads{}, shown: map[string]string{},
 	}

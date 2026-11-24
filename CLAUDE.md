@@ -175,6 +175,8 @@ build when broken.
   `internal/clonelock`, one `Set` that core builds and hands to each, keyed by
   `paths.Resolved`. Lock `act` before a clone's lock, never after. A run is never waited for:
   a launch or a click fails at once with a sentence naming the run.
+- **Stable UUIDs.** Prompts, the user's scripts, and routines carry a `uuid` that never changes;
+  a reference resolves it first (`draft.PromptIndex`, `draft.FindScript`), its name the fallback.
 - **Untrusted files.** A file a repository or an agent controls is read only through
   `paths.OpenRegular` (`ReadHead`, `ReadTail`), so a named pipe swapped in is refused rather
   than hanging the read.

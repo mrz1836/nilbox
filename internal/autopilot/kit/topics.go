@@ -471,7 +471,7 @@ func jsonKeyOf(f reflect.StructField) (key string, optional, ok bool) {
 // shapeKey writes one key of struct t: its name, "?" when it may be left out, its type, and
 // a note on where its values are listed.
 func shapeKey(t reflect.Type, f reflect.StructField) (string, bool) {
-	key, optional, ok := jsonKeyOf(f)
+	key, optional, ok := visibleKeyOf(t, f)
 	if !ok {
 		return "", false
 	}
@@ -748,4 +748,26 @@ func enumWords[T ~string]() string {
 	set, _ := closedSetOf(t)
 
 	return offerWords(tickLabeled(set.Values, valueLabels(t)))
+}
+
+// HiddenKeys are the keys of a routine's spec that Describe it never reads nor writes, by
+// the struct that holds each: the UUID a routine names a prompt or a script by beside its
+// name, which the app keeps for itself. The snapshot and an attachment carry none, the
+// schema and the guide name none, a proposal that holds one has it dropped, and Save stamps
+// each again from the name.
+func HiddenKeys() map[reflect.Type][]string {
+	return map[reflect.Type][]string{
+		reflect.TypeFor[spec.PromptRef]():  {"uuid"},
+		reflect.TypeFor[spec.ScriptStep](): {"uuid"},
+	}
+}
+
+// visibleKeyOf is jsonKeyOf for a field of struct t, false for one of HiddenKeys.
+func visibleKeyOf(t reflect.Type, f reflect.StructField) (key string, optional, ok bool) {
+	key, optional, ok = jsonKeyOf(f)
+	if !ok || slices.Contains(HiddenKeys()[t], key) {
+		return "", false, false
+	}
+
+	return key, optional, true
 }

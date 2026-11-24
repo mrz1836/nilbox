@@ -40,8 +40,8 @@ a nil list, and words every refusal with `uierr`.
   saved before keeps its switch, place, and template, and its mode unless the draft names one;
   a routine of no account (made before any account signed in, or brought back from a copy or
   a backup, which name none) becomes the editor's. It also refuses, as a `ProblemsError`, a
-  step naming a prompt the library doesn't have (by its starter's key, or its nickname, ignoring
-  case), a review reply where an agent's prompt goes or the other way about, or a prompt that
+  step naming a prompt the library doesn't have (by its UUID, else its starter's key or its
+  nickname, ignoring case: `draft.PromptIndex`), a review reply where an agent's prompt goes or the other way about, or a prompt that
   doesn't apply to every kind of item the routine acts on (its watch's kinds that its trigger
   fires for), as a prompt for repositories applies to none, each at the step's prompt field
   (`Library`, core's `promptLibrary` over the
@@ -50,11 +50,26 @@ a nil list, and words every refusal with `uierr`.
   right before each start (`promptHold`, the same `draft.StepPromptProblems`), so a prompt deleted,
   made a reply, or narrowed to the other kind after the save keeps the run from starting
   (`blocked: not_ready`, *Its prompt can't run: ...*). A prompt a routine names can't be deleted
-  (the prompt library's `RoutineSource`, core's `routinePrompts` over `PromptFollower.Uses`),
-  nor made a prompt for repositories (the editor's `checkRepoSwitch`), and renaming one
-  rewrites its nickname in every routine that names it by that nickname
-  (`PromptFollower.Renamed`, told by `prompts.Config.Renamed`, in one transaction, each spec
-  compared-and-set on the one read); a starter's key follows its prompt on its own.
+  (the prompt library's `RoutineSource`, core's `routinePrompts` over `Follower.Uses`), nor made a
+  prompt for repositories (the editor's `checkRepoSwitch`).
+- **What a routine names, by UUID** (`follow.go`). A step names its prompt by the prompt's UUID
+  beside its starter's key or nickname, and its script by the script's UUID beside its ID and
+  name; the UUID is looked at first, and the fallback finds the record where no record has the
+  UUID, as on another Mac. `Save` stamps them (`draft.Stamped`, after `draft.Problems`, so the text
+  stored, its `spec_version`, and the hash of an acceptance past the rules are the stamped
+  spec's), and so do the Autopilot tab's import, after mapping, and a backup's import.
+  `Follower.Follow` stamps every routine not deleted with what it names now: core runs it once at
+  every start (which gives a routine stored before UUIDs its UUIDs, its own included, and writes it
+  in this build's version of the format) and after every change to the prompt library
+  (`prompts.Config.Changed`) and the user's scripts (`scripts.Config.Changed`), so a prompt
+  renamed, reset, or imported over, or a script renamed or renumbered by a restore, keeps its
+  routines, which write its name now. A rename `Update` makes is replayed first
+  (`prompts.Config.Renamed`) on a routine that names the prompt by its old nickname alone. It
+  reads the library, the scripts, and the routines under a mutex, writes only when something
+  changed, in one IMMEDIATE transaction, each spec compared-and-set on the one read, carries the
+  acceptance past the rules as a rename always did, and keeps `updated_at` when only UUIDs or
+  the version changed, so a Describe it card's `base` stays good; it tells the routines' copy and
+  searches only when it wrote. A routine that won't load is left as it is.
 - A step's **Where** must be a place this build runs an agent in (`catalog.Places`,
   `Offers.Places`: the background and the terminal, both offered): one it can't is a problem
   at `steps[i].agent.where` (the draft leaf's `Offers.placeProblems`), in `Describe` and `Save`
@@ -108,23 +123,27 @@ deleted in the export format:
 
 ```text
 { "format": "<slug>-autopilot/1", "exportedAt", "app",
-  "routines": [ { "name", "description", "mode", "enabled", "template", "spec": {…} } ] }
+  "routines": [ { "uuid", "name", "description", "mode", "enabled", "template", "spec": {…} } ] }
 ```
 
 `DecodeBundle` refuses another format and a newer version (`ErrNewerBundle`), and takes a
-field a later build adds. A bundle never holds an account, or a routine's history. An
+field a later build adds. Each routine carries its `uuid` (`autopilot_routines.uuid`, which names
+it for good: [Records named for good](../store.md#records-named-for-good-uuids)), left out of an
+older build's file. A routine saved new, or a `Duplicate`, is given a UUID of its own;
+`insertKept`, which stores a routine restored or imported, keeps the one it came with when it is
+canonical and no routine has it, the deleted ones included, and mints one otherwise. A bundle never holds an account, or a routine's history. An
 export the Autopilot tab writes may also hold `prompts`, the prompts its routines name by
 nickname in the prompts' own format ([Easy mode](easy-mode.md)); the copy and a backup never do.
 `Restore` runs only while `autopilot_routines` holds no row at all, the deleted ones
 included, so a routine the user deleted is never brought back: from the database set aside
 when it has the table (`store.OpenSnapshot`, tolerant of missing columns, keeping each
-routine's account), and otherwise from the copy, every routine not deleted, in its order,
+routine's account and UUID), and otherwise from the copy, every routine not deleted, in its order,
 in one transaction, each switched off, its mode as the source says (a step this build can't
 run keeps it in Dry run), its spec stored as `Save` stores one (normalized, then encoded)
 when it loads, and otherwise compacted but as it was, so a newer build's stays broken and
 unrewritten; a spec that isn't JSON at all is left out, and two of one name are told
 apart by a number. Core (`internal/core/kept.go`) runs it after the prompts and the launch
-defaults, so the prompts a routine names by nickname are back first, and writes the copy at
+defaults, so the prompts a routine names are back first, and writes the copy at
 startup only when it is missing or routines were just restored, so a loss in the database
 never overwrites it. The window's restore notice counts them (`appinfo.Restored.Routines`).
 
@@ -134,10 +153,18 @@ The Autopilot section (`backup.SectionAutopilot`) is the export format, through 
 type of its own that core adapts in `adapters_backup.go`, never a method of the bound Service.
 `PlanBackup` leaves out, with a note, a routine with no name, a second of a name, and one whose spec
 won't load (as a newer build's); a mode this build doesn't know takes the mode new routines start
-in. Routines are matched by name (`draft.NameKey`): one whose definition, description, and mode are
+in. Routines are matched by UUID, then by name (`draft.NameKey`), each routine here once
+(`backupMatch`, which a preview and its apply share): one whose definition, description, and mode are
 the file's is left as it is, on or off, under either mode; any other is saved over and switched off,
-and one this Mac lacks is added, off, at the end (Merge) or in the file's order (Replace, which also
-deletes, softly, every routine the file doesn't name). A routine here that a newer build wrote is
+keeping its name here, so one renamed since the backup keeps its name and its history; and one this
+Mac lacks is added, off, under a free name, at the end (Merge) or in the file's order (Replace, which
+also deletes, softly, every routine the file doesn't match). Each of the file's routines is stamped
+with what it names (`BackupRecords`: core reads the transaction's prompt library and scripts, and
+`Links`, the UUID here of each prompt the same file brought, by its nickname in the file, which a
+routine's prompt is found among first, so a prompt the import renamed, "Review 2" beside the user's
+own "Review", stays the one it runs), and a routine is the same as the file's when the two are the
+same stamped alike: the preview against the library as it is, the apply against what the
+transaction holds. A routine here that a newer build wrote is
 never saved over or deleted by an import, under either mode: it is left as it is, with a note (*made
 by a newer Nilbox: left as it is*), as `Save` refuses to save over it. A spec that loads is stored
 normalized, as on a restore. `BackupDone` writes the copy again. The window lists the category as

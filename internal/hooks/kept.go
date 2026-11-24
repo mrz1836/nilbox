@@ -52,9 +52,7 @@ func keepTool(tool ToolFacts) keptTool {
 // the features it had.
 func (k keptTool) facts() ToolFacts {
 	return ToolFacts{
-		CopyFacts: integrations.CopyFacts{
-			Path: k.Path, Version: k.Version, State: integrations.StateFound, Features: textutil.NonNil(k.Features),
-		},
+		Path: k.Path, Version: k.Version, State: integrations.StateFound, Features: textutil.NonNil(k.Features),
 		Copies: []string{k.Path},
 	}
 }

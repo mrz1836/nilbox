@@ -16,7 +16,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -90,9 +89,9 @@ func newFixture(t *testing.T, n int) *fixture {
 	stored := inbox.Fixture{Viewer: "octo-user", At: testNow}
 
 	for i := 1; i <= n; i++ {
-		stored.Items = append(stored.Items, inbox.FixtureItem{Item: github.Item{
+		stored.Items = append(stored.Items, inbox.FixtureItem{
 			IsPR: true, Number: i, CreatedAt: testNow, UpdatedAt: testNow, RepoOwner: "acme-org", RepoName: "example-repo",
-		}})
+		})
 	}
 
 	ids, err := inbox.StoreFixture(t.Context(), pool, stored)

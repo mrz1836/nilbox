@@ -637,22 +637,18 @@ func attachedItems(t *testing.T, c *Core) (pr, issue int64) {
 	now := time.Now()
 	ids, err := inbox.StoreFixture(t.Context(), c.DB, inbox.Fixture{Viewer: rigViewer, Items: []inbox.FixtureItem{
 		{
-			Item: github.Item{
-				IsPR: true, NodeID: "PR_ATTACHED", Number: 42, Title: "Rewrite the secret parser",
-				URL: "https://github.com/acme-org/example-repo/pull/42", CreatedAt: now, UpdatedAt: now,
-				AuthorLogin: "dependabot", AuthorType: "Bot", RepoOwner: boundOwner, RepoName: boundRepo,
-			},
+			IsPR: true, NodeID: "PR_ATTACHED", Number: 42, Title: "Rewrite the secret parser",
+			URL: "https://github.com/acme-org/example-repo/pull/42", CreatedAt: now, UpdatedAt: now,
+			AuthorLogin: "dependabot", AuthorType: "Bot", RepoOwner: boundOwner, RepoName: boundRepo,
 			ReviewRequested: true,
 			Details: &github.ItemDetails{
 				HeadOID: "abc123", Labels: []github.Label{{Name: "dependencies"}, {Name: "needs\nreview\u202e"}},
 			},
 		},
 		{
-			Item: github.Item{
-				NodeID: "ISSUE_ATTACHED", Number: 43, Title: "Crash on start", CreatedAt: now, UpdatedAt: now,
-				URL: "https://github.com/acme-org/example-repo/issues/43", AuthorLogin: rigViewer, RepoOwner: boundOwner,
-				RepoName: boundRepo,
-			},
+			NodeID: "ISSUE_ATTACHED", Number: 43, Title: "Crash on start", CreatedAt: now, UpdatedAt: now,
+			URL: "https://github.com/acme-org/example-repo/issues/43", AuthorLogin: rigViewer, RepoOwner: boundOwner,
+			RepoName: boundRepo,
 			Assigned: true,
 		},
 	}})

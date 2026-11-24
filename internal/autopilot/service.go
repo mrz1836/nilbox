@@ -168,7 +168,8 @@ func (s *Service) Get(ctx context.Context, id int64) (Routine, error) {
 // its switch, its place, and its template, and its mode unless d names one. A routine with
 // a step this build can't run yet is stored in Dry run, whatever the mode. A routine a
 // newer build wrote can't be saved over, and one naming a prompt the library doesn't have,
-// or one that doesn't fit, is refused as a spec with problems is.
+// or one that doesn't fit, is refused as a spec with problems is. Each prompt and script it
+// names is stored named by its UUID too (draft.Stamp).
 func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 	saving, err := checkDraft(d)
 	if err != nil {
@@ -180,6 +181,13 @@ func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 
 		return Routine{}, uierr.New(textutil.Sentence("The routine isn't valid yet: "+problems[0].Message),
 			&ProblemsError{err: v})
+	}
+
+	// Each prompt and script the routine names is stored named by its UUID too, so a
+	// rename, a reset, or an import never loses it. The text stored, its version, and the
+	// hash of an acceptance past the rules are all the stamped spec's.
+	if stamped, data, ok := s.stamped(ctx, saving.spec); ok {
+		saving.spec, saving.data = stamped, string(data)
 	}
 
 	// The settings and the account are read before the transaction, which would wait on
@@ -276,8 +284,8 @@ func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (
 
 	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
 		AccountLogin: sv.viewer, Name: sv.name, NameKey: draft.NameKey(sv.name), Description: sv.desc,
-		Mode: string(s.offers.ModeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
-		CreatedAt: now, UpdatedAt: now,
+		Mode: string(s.offers.ModeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
+		TemplateKey: sv.template, SortOrder: int64(len(rows)), CreatedAt: now, UpdatedAt: now, UUID: textutil.NewUUID(),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("save the routine: %w", err)
@@ -379,10 +387,10 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 		}
 
 		// A copy is never accepted as one that merges past the rules: the user accepts it on
-		// its own once they save it.
+		// its own once they save it. It is a routine of its own, with a UUID of its own.
 		row := rows[i]
 		row.Name, row.Enabled, row.EnabledAt, row.LastError = copyName(row.Name, rows), false, nil, ""
-		row.PastRulesHash = ""
+		row.PastRulesHash, row.UUID = "", textutil.NewUUID()
 
 		if viewer != "" {
 			row.AccountLogin = viewer
@@ -394,8 +402,8 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 
 		row.ID, err = q.InsertRoutine(ctx, queries.InsertRoutineParams{
 			AccountLogin: row.AccountLogin, Name: row.Name, NameKey: draft.NameKey(row.Name), Description: row.Description,
-			Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey, SortOrder: int64(len(rows)),
-			BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
+			Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey,
+			SortOrder: int64(len(rows)), BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now, UUID: row.UUID,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("copy the routine %d: %w", id, err)

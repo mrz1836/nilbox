@@ -64,6 +64,11 @@ type Intent struct {
 	Args   []string          `json:"args"`
 	Anyway bool              `json:"anyway"`
 	SHA256 string            `json:"sha256"`
+
+	// UUID is the UUID of one of the user's own scripts, which its ID in Ref may come to
+	// name another script's once it is deleted: Run again refuses a script whose UUID isn't
+	// this one. A run from before UUIDs has none, and finds its script by ID alone.
+	UUID string `json:"uuid,omitempty"`
 }
 
 // confirmation is what the user confirmed of a repository command: its hash, and whether
@@ -201,9 +206,8 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 		return scriptrun.Spec{}, err
 	}
 
-	if conf.rerun && sc.asksFirst {
-		return scriptrun.Spec{}, uierr.New(fmt.Sprintf("%q asks before each run, so run it from Repo scripts.",
-			sc.entry.Name), fmt.Errorf("%w: %s", ErrAsksFirst, sc.entry.Ref))
+	if err = mayRun(sc, &in, conf); err != nil {
+		return scriptrun.Spec{}, err
 	}
 
 	if in.Inputs, err = check(sc, in); err != nil {
@@ -595,4 +599,25 @@ func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.S
 	}
 
 	return r.s.spec(ctx, c, in, cmp.Or(run.RunsIn, integrationprefs.RunsInApp), cfg, confirmation{rerun: true})
+}
+
+// mayRun records in in the UUID of sc, when it is one of the user's own scripts, and refuses
+// sc when in already names another UUID, as Run again's intent does once the script it ran
+// was deleted and its ID came to name another; and it refuses Run again (conf.rerun) of a
+// script that asks before each run, which only the page asks.
+func mayRun(sc script, in *Intent, conf confirmation) error {
+	if mine := sc.entry.Mine; mine != nil {
+		if in.UUID != "" && in.UUID != mine.UUID {
+			return goneError(mine.ID)
+		}
+
+		in.UUID = mine.UUID
+	}
+
+	if conf.rerun && sc.asksFirst {
+		return uierr.New(fmt.Sprintf("%q asks before each run, so run it from Repo scripts.", sc.entry.Name),
+			fmt.Errorf("%w: %s", ErrAsksFirst, sc.entry.Ref))
+	}
+
+	return nil
 }

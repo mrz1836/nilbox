@@ -63,14 +63,22 @@ the run's intent and asks nothing, so it runs a repository command only while a 
 the clone's current origin matches it; anything else is run from the page, which asks.
 
 The user's own scripts live in `user_scripts`, which it owns, in their order (positions 0, 1, 2,
-numbered again in the `store.InTx` of every create, delete, duplicate, or move). The bound `Save`
-creates one (ID 0, at the end) or edits one, checking that the name and command are there, on one
+numbered again in the `store.InTx` of every create, delete, duplicate, or move), each under its
+ID, which is this Mac's alone and given again once deleted (the table has no AUTOINCREMENT), and
+its `uuid`, which names it for good ([Records named for good](store.md#records-named-for-good-uuids)):
+`insert` keeps one it is given when canonical and free (`uuidFor`), a restore's or an import's,
+and mints one otherwise, and `GiveUUIDs`, which core runs at startup beside the restore, gives a
+row an older build inserted without one its own. The bound `Save`
+creates one (ID 0, at the end, under a new UUID, never one the window sent) or edits one, keeping
+its UUID, checking that the name and command are there, on one
 line, with no character that hides what runs, that the scope (`all`, `go`, or `repos`), the place
 (an `integrationprefs.RunsIn`, `''` for "As set in Settings"; `validPlace` checks it and a run
 request's alike), and the icon (t3.json's five) are known, and that a `repos` scope names at least
 one owner/name, kept once in any case; `Delete`, `Duplicate` ("<name> copy", right after the
 original), and `Move` (up or down past the nearest script shown in the clone named, so the move
-shows on that page) change the order, and `RepoNames` lists the clones' GitHub repositories for the
+shows on that page) change the order, `Duplicate`'s copy under a UUID of its own. After a save, a
+delete, or a copy it tells `Config.Changed`, so what names a script, a routine's step, follows it.
+`RepoNames` lists the clones' GitHub repositories for the
 editor's Chosen list and, through core, the launch defaults' targets (the Pinned and muted field and
 Add defaults), reading origins four at a time and keeping each until the clone's `.git/config`
 changes, forgetting a clone no longer listed, and starting no more reads once the window cancels the
@@ -92,8 +100,11 @@ beats both.
 
 A run's `Before` compares the SHA-256 of what the saved script runs (its name, command, place, and
 Ask before running) with the one worked out as the run was asked for, and refuses one saved again in
-between ("changed as it was starting"). Run again works the command out afresh from the saved script
-by its ID and refuses one deleted, no longer shown there, or set to ask before running
+between ("changed as it was starting"). A run's intent records the script's UUID beside its ID
+(`Intent.UUID`), and Run again works the command out afresh from the saved script by its ID and
+refuses one deleted, one whose UUID isn't the intent's (its ID given since to another script:
+`mayRun`; a run from before UUIDs has none, and finds its script by ID alone), no longer shown
+there, or set to ask before running
 (`ErrAsksFirst`), which only the page asks: Ask before running is the window's confirmation, which
 `Run` leaves to the user.
 
@@ -154,7 +165,7 @@ pulls, so one left going at a quit comes back after a restart with Stop held aga
 
 `Routines` (`routines.go`, its own type, never bound, since a `RoutineRun` holds a function) is how
 Autopilot's Run one of my scripts reaches the user's own scripts: `Mine` lists them, each with its
-look (the hash a run's `Before` compares, of its name, command, place, and Ask before running) and
+UUID and its look (unchanged by the UUID, so a look the user confirmed stays good) (the hash a run's `Before` compares, of its name, command, place, and Ask before running) and
 where it shows, in words; `Run` works out the very spec `Run` does for one of them in a clone, with
 the place always the app, whatever the script says, refuses it when its look isn't the one the
 routine checked (`ErrChanged`), never runs one anyway (a version bump or a dependency upgrade is

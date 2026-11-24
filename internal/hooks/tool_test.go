@@ -98,7 +98,7 @@ func TestToolFactsUsable(t *testing.T) {
 		Version: "1.14.1", Path: "~/bin/go-pre-commit", State: integrations.StateFound, Usable: true,
 	}, factsAt("/srv/home/bin/go-pre-commit", "1.14.1").status("/srv/home"))
 	assert.Equal(t, ToolStatus{State: integrations.StateMissing, Off: true}, ToolFacts{
-		CopyFacts: integrations.CopyFacts{State: integrations.StateMissing, Off: true},
+		State: integrations.StateMissing, Off: true,
 	}.status("/srv/home"))
 }
 

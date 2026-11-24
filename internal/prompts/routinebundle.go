@@ -22,8 +22,8 @@ func NewRoutinePrompts(s *Service) *RoutinePrompts {
 }
 
 // RoutineArrival says what bringing in one of a routine export's prompts would do: it is
-// added (New), the prompt here with its nickname is the same (Same), or it differs, and the
-// one here is kept.
+// added (New), the prompt here it matches is the same (Same), or it differs, and the one
+// here is kept.
 type RoutineArrival struct {
 	Nickname string
 	New      bool
@@ -61,9 +61,10 @@ func (r *RoutinePrompts) Bundled(ctx context.Context, nicknames []string) ([]byt
 	return data, len(b.Prompts), nil
 }
 
-// Arrivals says what bringing in each of data's prompts would do, by nickname: only a
-// prompt no prompt here has the nickname of is added, and one that has it keeps the copy
-// here, which the import says when the two differ.
+// Arrivals says what bringing in each of data's prompts would do, by its UUID, else its
+// nickname: only a prompt matching no prompt here is added, and one that matches keeps the
+// copy here, which the import says when the two differ. A prompt whose UUID a prompt here
+// has is that prompt, whatever either is called now.
 func (r *RoutinePrompts) Arrivals(ctx context.Context, data []byte) ([]RoutineArrival, error) {
 	b, err := DecodeBundle(data)
 	if err != nil {
@@ -80,7 +81,7 @@ func (r *RoutinePrompts) Arrivals(ctx context.Context, data []byte) ([]RoutineAr
 	for _, p := range b.Prompts {
 		a := RoutineArrival{Nickname: p.Nickname, New: true}
 
-		if i := slices.IndexFunc(all, func(q Prompt) bool { return strings.EqualFold(q.Nickname, p.Nickname) }); i >= 0 {
+		if i := arrivalMatch(all, p); i >= 0 {
 			a.New, a.Same = false, sameContent(all[i], p)
 		}
 
@@ -90,9 +91,9 @@ func (r *RoutinePrompts) Arrivals(ctx context.Context, data []byte) ([]RoutineAr
 	return out, nil
 }
 
-// AddNew adds data's prompts whose nickname no prompt here has, as an import of prompts
-// adds them (checked as the editor checks them), all of them or none, and returns the
-// nicknames it added.
+// AddNew adds data's prompts that match no prompt here, by UUID or by nickname, as an
+// import of prompts adds them (checked as the editor checks them), all of them or none,
+// and returns the nicknames it added.
 func (r *RoutinePrompts) AddNew(ctx context.Context, data []byte) ([]string, error) {
 	b, err := DecodeBundle(data)
 	if err != nil {
@@ -104,9 +105,7 @@ func (r *RoutinePrompts) AddNew(ctx context.Context, data []byte) ([]string, err
 		return nil, err
 	}
 
-	fresh := slices.DeleteFunc(slices.Clone(b.Prompts), func(p BundlePrompt) bool {
-		return slices.ContainsFunc(all, func(q Prompt) bool { return strings.EqualFold(q.Nickname, p.Nickname) })
-	})
+	fresh := slices.DeleteFunc(slices.Clone(b.Prompts), func(p BundlePrompt) bool { return arrivalMatch(all, p) >= 0 })
 
 	if len(fresh) == 0 {
 		return []string{}, nil
@@ -122,4 +121,16 @@ func (r *RoutinePrompts) AddNew(ctx context.Context, data []byte) ([]string, err
 	}
 
 	return out, nil
+}
+
+// arrivalMatch returns the index in all of the prompt one of an export's prompts is: the
+// one with its UUID, else the one with its nickname, ignoring case; -1 for none.
+func arrivalMatch(all []Prompt, p BundlePrompt) int {
+	if u, ok := textutil.CanonicalUUID(strings.TrimSpace(p.UUID)); ok {
+		if i := slices.IndexFunc(all, func(q Prompt) bool { return q.UUID == u }); i >= 0 {
+			return i
+		}
+	}
+
+	return slices.IndexFunc(all, func(q Prompt) bool { return strings.EqualFold(q.Nickname, p.Nickname) })
 }

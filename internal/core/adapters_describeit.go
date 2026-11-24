@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -562,11 +563,13 @@ func converted[T, U any](list []T, convert func(T) U) []U {
 	return out
 }
 
-// kitRoutine is one of the user's routines as kit holds it.
+// kitRoutine is one of the user's routines as kit holds it, for the snapshot and an
+// attachment alike: its spec without the UUIDs it names its prompts and scripts by
+// (kit.HiddenKeys), which the app keeps for itself and Save stamps again.
 func kitRoutine(r autopilot.Routine) kit.Routine {
 	return kit.Routine{
 		ID: r.ID, Name: r.Name, Description: r.Description, Enabled: r.Enabled, Mode: r.Mode, Sentence: r.Sentence,
-		Broken: r.Broken, Spec: r.Spec, UpdatedAt: r.UpdatedAt,
+		Broken: r.Broken, Spec: spec.WithoutUUIDs(r.Spec), UpdatedAt: r.UpdatedAt,
 	}
 }
 

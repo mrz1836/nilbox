@@ -221,7 +221,7 @@ func TestARenamedPromptKeepsTheAcceptanceOnlyWhereItStood(t *testing.T) {
 
 	never := r.insertRaw(t, "Merge them too", "auto", mustEncode(t, pastSyncSpec()))
 
-	n, err := autopilot.NewPromptFollower(r.svc).Renamed(t.Context(), "Sync OK", "Synced")
+	n, err := autopilot.NewFollower(r.svc).Follow(t.Context(), []autopilot.PromptRename{{From: "Sync OK", To: "Synced"}})
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sync"
 	"testing"
@@ -26,6 +27,12 @@ const (
 	zshPath   = "/bin/zsh"
 	magexTest = "magex test"
 )
+
+// keptUUID is a script's UUID a test gives it, so it can see the script keep it.
+const keptUUID = "6f9619ff-8b86-4d01-b42d-00cf4fc964ff"
+
+// uuidPattern matches a UUID the store gives a script: a random one, in its canonical form.
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 // rig is Repo scripts end to end: a clone root under a home of its own, a fake login shell
 // and a fake magex, magex's recorded built-ins, the real runner over a fresh database, and
@@ -107,7 +114,7 @@ func (r *rig) fake(name string, run testutil.FakeRun) string {
 // magex makes the copy of magex in use a fake at version that does what run says.
 func (r *rig) magex(version string, run testutil.FakeRun) {
 	path := r.fake("magex", run)
-	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{Path: path, Version: version, State: integrations.StateFound}})
+	r.tools.set(ToolFacts{Path: path, Version: version, State: integrations.StateFound})
 }
 
 // environ is the login shell's environment.

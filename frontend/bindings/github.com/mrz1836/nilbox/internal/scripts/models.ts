@@ -508,9 +508,16 @@ export const Trust = {
  */
 export interface UserScript {
     /**
-     * ID names it; Save creates one whose ID is 0.
+     * ID names it on this Mac; Save creates one whose ID is 0.
      */
     "id": number;
+
+    /**
+     * UUID names it for good: it never changes once given, and comes back with the script
+     * from a backup or a database set aside, whose ID may differ, so a routine that runs the
+     * script finds it first by its UUID. Save gives a new script one.
+     */
+    "uuid": string;
 
     /**
      * Name is what the page calls it, and Command the shell command it runs in the

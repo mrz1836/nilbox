@@ -74,6 +74,7 @@ type AutopilotRoutine struct {
 	DeletedAt          *time.Time
 	GraduateDeclinedAt *time.Time
 	PastRulesHash      string
+	UUID               string
 }
 
 type AutopilotRun struct {

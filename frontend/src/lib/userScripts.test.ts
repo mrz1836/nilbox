@@ -20,6 +20,7 @@ describe('newUserScript', () => {
   it('starts a new script for every repository, run where runs go, without asking', () => {
     expect(newUserScript()).toEqual({
       id: 0,
+      uuid: '',
       name: '',
       command: '',
       icon: 'play',

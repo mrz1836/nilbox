@@ -1,7 +1,10 @@
 package prompts
 
 import (
+	"slices"
+
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // DefaultSlot names one of the library's defaults: the default prompt for pull requests or
@@ -230,7 +233,7 @@ func offers(lib Library, plans []planned, files []BundlePrompt, defaults BundleD
 	out := []DefaultOffer{}
 
 	for _, slot := range DefaultSlots() {
-		at := firstNamed(files, defaults.For(slot))
+		at := sourcePrompt(files, defaults, slot)
 		if at < 0 {
 			continue
 		}
@@ -252,6 +255,18 @@ func offers(lib Library, plans []planned, files []BundlePrompt, defaults BundleD
 	}
 
 	return out
+}
+
+// sourcePrompt returns the index of the source's prompt that is slot's default in
+// defaults: the one with its UUID, else the first with its nickname; -1 for none.
+func sourcePrompt(prompts []BundlePrompt, defaults BundleDefaults, slot DefaultSlot) int {
+	if u, ok := textutil.CanonicalUUID(defaults.UUIDs[slot]); ok {
+		if i := slices.IndexFunc(prompts, func(p BundlePrompt) bool { return p.UUID == u }); i >= 0 {
+			return i
+		}
+	}
+
+	return firstNamed(prompts, defaults.For(slot))
 }
 
 // firstNamed returns the index of the first of prompts with nickname, or -1 for none and

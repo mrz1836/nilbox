@@ -3,8 +3,6 @@ package describeit
 import (
 	"context"
 
-	"github.com/google/uuid"
-
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -86,7 +84,7 @@ func (s *Service) NewConversation(ctx context.Context, a AgentChoice) (Conversat
 		start = Start{}
 	}
 
-	rec := newRecord(uuid.NewString(), a, start, s.clock.Now())
+	rec := newRecord(textutil.NewUUID(), a, start, s.clock.Now())
 
 	s.mu.Lock()
 

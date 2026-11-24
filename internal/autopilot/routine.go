@@ -32,8 +32,13 @@ const (
 
 // Routine is one routine as the window shows it.
 type Routine struct {
-	// ID names it.
+	// ID names it on this Mac.
 	ID int64 `json:"id"`
+
+	// UUID names it for good: it never changes once given, and travels with the routine in
+	// an export and a backup, so a backup brought back finds the routine it was, whatever
+	// it is called now.
+	UUID string `json:"uuid"`
 
 	// Name and Description are the user's words for it.
 	Name        string `json:"name"`
@@ -185,7 +190,7 @@ func routineOf(row queries.AutopilotRoutine, v view) Routine {
 	l := load(row.Spec)
 
 	out := Routine{
-		ID: row.ID, Name: row.Name, Description: row.Description, Enabled: row.Enabled, EnabledAt: row.EnabledAt,
+		ID: row.ID, UUID: row.UUID, Name: row.Name, Description: row.Description, Enabled: row.Enabled, EnabledAt: row.EnabledAt,
 		Mode: storedMode(row.Mode), Spec: l.spec, TemplateKey: row.TemplateKey, Account: row.AccountLogin,
 		OtherAccount: otherAccount(row.AccountLogin, v.viewer), Problems: []spec.Problem{},
 		DryRunOnly: []catalog.StepKind{}, LastError: row.LastError, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,

@@ -283,15 +283,15 @@ func TestPromptDataHoldsOnlyACommitAsTheReviewedCommit(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		row := launchItemRow{StoredItem: StoredItem{
+		row := launchItemRow{
 			Kind: item.KindPR, Number: 7, Owner: acmeOrg, Name: exampleRepo, ViewerReviewCommit: tt.stored,
-		}}
+		}
 
 		d := row.promptData(trust.NewPolicy(nil), "default", "octo-user", nil)
 		assert.Equal(t, tt.want, d.ReviewedCommit, tt.name)
 	}
 
-	issue := launchItemRow{StoredItem: StoredItem{Kind: item.KindIssue, Number: 3, ViewerReviewCommit: full}}
+	issue := launchItemRow{Kind: item.KindIssue, Number: 3, ViewerReviewCommit: full}
 	assert.Empty(t, issue.promptData(trust.NewPolicy(nil), "default", "octo-user", nil).ReviewedCommit,
 		"an issue has no reviewed commit")
 }

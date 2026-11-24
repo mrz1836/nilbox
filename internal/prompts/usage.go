@@ -96,8 +96,8 @@ func defaultUsage(defaults DefaultPrompts) map[int64]Usage {
 	return usage
 }
 
-// addRoutineUses records in usage which routines name each prompt: by its starter's key,
-// or its nickname, ignoring case.
+// addRoutineUses records in usage which routines name each prompt: by its UUID, else its
+// starter's key, else its nickname, ignoring case.
 func (s *Service) addRoutineUses(ctx context.Context, usage map[int64]Usage) error {
 	if s.routines == nil {
 		return nil
@@ -124,25 +124,33 @@ func (s *Service) addRoutineUses(ctx context.Context, usage map[int64]Usage) err
 	return nil
 }
 
-// addRoutineUse records in usage that use's routine names the prompt of all it names.
+// addRoutineUse records in usage that use's routine names the prompt of all it names, when
+// there is one (usedPrompt).
 func addRoutineUse(usage map[int64]Usage, all []Prompt, use RoutineUse) {
-	for _, p := range all {
-		if names(p, use) {
-			u := usage[p.ID]
-			u.Routines = appendUnique(u.Routines, use.Routine)
-			usage[p.ID] = u
-		}
+	if i := usedPrompt(all, use); i >= 0 {
+		u := usage[all[i].ID]
+		u.Routines = appendUnique(u.Routines, use.Routine)
+		usage[all[i].ID] = u
 	}
 }
 
-// names reports whether a routine's use names p: a starter's key names the user's copy of
-// that starter, and a nickname the prompt that has it, ignoring case.
-func names(p Prompt, use RoutineUse) bool {
-	if use.Starter != "" {
-		return p.StarterKey == use.Starter
+// usedPrompt returns the index in all of the one prompt a routine's use names, -1 for none:
+// the one with its UUID, whatever it is called now; else the user's copy of its starter;
+// else the one with its nickname, ignoring case.
+func usedPrompt(all []Prompt, use RoutineUse) int {
+	if use.UUID != "" {
+		if i := slices.IndexFunc(all, func(p Prompt) bool { return p.UUID == use.UUID }); i >= 0 {
+			return i
+		}
 	}
 
-	return use.Nickname != "" && strings.EqualFold(p.Nickname, use.Nickname)
+	return slices.IndexFunc(all, func(p Prompt) bool {
+		if use.Starter != "" {
+			return p.StarterKey == use.Starter
+		}
+
+		return use.Nickname != "" && strings.EqualFold(p.Nickname, use.Nickname)
+	})
 }
 
 // refuseRoutineUse returns an InUseError for the prompt id when a routine runs it, saying

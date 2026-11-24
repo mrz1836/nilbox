@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotGitHubAction, AutopilotProblem, ItemKind, Prompt } from '../../../platform'
-import { autopilotCatalog, prompt, prompts, routineSuggestions } from '../../../test/fixtures'
+import { autopilotCatalog, fixtureUUID, prompt, prompts, routineSuggestions } from '../../../test/fixtures'
 import { GitHubStepBlock, isCommentReply } from './GitHubStepBlock'
 import { fitsKinds, type BuilderKit } from './parts'
 
@@ -107,7 +107,7 @@ describe('GitHubStepBlock', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add an action' }))
     await user.click(screen.getByRole('menuitem', { name: 'Comment one of my replies' }))
-    expect(last()).toEqual([{ reply: { prompt: { starter: 'reply-question' } } }])
+    expect(last()).toEqual([{ reply: { prompt: { uuid: fixtureUUID(22), starter: 'reply-question' } } }])
 
     const picker = screen.getByRole('combobox', { name: 'Action 1: the reply it comments' })
     const offered = within(picker)
@@ -117,7 +117,7 @@ describe('GitHubStepBlock', () => {
     expect(offered).toEqual(['Question', 'Thanks'])
 
     await user.selectOptions(picker, 'nickname:Thanks')
-    expect(last()).toEqual([{ reply: { prompt: { nickname: 'Thanks' } } }])
+    expect(last()).toEqual([{ reply: { prompt: { uuid: fixtureUUID(23), nickname: 'Thanks' } } }])
 
     expect(isCommentReply({ purpose: 'reply', replyAction: 'approve' })).toBe(false)
     expect(isCommentReply({ purpose: 'reply', replyAction: 'comment' })).toBe(true)

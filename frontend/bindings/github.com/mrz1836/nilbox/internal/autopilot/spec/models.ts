@@ -359,9 +359,16 @@ export interface ProfileRef {
 
 /**
  * PromptRef names a library prompt by its starter's key or its nickname, or the item's
- * own default prompt. Exactly one is set.
+ * own default prompt. Exactly one of the three is set. A library prompt is named by its
+ * UUID too, which is looked at first: the starter or the nickname is the fallback, for a
+ * library where no prompt has the UUID.
  */
 export interface PromptRef {
+    /**
+     * UUID is the library prompt's UUID, canonical, never with ItemDefault.
+     */
+    "uuid"?: string;
+
     /**
      * Starter is a starter prompt's key, such as "fix-checks": the user's copy of it,
      * whatever they renamed it.
@@ -455,13 +462,20 @@ export interface Schedule {
  */
 export interface ScriptStep {
     /**
-     * ID is the script's, as Repo scripts keeps it on this Mac: what runs.
+     * UUID is the script's UUID, canonical: the script with it is the one that runs, under
+     * whatever ID and name it has now. "" for a step picked before UUIDs.
+     */
+    "uuid"?: string;
+
+    /**
+     * ID is the script's, as Repo scripts keeps it on this Mac: what runs when no script
+     * has UUID.
      */
     "id": number;
 
     /**
      * Name is the script's name as it was picked, which the sentence and an export show;
-     * the script that runs is the one with ID, under whatever name it has now.
+     * found by its ID alone, the script runs only while it still has this name.
      */
     "name": string;
 }

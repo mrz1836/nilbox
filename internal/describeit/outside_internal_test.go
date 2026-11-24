@@ -11,12 +11,12 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
 	"github.com/mrz1836/nilbox/internal/mcpserver"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // settleAll records every part of the outside card id as dealt with at at.
@@ -165,7 +165,7 @@ func TestTheToolModeCountsWaitingProposalsAsStatusDoes(t *testing.T) {
 		{"50, one naming a conversation", func(r *rig) {
 			id := r.fillOutside(testNow, 50, p)[0]
 			require.NoError(r.t, os.WriteFile(r.path("proposals", Outside, id+".json"),
-				proposalFile(r.t, uuid.NewString(), id, testNow, p), 0o600))
+				proposalFile(r.t, textutil.NewUUID(), id, testNow, p), 0o600))
 		}, 49},
 		{"50 waiting, older than the newest the app reads", func(r *rig) {
 			r.fillOutside(testNow.Add(-time.Hour), 50, p)

@@ -30,11 +30,11 @@ func benchWorld() world {
 func benchRow() launchItemRow {
 	it, name := baseRequest().Item, prSubject().repo
 
-	return launchItemRow{StoredItem: StoredItem{
+	return launchItemRow{
 		ID: 7, Kind: it.Kind, Number: it.Number, URL: it.URL, Title: it.Title, HeadRef: it.Branch,
 		AuthorLogin: "octo-user", AuthorType: "User", AuthorAssociation: trust.AssociationMember,
 		RepoID: 1, Owner: name.Owner, Name: name.Repo,
-	}}
+	}
 }
 
 // BenchmarkResolveAndPlan works out one pull request's launch from loaded state: it

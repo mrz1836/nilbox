@@ -652,12 +652,10 @@ func TestARunsSessionIsTheLedgersRecordOfIt(t *testing.T) {
 	at := time.Date(2026, 11, 9, 5, 11, 0, 0, time.UTC)
 
 	require.NoError(t, s.Started(ctx, agentrun.StartedSession{
-		Session: agentrun.Session{
-			Agent: agent.Claude, Profile: workProfile, ConfigDir: "/srv/home/.claude_work", Prompt: "Review", ItemID: 12,
-			Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Kind: item.KindPR, Number: 12, Title: "Bump zod",
-			URL: "https://github.com/acme-org/example-repo/pull/12", Clone: "/srv/projects/example-repo",
-			Worktree: "pr-12", WorktreeAction: string(launcher.WorktreeCreate), Permission: "read only",
-		},
+		Agent: agent.Claude, Profile: workProfile, ConfigDir: "/srv/home/.claude_work", Prompt: "Review", ItemID: 12,
+		Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Kind: item.KindPR, Number: 12, Title: "Bump zod",
+		URL: "https://github.com/acme-org/example-repo/pull/12", Clone: "/srv/projects/example-repo",
+		Worktree: "pr-12", WorktreeAction: string(launcher.WorktreeCreate), Permission: "read only",
 		ID: "s1", RunID: 41, AgentSessionID: "s1", Dir: "/srv/wt/pr-12", PromptHead: "Review it", LaunchedAt: at,
 	}))
 

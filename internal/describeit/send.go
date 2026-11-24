@@ -9,8 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -163,7 +161,7 @@ func (s *Service) planTurn(ctx context.Context, text string, refs []AttachRef) (
 	}
 
 	if rec == nil {
-		plan.rec = newRecord(uuid.NewString(), choice, start, s.clock.Now())
+		plan.rec = newRecord(textutil.NewUUID(), choice, start, s.clock.Now())
 	}
 
 	plan.feedback, plan.told = s.feedback(ctx, plan.rec)

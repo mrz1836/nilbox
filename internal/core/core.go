@@ -795,7 +795,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		shellEnv: shellEnv, terminal: terminals, locations: locations,
 	}
 	hookPage := newHooks(pool, opts, logger, deps)
-	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
+	// The routines follow every change to the prompt library and the user's scripts; the
+	// follower is filled in once Autopilot's service is built, below.
+	routineFollows := &routineFollow{logger: logger}
+	repoScripts := newScripts(pool, opts, logger, deps, inboxStore, func(ctx context.Context) { routineFollows.follow(ctx) })
 	depsPage := newManifests(pool, opts, logger, deps, inboxStore)
 
 	// What reads the inbox, the running checks, the Release page's running checks, and the
@@ -883,6 +886,13 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 			autopilot: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)},
 		},
 	}, logger)
+	// Every routine is stamped with what it names now, once at every start: a routine stored
+	// before UUIDs gets its own and its prompts' and scripts', one an older build wrote in an
+	// older version of the format is written in this one's, and a prompt or script restored
+	// under another ID or nickname is followed. On later starts it only reads.
+	routineFollows.follower = autopilot.NewFollower(routines)
+	routineFollows.follow(ctx)
+
 	watchSource.searches = autopilot.NewSearches(routines)
 	watchSource.searches.Rebuild(ctx)
 	// The engine runs the routines, in the one copy of the app that holds the lock in the
@@ -897,7 +907,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		// A routine's Run one of my scripts runs through Repo scripts' own run, in the app.
 		scripts: repoScripts, history: scriptRuns, waker: engine,
 	})
-	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
+	routinePromptUses := routinePrompts{follow: routineFollows}
 	// A bug report words the settings the services below keep too, so they are wired in
 	// once they are built.
 	report := &bugReportState{settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger}
@@ -910,7 +920,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: previews,
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
-			Changed: info.kept.saveDefaults, Routines: routinePromptUses, Renamed: routinePromptUses.Renamed,
+			Changed: func(ctx context.Context) {
+				info.kept.saveDefaults(ctx)
+				routineFollows.follow(ctx)
+			},
+			Routines: routinePromptUses, Renamed: routinePromptUses.Renamed,
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
@@ -1099,8 +1113,9 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 // sources and where runs go, the default branches the inbox stored, and the trusted
 // commands in script_trust. The same read-only git reads a clone's branch status, and the
 // runner runs its pull. Run again works a script, or a pull, out afresh through its
-// Rerunner.
+// Rerunner. changed hears every change to the user's own scripts.
 func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches scripts.DefaultBranches,
+	changed func(context.Context),
 ) *scripts.Service {
 	var runner func([]string, string) execpath.Runner
 
@@ -1113,7 +1128,7 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 		BranchGit: deps.git, Branches: branches, Tools: scriptsTools{tools: deps.tools},
 		Settings: integrationSettings{settings: deps.settings}, Runs: deps.runs, History: deps.history, DB: pool,
 		Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell, Runner: runner, Home: opts.Home, Clock: opts.Clock,
-		Logger: logger,
+		Logger: logger, Changed: changed,
 	})
 
 	rerun := scripts.NewRerunner(svc)

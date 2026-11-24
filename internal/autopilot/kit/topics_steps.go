@@ -80,7 +80,7 @@ func stepSettingLines(kind catalog.StepKind) []string {
 	var out []string
 
 	for f := range t.Fields() {
-		key, optional, ok := jsonKeyOf(f)
+		key, optional, ok := visibleKeyOf(t, f)
 		if !ok {
 			continue
 		}
@@ -371,7 +371,7 @@ func agentKeyLines(t reflect.Type) []string {
 	out := make([]string, 0, t.NumField())
 
 	for field := range t.Fields() {
-		key, _, ok := jsonKeyOf(field)
+		key, _, ok := visibleKeyOf(t, field)
 		if !ok {
 			continue
 		}

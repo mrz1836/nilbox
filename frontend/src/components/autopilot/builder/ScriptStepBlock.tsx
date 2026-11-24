@@ -4,9 +4,10 @@ import { useQuery } from '../../../lib/useQuery'
 import { autopilotMyScripts, type AutopilotMyScript } from '../../../platform'
 import { fieldClass } from '../../controls'
 
-// ScriptStep is a step's Run one of my scripts: the script, by its ID, with the name it
-// was picked under.
+// ScriptStep is a step's Run one of my scripts: the script, by its UUID, with its ID and the
+// name it was picked under, which find it where no script has the UUID.
 export interface ScriptStep {
+  uuid?: string
   id: number
   name: string
 }
@@ -25,12 +26,16 @@ export function ScriptStepBlock({ n, step, onChange }: ScriptStepBlockProps) {
   const id = useId()
   const mine = useQuery(() => autopilotMyScripts(), [])
   const scripts = mine.data ?? []
-  const chosen = scripts.find((s) => s.id === step.id)
+  // The script with the step's UUID is the step's, whatever it is called now; a step without
+  // one, or whose UUID no script has, finds its script by ID.
+  const byUUID = step.uuid !== undefined && step.uuid !== '' ? scripts.find((s) => s.uuid === step.uuid) : undefined
+  const chosen = byUUID ?? scripts.find((s) => s.id === step.id)
   // A script the routine names that isn't one of the user's any more stays listed, so the
-  // problem with it shows where it is; so does one saved under another name since it was
-  // picked (an ID from another Mac may name another script here), until it is picked again.
+  // problem with it shows where it is; so does one found by its ID alone that was saved
+  // under another name since it was picked (an ID from another Mac may name another script
+  // here), until it is picked again.
   const gone = step.id > 0 && chosen === undefined && mine.data !== undefined
-  const renamed = chosen !== undefined && chosen.name !== step.name
+  const renamed = byUUID === undefined && chosen !== undefined && chosen.name !== step.name
 
   if (mine.data !== undefined && scripts.length === 0 && step.id === 0) {
     return (
@@ -47,12 +52,12 @@ export function ScriptStepBlock({ n, step, onChange }: ScriptStepBlockProps) {
       </label>
       <select
         id={`${id}-script`}
-        value={renamed ? 'renamed' : String(step.id)}
+        value={renamed ? 'renamed' : String(chosen?.id ?? step.id)}
         onChange={(e) => {
           const picked = scripts.find((s) => String(s.id) === e.target.value)
 
           if (picked !== undefined) {
-            onChange({ id: picked.id, name: picked.name })
+            onChange({ uuid: picked.uuid, id: picked.id, name: picked.name })
           }
         }}
         className={`${fieldClass} py-0.5 text-xs`}

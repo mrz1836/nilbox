@@ -31,7 +31,7 @@ func readOnly(id int64) BackgroundRequest {
 // withPreset asks for a background run on id under preset.
 func withPreset(id int64, preset fence.Preset) BackgroundRequest {
 	return BackgroundRequest{
-		LaunchRequest: LaunchRequest{ItemID: id}, Preset: preset, BudgetUSD: 0.5,
+		ItemID: id, Preset: preset, BudgetUSD: 0.5,
 		Schema: `{"type":"object"}`, SystemNote: "You run unattended.",
 	}
 }

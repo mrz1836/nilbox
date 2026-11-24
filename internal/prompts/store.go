@@ -201,9 +201,15 @@ func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
 }
 
 // insert stores p as a new prompt, with its starter key, stamped now, and returns its
-// ID.
+// ID. It keeps p's UUID when that is canonical and no prompt has it, as a prompt brought
+// back or imported does, and otherwise gives the prompt a new one.
 func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
 	models, args, err := encodeSettings(p)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := s.uuidFor(ctx, p.UUID)
 	if err != nil {
 		return 0, err
 	}
@@ -214,7 +220,45 @@ func (s *Store) insert(ctx context.Context, p Prompt) (int64, error) {
 		Name: p.Name, Nickname: p.Nickname, AppliesTo: string(p.AppliesTo), Body: p.Body, Models: models,
 		Effort: p.Effort, PlanMode: p.PlanMode, Worktree: p.Worktree, AgentArgs: args, StarterKey: p.StarterKey,
 		CreatedAt: now, UpdatedAt: now, Purpose: string(purposeOf(p.Purpose)), ReplyAction: string(actionOf(p)),
+		UUID: id,
 	})
+}
+
+// uuidFor returns the UUID a new prompt is stored under: want, in its canonical form, when
+// it is a UUID no prompt has, and otherwise a new one.
+func (s *Store) uuidFor(ctx context.Context, want string) (string, error) {
+	u, ok := textutil.CanonicalUUID(want)
+	if !ok {
+		return textutil.NewUUID(), nil
+	}
+
+	taken, err := s.q.CountPromptUUID(ctx, u)
+
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("check the prompt's UUID: %w", err)
+	case taken > 0:
+		return textutil.NewUUID(), nil
+	default:
+		return u, nil
+	}
+}
+
+// giveUUIDs gives a UUID to every prompt without one, as a build from before UUIDs inserts
+// them, and returns how many it gave.
+func (s *Store) giveUUIDs(ctx context.Context) (int, error) {
+	ids, err := s.q.PromptsWithoutUUID(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("read the prompts without a UUID: %w", err)
+	}
+
+	for _, id := range ids {
+		if err = s.q.SetPromptUUID(ctx, queries.SetPromptUUIDParams{UUID: textutil.NewUUID(), ID: id}); err != nil {
+			return 0, fmt.Errorf("give the prompt %d a UUID: %w", id, err)
+		}
+	}
+
+	return len(ids), nil
 }
 
 // encodeSettings returns a prompt's models and extra arguments as stored, as JSON objects
@@ -250,7 +294,7 @@ func actionOf(p Prompt) ReplyAction {
 }
 
 // update replaces the title, nickname, text, settings, and reply action of the prompt with
-// id with p's, stamped now. Its purpose and starter key stay. It returns ErrPromptNotFound when no prompt
+// id with p's, stamped now. Its purpose, starter key, and UUID stay. It returns ErrPromptNotFound when no prompt
 // has id.
 func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 	models, args, err := encodeSettings(p)
@@ -610,7 +654,7 @@ func fromRow(row queries.Prompt) (Prompt, error) {
 	}
 
 	p := Prompt{
-		ID: row.ID, Name: row.Name, Nickname: row.Nickname, AppliesTo: AppliesTo(row.AppliesTo), Body: row.Body,
+		ID: row.ID, UUID: row.UUID, Name: row.Name, Nickname: row.Nickname, AppliesTo: AppliesTo(row.AppliesTo), Body: row.Body,
 		Purpose: purposeOf(Purpose(row.Purpose)), ReplyAction: ReplyAction(row.ReplyAction),
 		Models: agent.CloneModels(models), Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree,
 		ExtraArgs: agent.CloneArgs(args), ExtraFlags: agent.JoinArgs(args), StarterKey: row.StarterKey,

@@ -459,7 +459,7 @@ func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
 	if err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
 		v.s.logger.Warn("a pull from before the app restarted can't be checked", "run", rec.ID)
 
-		return scriptrun.Verification{Callbacks: scriptrun.Callbacks{Progress: pullProgress}}
+		return scriptrun.Verification{Progress: pullProgress}
 	}
 
 	run := &pullRun{c: clone{dir: rec.Dir, name: rec.Repo}, intent: in}

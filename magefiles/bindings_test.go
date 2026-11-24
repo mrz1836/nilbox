@@ -70,7 +70,7 @@ func enumGenerator(t *testing.T) answer {
 func writeKinds(t *testing.T, dir, defaultIn string) {
 	t.Helper()
 
-	testutil.WriteFile(t, filepath.Join(dir, goModFile), "module "+enumModule+"\n\ngo 1.26\n")
+	testutil.WriteFile(t, filepath.Join(dir, goModFile), "module "+enumModule+"\n\ngo 1.27\n")
 	testutil.WriteFile(t, filepath.Join(dir, "kinds", "kinds.go"), kindsSource)
 
 	const defaultKind = "\n// DefaultKind is the kind of a new item.\nconst DefaultKind = KindA\n"
@@ -343,7 +343,7 @@ func TestModulePath(t *testing.T) {
 		t.Parallel()
 
 		file := filepath.Join(t.TempDir(), goModFile)
-		testutil.WriteFile(t, file, "go 1.26\n")
+		testutil.WriteFile(t, file, "go 1.27\n")
 
 		_, err := modulePath(file)
 

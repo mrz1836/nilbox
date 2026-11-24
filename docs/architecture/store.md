@@ -58,6 +58,23 @@ fills the table first (for `0111`, every one of the six references) and checks t
 column comes through as it was, that the new checks hold, and, for `0111`, that
 `pragma_foreign_key_check` finds nothing and a prompt a launch default names still can't be deleted.
 
+## Records named for good: UUIDs
+
+A prompt, one of the user's scripts, and a routine each carry a `uuid` (`prompts.uuid`,
+`user_scripts.uuid`, `autopilot_routines.uuid`), a random version 4 UUID in its canonical form that
+never changes once given, so what names one (a routine's steps, a backup, a run to run again) finds
+it whatever it is renamed to, reset to, or renumbered as. `0116_record_uuids` adds the three columns
+additively, as `TEXT NOT NULL DEFAULT ''`, and gives every row its own inside the migration, after
+`store.Open`'s backup: `lower(hex(randomblob(...)))` built into the version and variant digits, so
+no row is left without one and nothing is set aside. A partial unique index (`WHERE uuid <> ''`)
+keeps two rows from sharing one while letting any number wait with `''`, as a build from before
+0116 still running inserts them: the owner gives each its UUID at its next start (`prompts.Seed`,
+`scripts.GiveUUIDs`, and Autopilot's startup pass). A routine deleted softly keeps its UUID, so
+none is given twice. The shared rule is `textutil.NewUUID` and `textutil.CanonicalUUID`, the
+latter accepting only a non-Nil UUID written with its dashes. An insert keeps a UUID it was given
+when it is canonical and no row has it (a prompt, script, or routine brought back or imported),
+and otherwise mints one; an update never touches it, and a duplicate gets its own.
+
 ## Self-heal
 
 `store.Open` backs the database up before applying pending migrations. A file that is not a database

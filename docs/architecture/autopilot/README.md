@@ -116,12 +116,19 @@ the conditions (`all` or
 the limits, the routine's own banner switches, and the tools it requires. The mode, the
 on or off switch, the name, and the account are its row's, never the spec's. An option or
 a limit left out takes its default (a nil pointer), so the builder can tell a value set
-from one inherited. Format version 1 holds every step kind (notify, pin, snooze, dismiss,
+from one inherited. Format version 2 (version 1, which an older build wrote, reads as version 2:
+`migrate`, inside `Normalize`) holds every step kind (notify, pin, snooze, dismiss,
 restore, markDone, github, agent, waitForChecks, merge, postReview, tellMe), so a later
 build adds the code that runs a step, never a format change, but one: Run one of my scripts
 (`script`, the user's script by its ID and the name it was picked under) came later, as a key
-an older build refuses, so it reads such a routine as broken; `TestSchemaGolden` pins every
-key and every closed set of values.
+an older build refuses, so it reads such a routine as broken. Version 2 adds a `uuid` to a prompt
+reference and a script step, the record's UUID, which is looked at before the name: a key the
+strict decode of an older build would refuse, so the version went up, and that build reads a
+version 2 routine as one a newer build made, left as it is, rather than unreadable. A UUID must be
+canonical and never the Nil UUID, a prompt's only beside a starter or a nickname, never the item's
+own default; `Normalize` writes it in lowercase. `PromptRefs`, `ScriptSteps`, `Clone`, and
+`WithoutUUIDs` are the shared walks. `TestSchemaGolden` pins every key and every closed set of
+values.
 
 - `Decode` is strict: it walks the document beside the `Spec` type and holds every
   object's keys, byte for byte, to its struct's JSON names, since encoding/json would
@@ -160,8 +167,9 @@ key and every closed set of values.
 - `Load` reads the version first, so a newer build's spec says it is newer rather than
   unreadable, then decodes, normalizes, and validates. A spec it can't load returns a
   `*BrokenError` (`ReasonNewer`, `ReasonUnreadable`, `ReasonInvalid`), so its routine is
-  broken, not fatal; an older version is migrated in `migrate`, which has nothing to bring
-  forward yet. A routine stored before a rule tightened (a label holding a fullwidth
+  broken, not fatal; an older version is migrated in `migrate`, which `Normalize` runs first, so
+  `draft.Encode`, a template, and kit's proposals are brought forward in one place (version 1 to 2
+  adds nothing but the version, its UUIDs left for a stamp). A routine stored before a rule tightened (a label holding a fullwidth
   quote, say, which `watch` refuses) loads this way, broken as invalid, its problem
   naming the field for the builder to show, its spec never rewritten, and no query built
   from it.

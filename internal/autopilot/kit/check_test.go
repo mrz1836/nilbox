@@ -104,8 +104,8 @@ func TestARoutinesOwnFieldsAreCheckedAsSaveChecksThem(t *testing.T) {
 			[]string{".base=only a change to one of your routines names a base: leave base out of a new routine"},
 		},
 		"a spec another version wrote": {
-			kit.RoutineChange{Name: "R", Spec: spec.Spec{Version: 2}},
-			[]string{".spec=The routine can't be read: Made by a newer version: update to edit it (version 2)."},
+			kit.RoutineChange{Name: "R", Spec: spec.Spec{Version: 3}},
+			[]string{".spec=The routine can't be read: Made by a newer version: update to edit it (version 3)."},
 		},
 		"a spec with problems": {
 			kit.RoutineChange{Name: "R", Spec: checksFailSpec(agentStep(spec.PromptRef{Nickname: "Nope"}, "", ""))},

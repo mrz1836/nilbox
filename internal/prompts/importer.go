@@ -108,8 +108,8 @@ type planned struct {
 // stored returns the prompt as Import stores it.
 func (p planned) stored() Prompt {
 	out := Prompt{
-		Name: p.Prompt.Name, Nickname: p.Nickname, AppliesTo: p.Prompt.AppliesTo, Body: p.Prompt.Body,
-		Purpose: purposeOf(p.Prompt.Purpose), ReplyAction: p.Prompt.Action,
+		UUID: p.Prompt.UUID, Name: p.Prompt.Name, Nickname: p.Nickname, AppliesTo: p.Prompt.AppliesTo,
+		Body: p.Prompt.Body, Purpose: purposeOf(p.Prompt.Purpose), ReplyAction: p.Prompt.Action,
 		Models: agent.CloneModels(p.Prompt.Models), Effort: p.Prompt.Effort, PlanMode: p.Prompt.PlanMode,
 		Worktree: p.Prompt.Worktree, ExtraArgs: agent.CloneArgs(p.Prompt.ExtraArgs),
 	}
@@ -149,7 +149,7 @@ func newPlanner(lib []Prompt, usage map[int64]Usage) *planner {
 // plan says what importing in does, and records it.
 func (pl *planner) plan(in BundlePrompt) planned {
 	p, notes := cleanImport(in)
-	e := planned{ImportEntry: ImportEntry{Prompt: p, Notes: textutil.NonNil(notes)}}
+	e := planned{Prompt: p, Notes: textutil.NonNil(notes)}
 
 	if !pl.faithful {
 		if held, ok := pl.holding(p); ok {
@@ -159,9 +159,11 @@ func (pl *planner) plan(in BundlePrompt) planned {
 		}
 
 		if at, ok := pl.replaceable(p); ok {
+			// The prompt saved over keeps its own UUID, so what names it still does.
 			target := pl.lib[at]
 			e.Outcome, e.Replaces, e.target, e.keepStarter = ImportReplace, target.Nickname, target.ID, true
 			e.Nickname = pl.freeNickname(p.Nickname, at)
+			e.Prompt.UUID = target.UUID
 			pl.replaced[target.ID] = true
 			pl.lib[at] = e.stored()
 			pl.lib[at].ID, pl.lib[at].StarterKey = target.ID, target.StarterKey
@@ -176,9 +178,20 @@ func (pl *planner) plan(in BundlePrompt) planned {
 	}
 
 	e.keepStarter = p.StarterKey != "" && !pl.hasStarter(p.StarterKey)
+	e.Prompt.UUID = pl.freeUUID(p.UUID)
 	pl.lib = append(pl.lib, e.stored())
 
 	return e
+}
+
+// freeUUID returns u when no prompt in the library has it, so a prompt added keeps the UUID
+// its file gave it, and otherwise "", for the store to give it a new one.
+func (pl *planner) freeUUID(u string) string {
+	if u == "" || slices.ContainsFunc(pl.lib, func(q Prompt) bool { return q.UUID == u }) {
+		return ""
+	}
+
+	return u
 }
 
 // holding returns the library's prompt that already holds p: one with the same title,
@@ -282,6 +295,9 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	if p.StarterKey = strings.TrimSpace(p.StarterKey); !starterKeyPattern.MatchString(p.StarterKey) {
 		p.StarterKey = ""
 	}
+
+	// A UUID that isn't one is dropped, and the prompt is given a new one.
+	p.UUID, _ = textutil.CanonicalUUID(strings.TrimSpace(p.UUID))
 
 	p.Name, p.Nickname = cmpOr(p.Name, p.Nickname, untitledName), cmpOr(p.Nickname, p.Name, untitledNickname)
 	p.Name, p.Nickname = textutil.Clip(p.Name, maxNameRunes), textutil.Clip(p.Nickname, maxNicknameRunes)
@@ -470,9 +486,9 @@ func sameContent(q Prompt, p BundlePrompt) bool {
 // bundledAsPrompt returns a portable prompt as a Prompt, for comparing with a starter.
 func bundledAsPrompt(p BundlePrompt) Prompt {
 	return Prompt{
-		Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body, Purpose: purposeOf(p.Purpose),
-		ReplyAction: p.Action, Models: agent.CloneModels(p.Models), Effort: p.Effort, PlanMode: p.PlanMode,
-		Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs), StarterKey: p.StarterKey,
+		UUID: p.UUID, Name: p.Name, Nickname: p.Nickname, AppliesTo: p.AppliesTo, Body: p.Body,
+		Purpose: purposeOf(p.Purpose), ReplyAction: p.Action, Models: agent.CloneModels(p.Models), Effort: p.Effort,
+		PlanMode: p.PlanMode, Worktree: p.Worktree, ExtraArgs: agent.CloneArgs(p.ExtraArgs), StarterKey: p.StarterKey,
 	}
 }
 
@@ -583,7 +599,7 @@ func recordStarters(ctx context.Context, st *Store, keys []string) error {
 func promptColumns() []string {
 	return []string{
 		"id", "name", "nickname", "applies_to", "body", "model", "models", "effort", "plan_mode", "worktree",
-		"extra_args", "agent_args", "starter_key", "created_at", "updated_at", "purpose", "reply_action",
+		"extra_args", "agent_args", "starter_key", "created_at", "updated_at", "purpose", "reply_action", "uuid",
 	}
 }
 
@@ -596,39 +612,46 @@ func readSnapshotBundle(ctx context.Context, path string) (Bundle, error) {
 	return b, err
 }
 
-// readSnapshot is readSnapshotBundle that also returns each prompt's nickname by its ID
-// in the backup, for what in the backup names prompts by ID.
-func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, error) {
+// snapshotIDs are what a backup's prompt IDs stood for there: each prompt's nickname and
+// its UUID, by its ID, for what in the backup names prompts by ID.
+type snapshotIDs struct {
+	nicknames map[int64]string
+	uuids     map[int64]string
+}
+
+// readSnapshot is readSnapshotBundle that also returns each prompt's nickname and UUID by
+// its ID in the backup.
+func readSnapshot(ctx context.Context, path string) (Bundle, snapshotIDs, error) {
 	snap, err := store.OpenSnapshot(ctx, path)
 	if err != nil {
-		return Bundle{}, nil, err
+		return Bundle{}, snapshotIDs{}, err
 	}
 
 	defer func() { _ = snap.Close() }()
 
 	rows, err := snap.Rows(ctx, promptsTable, promptColumns()...)
 	if err != nil {
-		return Bundle{}, nil, err
+		return Bundle{}, snapshotIDs{}, err
 	}
 
 	b := Bundle{
 		Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, SlotsSeeded: []string{},
 		Prompts: []BundlePrompt{},
 	}
-	nicknames := map[int64]string{}
+	ids := snapshotIDs{nicknames: map[int64]string{}, uuids: map[int64]string{}}
 
 	for _, row := range rows {
 		models, args := snapshotSettings(row)
 		p := BundlePrompt{
-			Name: row.Text("name"), Nickname: row.Text("nickname"), AppliesTo: AppliesTo(row.Text("applies_to")),
-			Body: row.Text("body"), Models: models, Effort: row.Text("effort"),
+			UUID: row.Text("uuid"), Name: row.Text("name"), Nickname: row.Text("nickname"),
+			AppliesTo: AppliesTo(row.Text("applies_to")), Body: row.Text("body"), Models: models, Effort: row.Text("effort"),
 			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"), ExtraArgs: args,
 			StarterKey: row.Text("starter_key"), CreatedAt: row.Time("created_at"), UpdatedAt: row.Time("updated_at"),
 			Purpose: purposeOf(Purpose(row.Text("purpose"))), Action: ReplyAction(row.Text("reply_action")),
 		}
 
 		if id, ok := row.Int("id"); ok {
-			nicknames[id] = p.Nickname
+			ids.nicknames[id], ids.uuids[id] = p.Nickname, p.UUID
 		}
 
 		b.Prompts = append(b.Prompts, p)
@@ -636,25 +659,21 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 
 	// The library's own records come back too where the backup has them; the prompts come
 	// back without them.
-	b.Defaults, b.StartersAdded, b.SlotsSeeded = snapshotRecords(ctx, snap.DB(), nicknames)
+	b.Defaults, b.StartersAdded, b.SlotsSeeded = snapshotRecords(ctx, snap.DB(), ids)
 
-	return b, nicknames, nil
+	return b, ids, nil
 }
 
 // snapshotRecords reads a backup's default prompts, its situations' prompts, and its
-// default replies, by the nicknames of the prompts with those IDs, the starters it had
-// added, and the situations' slots it had filled. A backup without them, as an older
-// build's, or whose prefs can't be read, has none.
-func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string) (BundleDefaults, []string, []string) {
-	keys := make([]string, 0, 4+len(situationSlots())+len(ReplySlots()))
-	keys = append(keys, prefSeeded, prefSeededSlots, prefDefaultPR, prefDefaultIssue)
+// default replies, by the nicknames and the UUIDs of the prompts with those IDs, the
+// starters it had added, and the situations' slots it had filled. A backup without them, as
+// an older build's, or whose prefs can't be read, has none.
+func snapshotRecords(ctx context.Context, db *sql.DB, ids snapshotIDs) (BundleDefaults, []string, []string) {
+	keys := make([]string, 0, 2+len(DefaultSlots()))
+	keys = append(keys, prefSeeded, prefSeededSlots)
 
-	for _, slot := range situationSlots() {
-		keys = append(keys, situationPrefKey(slot))
-	}
-
-	for _, slot := range ReplySlots() {
-		keys = append(keys, replyPrefKey(slot))
+	for _, slot := range DefaultSlots() {
+		keys = append(keys, slotPrefKey(slot))
 	}
 
 	values, err := prefs.New(db, nil).GetMany(ctx, keys...)
@@ -662,15 +681,13 @@ func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string
 		return BundleDefaults{}, []string{}, []string{}
 	}
 
-	defaults := BundleDefaults{PR: nicknames[idText(values[prefDefaultPR])], Issue: nicknames[idText(values[prefDefaultIssue])]}
+	var defaults BundleDefaults
 
-	for _, slot := range situationSlots() {
-		defaults.Set(slot, nicknames[idText(values[situationPrefKey(slot)])])
-	}
-
-	for _, slot := range ReplySlots() {
-		if nickname := nicknames[idText(values[replyPrefKey(slot)])]; nickname != "" {
-			defaults.setReply(slot, nickname)
+	for _, slot := range DefaultSlots() {
+		id := idText(values[slotPrefKey(slot)])
+		if nickname := ids.nicknames[id]; nickname != "" {
+			defaults.Set(slot, nickname)
+			defaults.setUUID(slot, ids.uuids[id])
 		}
 	}
 
@@ -723,6 +740,21 @@ func SnapshotArgs(row store.Row, perAgent, single string) map[agent.ID][]string 
 	}
 
 	return agent.CloneArgs(map[agent.ID][]string{agent.Claude: row.Strings(single)})
+}
+
+// slotPrefKey returns the preference holding slot's default: a kind's, a situation's, or a
+// reply's.
+func slotPrefKey(slot DefaultSlot) string {
+	switch {
+	case slot == DefaultSlotPR:
+		return prefDefaultPR
+	case slot == DefaultSlotIssue:
+		return prefDefaultIssue
+	case slot.situation():
+		return situationPrefKey(slot)
+	default:
+		return replyPrefKey(ReplySlot(slot))
+	}
 }
 
 // idText reads a stored prompt ID, or 0.

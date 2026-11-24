@@ -4,7 +4,7 @@ A routine's `spec` is one JSON object. Every key is spelled exactly as below, an
 
 ```
 Spec {
-  version: 1
+  version: 2
   watch: Watch
   trigger: Trigger
   conditions: Conditions
@@ -181,7 +181,7 @@ Fence {
 }
 ```
 
-- `version` is always 1, the format this build reads and writes.
+- `version` is always 2, the format this build reads and writes.
 - `notify` says which of the routine's notices show a banner (`true`) or only an entry in the Notifications page (`false`); a key left out follows Settings → Notifications. `alert` is its Notify me and Tell me, `needsYou` a match that waits for the user's OK, `finished` its agent's run ending, `checks` Wait for the checks' verdict, and `problem` the routine failing to run.
 - `requires` names the programs the routine needs beyond what Nilbox works out on its own, such as `pnpm` or `govulncheck`, at most 20.
 - A routine's name and description sit beside its definition, in the proposal's routine; its mode and its switch are the user's.

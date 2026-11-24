@@ -38,6 +38,15 @@ func exported(t *testing.T, r *rig) autopilot.Bundle {
 func importInto(t *testing.T, r *rig, b autopilot.Bundle, mode backup.Mode) (autopilot.BackupPlan, backup.Count) {
 	t.Helper()
 
+	return importWith(t, r, b, mode, autopilot.BackupRecords{})
+}
+
+// importWith is importInto with what the import's transaction holds of the prompts and the
+// scripts, and the prompts the file brought.
+func importWith(t *testing.T, r *rig, b autopilot.Bundle, mode backup.Mode, recs autopilot.BackupRecords,
+) (autopilot.BackupPlan, backup.Count) {
+	t.Helper()
+
 	part := autopilot.NewBackupPart(r.svc)
 
 	plan, err := part.PlanBackup(t.Context(), b, mode)
@@ -48,7 +57,7 @@ func importInto(t *testing.T, r *rig, b autopilot.Bundle, mode backup.Mode) (aut
 	require.NoError(t, store.InTx(t.Context(), r.db, func(tx *sql.Tx) error {
 		var applyErr error
 
-		count, applyErr = part.ApplyBackup(t.Context(), tx, plan)
+		count, applyErr = part.ApplyBackup(t.Context(), tx, plan, recs)
 
 		return applyErr
 	}))
@@ -158,7 +167,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 	t.Parallel()
 
 	b := autopilot.Bundle{Format: autopilot.BundleFormat, Routines: []autopilot.BundleRoutine{
-		{Name: "From the future", Mode: autopilotprefs.ModeAuto, Spec: json.RawMessage(`{"version":2}`)},
+		{Name: "From the future", Mode: autopilotprefs.ModeAuto, Spec: json.RawMessage(`{"version":3}`)},
 		{Name: "", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "Twice", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "TWICE", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
@@ -185,7 +194,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 func TestAnImportLeavesARoutineANewerBuildWroteAsItIs(t *testing.T) {
 	t.Parallel()
 
-	const newer = `{"version":2,"somethingNew":true}`
+	const newer = `{"version":3,"somethingNew":true}`
 
 	note := "The routine “Fix checks” here was made by a newer " + brand.Name + ": left as it is."
 
@@ -215,7 +224,7 @@ func TestReplaceNeverDeletesARoutineANewerBuildWrote(t *testing.T) {
 
 	here := newRig(t, autopilotprefs.ModeAsk)
 	gone := here.save(t, draft("Only here", notifySpec()))
-	id := here.insertRaw(t, "From the future", "auto", `{"version":2}`)
+	id := here.insertRaw(t, "From the future", "auto", `{"version":3}`)
 
 	b := autopilot.Bundle{Format: autopilot.BundleFormat, Routines: []autopilot.BundleRoutine{
 		{Name: "From the file", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},

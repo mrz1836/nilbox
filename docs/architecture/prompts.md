@@ -24,10 +24,16 @@ whose [Prompts for repositories](store.md#prompts-for-repositories) these notes 
 `issue`, `any`, or `repo`), `body`, the launch settings (`models` and `agent_args`, JSON objects
 keyed by agent; `effort`; `plan_mode` and `worktree`, NULL to inherit), `starter_key`,
 `created_at`, `updated_at`, `purpose` (`agent` or `reply`), and `reply_action` (`''` for an agent
-prompt, else `approve`, `request_changes`, or `comment`). Its checks tie the last two together and
-keep a reply off `repo`. The six queries in `internal/queries/prompts.sql` are `ListPrompts` (by
-nickname ignoring case, then by id), `GetPrompt`, `CountNickname`, `InsertPrompt`, `UpdatePrompt`,
-and `DeletePrompt`; `UpdatePrompt` leaves `purpose`, `starter_key`, and `created_at` as they are.
+prompt, else `approve`, `request_changes`, or `comment`), and `uuid` (`0116_record_uuids`: the
+prompt's UUID, which never changes; see
+[Records named for good](store.md#records-named-for-good-uuids)). Its checks tie `purpose` and
+`reply_action` together and keep a reply off `repo`. The queries in `internal/queries/prompts.sql`
+are `ListPrompts` (by nickname ignoring case, then by id), `GetPrompt`, `CountNickname`,
+`InsertPrompt`, `UpdatePrompt`, `DeletePrompt`, and, for the UUIDs, `CountPromptUUID`,
+`PromptsWithoutUUID`, and `SetPromptUUID`; `UpdatePrompt` leaves `purpose`, `starter_key`,
+`created_at`, and `uuid` as they are. `insert` keeps a prompt's `UUID` when it is canonical and no
+prompt has it (`uuidFor`), as one restored or imported is, and otherwise mints one; `Duplicate`'s
+copy gets its own.
 
 `Store` (`NewStore(db, c)`) runs them beside a `prefs.Store`; `WithTx(tx)` joins a
 transaction, and `inTx` runs a step on the one a `Store` joined or else on its own, so a check and
@@ -233,12 +239,14 @@ settings as the user made them; `Seed` does it to the stored copies, and an impo
 `Seed`, which core runs at every start once the restore is done, does this in one
 transaction, or none of it when a write fails:
 
-1. adds every starter whose key `prompts.seeded` lacks (`seedMissing`), under a free nickname with
+1. gives every prompt without a UUID one (`giveUUIDs`), as a build from before `0116_record_uuids`
+   still running inserts them;
+2. adds every starter whose key `prompts.seeded` lacks (`seedMissing`), under a free nickname with
    its settings as shipped, making Review the default for pull requests and Work on it the one for
    issues where none is stored, and each starter reply its slot's default where the slot has none,
    and records the keys, so a starter deleted after it was added never comes back;
-2. brings every copy still on an `Earlier` text up to date (`refreshStarters`);
-3. fills each situation's slot not in `prompts.seededSlots` once (`seedSlots`), with the library's
+3. brings every copy still on an `Earlier` text up to date (`refreshStarters`);
+4. fills each situation's slot not in `prompts.seededSlots` once (`seedSlots`), with the library's
    copy of the slot's starter (`DefaultSlot.starter`: Fix checks, Resolve conflicts, Address
    review, Re-review) when it holds one that fits and the slot has none, recording the slot either
    way, so one the user cleared, or whose starter they deleted, stays as they left it.
@@ -254,7 +262,14 @@ never a situation's), records its key, and returns the copy. A key this build do
 `Bundle` is the one portable form of prompts, specified in [Prompt files](../prompt-files.md): an
 export, an import's file, `prompts.json`, a backup's prompts section, and the prompts an Autopilot
 export carries. It names prompts and defaults by nickname, never by ID (`BundleDefaults`), and
-writes every field. `BundleFormat` is `brand.Slug + ".prompts"`; `BundleVersion` is 4, raised only
+writes every field; each prompt carries its `uuid` too (`omitempty`, so a file an older build
+wrote has none, which adding the field didn't need a new version for), and the defaults name
+each default's prompt by UUID beside its nickname (`BundleDefaults.UUIDs`). An import's offers
+find a default's prompt among the file's by UUID, then by nickname (`sourcePrompt`), and
+`restoreDefaults` and `replaceDefaults` find it through one helper (`defaultPrompt`): the
+nickname the file's prompt ended up under here (the links, the file's own prompts first), then
+the prompt with its UUID in the library, as for one left out of an import. `BundleFormat` is
+`brand.Slug + ".prompts"`; `BundleVersion` is 4, raised only
 for a change an older build would misread (2: each agent's settings; 3: replies; 4: prompts for
 repositories), and `BundlePrompt.UnmarshalJSON` reads version 1's single `model` and `extraArgs`
 list as Claude Code's. `DecodeBundle` refuses more than 8 MiB or 1,000 prompts
@@ -285,8 +300,9 @@ planner in its `faithful` mode (nothing skipped or saved over; a second copy of 
 the user's own), the source's `startersAdded` with each starter it stored, its `slotsSeeded` (none
 from a file without them, so `Seed` fills each situation once), and its defaults where their prompts
 fit (`restoreDefaults`). `Restored` says how many came back and from where, with the ID each
-nickname got (`IDs`) and, from a database, each old ID's nickname (`Nicknames`), which core's
-`kept.restoreDefaults` matches the launch defaults to.
+nickname got (`IDs`) and each UUID (`UUIDs`), and, from a database, each old ID's nickname and UUID
+(`Nicknames`, `PromptUUIDs`), which core's `kept.restoreDefaults` matches the launch defaults to,
+by UUID first.
 
 ## Export, import, and restore from a backup (`transfer.go`, `importer.go`)
 
@@ -314,7 +330,8 @@ though those before it were in, so a preview and the import after it agree. `cle
 makes the prompt one this build would store, noting each change on the entry: names on one line,
 cut to 80 and 20 runes, one missing filled from the other (else "Imported prompt" and "Imported");
 a starter key not matching `^[a-z0-9][a-z0-9-]{0,39}$` dropped; a starter's `Earlier` text read as
-its text now; for an agent prompt, an unknown applies-to read as `any`, and each model or flag for
+its text now; a `uuid` that isn't a canonical, non-Nil UUID dropped; for an agent prompt, an
+unknown applies-to read as `any`, and each model or flag for
 an agent this build doesn't know, a model that isn't one word, flags `agent.CheckOverrides`
 refuses, and an effort `agent.ValidateEffortAny` refuses left out; for a reply, every setting
 dropped, an unknown action read as `comment`, and `repo` or an unknown applies-to read as `pr`. A
@@ -331,7 +348,11 @@ text with problems is kept, with a note. Then the `ImportOutcome`:
 - `add`, or `rename` under a free nickname such as "Review 2".
 
 An added prompt keeps its starter key only while the library has no copy of that starter, and each
-key stored joins `prompts.seeded` (`recordStarters`). `importInto` returns the ID each of the
+key stored joins `prompts.seeded` (`recordStarters`). It keeps the file's UUID only while no prompt
+in the library, the ones planned before it included, has it (`freeUUID`), else the store mints one;
+a faithful restore so brings each prompt back under its UUID. A prompt saved over a starter's copy
+keeps the copy's UUID, so what names the copy still finds it. `importInto` returns the ID each of
+the
 source's nicknames ended up under (the first of two that share one, the holder's for a skip), which
 `restoreDefaults` and a backup's launch defaults find their prompts by. `offers` lists each of the
 source's defaults whose prompt, as stored, fits the slot and isn't its default already.
@@ -346,7 +367,9 @@ once it commits; and `BackupPlan.Prompts` tells the launch defaults' part what e
 nicknames will be (`backup.PromptKind`). Under Merge (`planMerge`, `applyMerge`) the section is an
 `Import`, the file's defaults included. Under Replace (`planReplace`, `applyReplace`) each of the
 file's prompts is saved over the first stored prompt not yet matched with its nickname, ignoring
-case, and its purpose, or else added under a free nickname. Every other stored prompt is deleted
+case, and its purpose, keeping the stored prompt's UUID, or else added under a free nickname and
+the file's UUID where none of the prompts it keeps has it (`nameAdded`). Every other stored prompt
+is deleted
 first, freeing its nickname, except one a launch default names for a kind, which is kept with a
 note unless the import replaces the launch defaults too (`clears`), and any other a foreign key
 refuses (`removeAll`). Every default becomes the file's where its prompt fits, else none, a kind's
@@ -354,26 +377,34 @@ falling back as `Library` does (`replaceDefaults`).
 
 ## Renames, and Autopilot (`routinebundle.go`)
 
-A routine names its prompts by a starter's key or a nickname, so the library learns of them
-through `Config.Routines` (`RoutineSource`) and tells of a rename through `Config.Renamed`, both
-core's `routinePrompts` over Autopilot's `PromptFollower` (`internal/autopilot/follow.go`). The
-routines' uses join each prompt's `Usage`, so `Delete` refuses a prompt one runs, `checkRepoSwitch`
-refuses to make it one for repositories, and an import never makes a starter's copy one runs a
-prompt for repositories. `Update` tells `Renamed(from, to)` when the nickname changed (compared
-exactly, so a change of case counts), once the change is stored and before the library file and
-`Changed`. The follower writes the new nickname into every routine naming the old one, ignoring
-case, in one transaction, leaving a starter's key, which follows its prompt on its own; core logs
-a failure, and such a routine then says its prompt isn't in the library before any start (see
-[The routines, kept](autopilot/routines-kept.md)). Only `Update` tells it: neither `Reset`, which
-may give a copy back its starter's nickname, nor an import's save over a starter's copy does.
+A routine names each prompt it runs by the prompt's UUID, beside a starter's key or a nickname,
+its fallback where no prompt has the UUID (as on another Mac). The library learns of them through
+`Config.Routines` (`RoutineSource`): each `RoutineUse` resolves to one prompt (`usedPrompt`: its UUID
+first, then the user's copy of its starter, then its nickname, ignoring case), so its `Usage` names
+the routines that run it whatever it is called now, `Delete` refuses a prompt one runs,
+`checkRepoSwitch` refuses to make it one for repositories, and an import never makes a starter's
+copy one runs a prompt for repositories. Every change to the library, whatever made it (an edit,
+`Reset`, an import or a backup saving over a starter's copy, a delete), tells `Config.Changed`
+after the library file is written, which core points at the launch defaults' copy and at
+Autopilot's `Follower.Follow` (`internal/autopilot/follow.go`): it stamps every routine with the
+UUID and the nickname now of each prompt it names, so a reset or an import that renames a prompt
+never breaks a routine. `Update` also tells `Config.Renamed(from, to)` when the nickname changed
+(compared exactly, so a change of case counts), once the change is stored and before the library
+file and `Changed`, which `Follow` replays on a routine that names the prompt by its old nickname
+alone, as one stored before UUIDs; a starter's key follows its prompt on its own. Core logs a
+failure; the routine still finds its prompt by UUID, and the next change or start writes its
+name (see [The routines, kept](autopilot/routines-kept.md)).
 
 `RoutinePrompts` (`NewRoutinePrompts`), never bound, carries the prompts an Autopilot export names
 (core's `routinePromptTransfer`; see [Easy mode](autopilot/easy-mode.md)): `Bundled(nicknames)`
 returns those prompts, ignoring case, without the defaults or records; `Arrivals` says whether each
-is new (no prompt here has its nickname), the same (`sameContent`), or different, the copy here
-kept; and `AddNew` hands the new ones to `Import`, with no defaults. Core's other Autopilot
+is new (no prompt here has its UUID or its nickname, the UUID looked at first: `arrivalMatch`), the
+same (`sameContent`), or different, the copy here kept; and `AddNew` hands the new ones to
+`Import`, with no defaults, so a prompt here under its UUID is never added again, whatever either
+is called now. Core's other Autopilot
 adapters (`promptLibrary` for a routine's checks, `starterNames`, `promptIDOf` for an agent step,
-and `githubSteps.reply`) read the `Store` directly.
+and `githubSteps.reply`) read the `Store` directly, and find a routine's prompt as the draft does,
+its UUID first (`draft.PromptIndex`).
 
 ## How other packages reach it
 

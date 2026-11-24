@@ -1,7 +1,16 @@
 import { useId, useState } from 'react'
 
 import { agentName, anyEffortChoices, effortLabel, isAgentPrompt, modelLabel } from '../../../lib/launch'
-import { omit, placeOf, placeWhy, problemsAt, settingRange, toolsOf } from '../../../lib/routineBuilder'
+import {
+  findPrompt,
+  omit,
+  placeOf,
+  placeWhy,
+  problemsAt,
+  promptRefOf,
+  settingRange,
+  toolsOf,
+} from '../../../lib/routineBuilder'
 import type {
   AgentID,
   AgentInfo,
@@ -43,10 +52,21 @@ export interface AgentStepBlockProps {
   onChange: (step: AutopilotAgentStep) => void
 }
 
-// promptValue is a prompt reference as the prompt menu holds it.
-function promptValue(step: AutopilotAgentStep): string {
+// libraryValue is a library prompt as the prompt menu holds it.
+function libraryValue(p: Prompt): string {
+  return p.starterKey !== '' ? `starter:${p.starterKey}` : `nickname:${p.nickname}`
+}
+
+// promptValue is a prompt reference as the prompt menu holds it: the library prompt it
+// names (findPrompt, its UUID first), else the name it names.
+function promptValue(step: AutopilotAgentStep, prompts: readonly Prompt[]): string {
   if (step.prompt.itemDefault === true) {
     return 'item'
+  }
+
+  const found = findPrompt(prompts, step.prompt)
+  if (found !== undefined) {
+    return libraryValue(found)
   }
 
   if ((step.prompt.starter ?? '') !== '') {
@@ -56,11 +76,16 @@ function promptValue(step: AutopilotAgentStep): string {
   return `nickname:${step.prompt.nickname ?? ''}`
 }
 
-// promptRef is a prompt menu's value as the spec names it: by its starter's key, which
-// outlives a rename, else by its nickname.
-function promptRef(value: string): AutopilotAgentStep['prompt'] {
+// promptRef is a prompt menu's value as the spec names it: a library prompt by its UUID,
+// beside its starter's key or its nickname (promptRefOf), which outlive a rename.
+function promptRef(value: string, prompts: readonly Prompt[]): AutopilotAgentStep['prompt'] {
   if (value === 'item') {
     return { itemDefault: true }
+  }
+
+  const picked = prompts.find((p) => libraryValue(p) === value)
+  if (picked !== undefined) {
+    return promptRefOf(picked)
   }
 
   const at = value.indexOf(':')
@@ -108,17 +133,14 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
   // The menu offers the agent prompts that fit what the routine acts on, never one for
   // repositories (fitsKinds).
   const offered = agentKit.prompts.filter((p) => isAgentPrompt(p) && fitsKinds(p, kinds))
-  const current = promptValue(step)
+  const current = promptValue(step, agentKit.prompts)
   const promptProblems = problemsAt(kit.problems, 'steps', `${field}.prompt`)
-  const known =
-    current === 'item' ||
-    offered.some((p) => (p.starterKey !== '' ? `starter:${p.starterKey}` : `nickname:${p.nickname}`) === current)
+  const known = current === 'item' || offered.some((p) => libraryValue(p) === current)
   // A prompt the menu doesn't offer is kept as itself, named as the library names it: a
   // starter by the nickname of the user's copy, while the library has one.
   const unlisted =
-    (step.prompt.starter ?? '') !== ''
-      ? (agentKit.prompts.find((p) => p.starterKey === step.prompt.starter)?.nickname ?? step.prompt.starter ?? '')
-      : (step.prompt.nickname ?? '')
+    findPrompt(agentKit.prompts, step.prompt)?.nickname ??
+    ((step.prompt.starter ?? '') !== '' ? (step.prompt.starter ?? '') : (step.prompt.nickname ?? ''))
   const patch = (change: Partial<AutopilotAgentStep>) => {
     onChange({ ...step, ...change })
   }
@@ -170,20 +192,16 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
             aria-invalid={promptProblems.length > 0}
             aria-describedby={promptProblems.length > 0 ? `${id}-notes` : undefined}
             onChange={(e) => {
-              patch({ prompt: promptRef(e.target.value) })
+              patch({ prompt: promptRef(e.target.value, agentKit.prompts) })
             }}
             className={`${fieldClass} py-1`}
           >
             <option value="item">The item’s own default prompt</option>
-            {offered.map((p) => {
-              const value = p.starterKey !== '' ? `starter:${p.starterKey}` : `nickname:${p.nickname}`
-
-              return (
-                <option key={p.id} value={value}>
-                  {p.nickname}
-                </option>
-              )
-            })}
+            {offered.map((p) => (
+              <option key={p.id} value={libraryValue(p)}>
+                {p.nickname}
+              </option>
+            ))}
             {!known && <option value={current}>{unlisted}</option>}
           </select>
           <button type="button" onClick={agentKit.onEditPrompts} className={`${quietButtonClass} ml-auto`}>

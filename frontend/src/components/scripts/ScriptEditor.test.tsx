@@ -53,6 +53,7 @@ describe('ScriptEditor', () => {
 
     const made = userScript({
       id: 0,
+      uuid: '',
       name: 'Test all',
       command: 'magex test:race',
       icon: 'test',

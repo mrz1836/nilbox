@@ -11,8 +11,8 @@ account, and Nilbox never sends it anywhere.
 
 **Import routines…** reads such a file and shows what would arrive, changing nothing: each routine,
 its sentence, and the name it takes here (another when you have a routine of the name); each prompt
-it brings (*added to your prompts* when no prompt of yours has its nickname, else *yours is the
-same* or *yours differs, and yours is kept*); and **What this Mac doesn’t have**: a prompt, a
+it brings (*added to your prompts* when you have no prompt it is, by the prompt it was exported from
+or by its nickname, else *yours is the same* or *yours differs, and yours is kept*); and **What this Mac doesn’t have**: a prompt, a
 profile, or an agent its routines name that this Mac lacks, each with a choice of what to use
 instead or **Inherit** (the item's own default prompt, or the profile a click would use). An agent
 whose program this Mac lacks inherits by itself. **Import** brings the prompts in first, then every

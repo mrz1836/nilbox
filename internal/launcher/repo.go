@@ -380,10 +380,10 @@ func (s *Service) repoTargetOf(ctx context.Context, w world, name repo.Name, dir
 // repository, its page as the URL, the prompt's name as the title, and the default branch
 // the inbox last stored, with no item, kind, or number.
 func (t repoTarget) row(p prompts.Prompt) launchItemRow {
-	return launchItemRow{StoredItem: StoredItem{
+	return launchItemRow{
 		Owner: t.name.Owner, Name: t.name.Repo, URL: githubWeb + t.name.String(), Title: p.Name,
 		DefaultBranch: t.facts.DefaultBranch,
-	}}
+	}
 }
 
 // storedRepo reads what the inbox last stored of name: nothing found when the Service has

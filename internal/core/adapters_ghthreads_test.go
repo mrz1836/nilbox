@@ -10,7 +10,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
@@ -69,11 +68,9 @@ func TestAnInboxOutcomeReachesTheNotificationsMirror(t *testing.T) {
 	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{
 		Viewer: "octo-user",
 		Items: []inbox.FixtureItem{{
-			Item: github.Item{
-				IsPR: true, NodeID: "NODE_7", Number: 7, Title: "Fix the login redirect",
-				URL: "https://github.com/acme-org/example-repo/pull/7", CreatedAt: now, UpdatedAt: now,
-				AuthorLogin: "octo-other", RepoOwner: boundOwner, RepoName: boundRepo,
-			},
+			IsPR: true, NodeID: "NODE_7", Number: 7, Title: "Fix the login redirect",
+			URL: "https://github.com/acme-org/example-repo/pull/7", CreatedAt: now, UpdatedAt: now,
+			AuthorLogin: "octo-other", RepoOwner: boundOwner, RepoName: boundRepo,
 			ReviewRequested: true,
 		}},
 	})

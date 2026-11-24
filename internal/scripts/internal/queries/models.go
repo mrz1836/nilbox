@@ -20,4 +20,5 @@ type UserScript struct {
 	Position   int64
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	UUID       string
 }

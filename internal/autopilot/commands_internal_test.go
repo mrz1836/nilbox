@@ -194,11 +194,9 @@ func (r *cmdRig) match(routine int64, state State, blocker Blocker, steps ...ste
 	r.matches++
 	now := cmdNow()
 	m := &match{
-		AutopilotMatch: queries.AutopilotMatch{
-			RoutineID: routine, ItemID: new(cmdPR), AccountLogin: galleryViewer, RepoOwner: "acme-org",
-			RepoName: "example-repo", Kind: "pr", Number: 5, FireKey: "appears:item:" + strconv.Itoa(r.matches),
-			State: string(state), BlockedBy: string(blocker), CreatedAt: now, UpdatedAt: now, DecidedAt: now,
-		},
+		RoutineID: routine, ItemID: new(cmdPR), AccountLogin: galleryViewer, RepoOwner: "acme-org",
+		RepoName: "example-repo", Kind: "pr", Number: 5, FireKey: "appears:item:" + strconv.Itoa(r.matches),
+		State: string(state), BlockedBy: string(blocker), CreatedAt: now, UpdatedAt: now, DecidedAt: now,
 		steps: steps,
 	}
 

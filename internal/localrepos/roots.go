@@ -105,7 +105,7 @@ func NewRoots(primary string, extra []Location, home string, opts ...RootsOption
 	}
 
 	r.places = make([]place, 0, 1+len(extra))
-	r.places = append(r.places, place{Place: Place{Path: root, Kind: KindFolder, Primary: true}, resolved: paths.Resolved(root)})
+	r.places = append(r.places, place{Path: root, Kind: KindFolder, Primary: true, resolved: paths.Resolved(root)})
 
 	for _, p := range r.resolveAll(extraPlaces(extra, home)) {
 		if !r.has(p.resolved) {
@@ -123,7 +123,7 @@ func extraPlaces(extra []Location, home string) []place {
 
 	for _, loc := range extra {
 		if dir, err := paths.ExpandHome(loc.Path, home); err == nil && loc.Kind.Valid() {
-			out = append(out, place{Place: Place{Path: dir, Kind: loc.Kind}})
+			out = append(out, place{Path: dir, Kind: loc.Kind})
 		}
 	}
 

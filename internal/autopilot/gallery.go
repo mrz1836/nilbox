@@ -377,7 +377,7 @@ func (s *Service) templateSignals(ctx context.Context) TemplateSignals {
 func templatePrompts(sp spec.Spec, library []LibraryPrompt, names spec.PromptNames) []TemplatePrompt {
 	out := []TemplatePrompt{}
 
-	for _, ref := range promptRefs(sp) {
+	for _, ref := range spec.PromptRefs(&sp) {
 		if ref.Starter == "" || slices.ContainsFunc(out, func(p TemplatePrompt) bool { return p.Starter == ref.Starter }) {
 			continue
 		}
@@ -385,12 +385,12 @@ func templatePrompts(sp spec.Spec, library []LibraryPrompt, names spec.PromptNam
 		p := TemplatePrompt{Starter: ref.Starter, Name: starterWords(ref.Starter)}
 
 		if names != nil {
-			if n := names(ref); n != "" {
+			if n := names(*ref); n != "" {
 				p.Name = n
 			}
 		}
 
-		_, p.InLibrary = draft.FindPrompt(library, ref)
+		_, p.InLibrary = draft.FindPrompt(library, *ref)
 		out = append(out, p)
 	}
 

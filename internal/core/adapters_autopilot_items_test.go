@@ -136,10 +136,8 @@ func newWatchRig(t *testing.T) *watchRig {
 	require.NoError(t, err)
 
 	ids, err := inbox.StoreFixture(t.Context(), db, inbox.Fixture{Viewer: rigViewer, Items: []inbox.FixtureItem{{
-		Item: github.Item{
-			IsPR: true, NodeID: "PR_NODE_7", Number: 7, Title: "Bump zod", URL: "https://github.com/acme-org/example-repo/pull/7",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(), AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: boundRepo,
-		},
+		IsPR: true, NodeID: "PR_NODE_7", Number: 7, Title: "Bump zod", URL: "https://github.com/acme-org/example-repo/pull/7",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(), AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: boundRepo,
 		ReviewRequested: true,
 	}}})
 	require.NoError(t, err)
@@ -309,11 +307,12 @@ func newEngineRig(t *testing.T, client *github.Client) *engineRig {
 
 	db := testutil.DB(t)
 	stored := func(pr bool, number int) inbox.FixtureItem {
-		return inbox.FixtureItem{Item: github.Item{
+		return inbox.FixtureItem{
 			IsPR: pr, NodeID: "NODE_" + strconv.Itoa(number), Number: number, Title: "Change " + strconv.Itoa(number),
 			URL:       "https://github.com/acme-org/example-repo/pull/" + strconv.Itoa(number),
 			CreatedAt: time.Now(), UpdatedAt: time.Now(), AuthorLogin: rigViewer, RepoOwner: boundOwner, RepoName: boundRepo,
-		}, Authored: true}
+			Authored: true,
+		}
 	}
 
 	ids, err := inbox.StoreFixture(t.Context(), db, inbox.Fixture{
@@ -450,17 +449,15 @@ func TestTheEngineReadsAndTriagesThroughTheInbox(t *testing.T) {
 	ctx := t.Context()
 
 	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{Viewer: rigViewer, Items: []inbox.FixtureItem{{
-		Item: github.Item{
-			IsPR: true, NodeID: "NODE_7", Number: 7, Title: "Bump zod", URL: "https://github.com/acme-org/example-repo/pull/7",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(), AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: boundRepo,
-		},
+		IsPR: true, NodeID: "NODE_7", Number: 7, Title: "Bump zod", URL: "https://github.com/acme-org/example-repo/pull/7",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(), AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: boundRepo,
 		ReviewRequested: true,
 	}}})
 	require.NoError(t, err)
 
 	pr := ids[0]
 	engine := engineItems{
-		autopilotItems: autopilotItems{store: inbox.NewStore(c.DB, nil), inbox: c.InboxRoutines}, service: c.Inbox,
+		store: inbox.NewStore(c.DB, nil), inbox: c.InboxRoutines, service: c.Inbox,
 	}
 
 	local, err := engine.LocalStates(ctx, []int64{pr})

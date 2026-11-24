@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -76,7 +76,7 @@ func TestEventsOfATurnThatIsntThereAreRefused(t *testing.T) {
 		"a conversation's path":   {id: "../" + id, turn: 1},
 		"turn 0":                  {id: id, turn: 0},
 		"a turn not yet":          {id: id, turn: 2},
-		"a conversation not kept": {id: uuid.NewString(), turn: 1},
+		"a conversation not kept": {id: textutil.NewUUID(), turn: 1},
 	} {
 		page, err := r.svc.Events(t.Context(), tt.id, tt.turn, 0)
 		require.ErrorIs(t, err, errNoConversation, name)
@@ -113,13 +113,13 @@ func TestTheCurrentConversationIsTheNewestKept(t *testing.T) {
 
 	r := newRig(t)
 
-	older := newRecord(uuid.NewString(), AgentChoice{Model: "opus"}, Start{}, testNow.Add(-time.Hour))
-	newer := newRecord(uuid.NewString(), AgentChoice{Model: "sonnet"}, Start{}, testNow)
+	older := newRecord(textutil.NewUUID(), AgentChoice{Model: "opus"}, Start{}, testNow.Add(-time.Hour))
+	newer := newRecord(textutil.NewUUID(), AgentChoice{Model: "sonnet"}, Start{}, testNow)
 
 	require.NoError(t, r.svc.saveRecord(older))
 	require.NoError(t, r.svc.saveRecord(newer))
 
-	require.NoError(t, os.MkdirAll(r.path("conversations", uuid.NewString()), 0o700), "a folder with no record")
+	require.NoError(t, os.MkdirAll(r.path("conversations", textutil.NewUUID()), 0o700), "a folder with no record")
 	require.NoError(t, os.MkdirAll(r.path("conversations", "notes"), 0o700), "a folder that isn't a conversation's")
 
 	conv, err := r.svc.Conversation(t.Context())
@@ -132,7 +132,7 @@ func TestARecordIsReadOnlyForItsOwnConversation(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	id, other := uuid.NewString(), uuid.NewString()
+	id, other := textutil.NewUUID(), textutil.NewUUID()
 
 	rec := newRecord(id, AgentChoice{}, Start{}, testNow)
 	rec.Turns = []turnRecord{{N: 7, State: TurnDone, Proposals: []string{"../../etc", proposalID(t, testNow, 0)}}}

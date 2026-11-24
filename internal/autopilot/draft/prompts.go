@@ -133,17 +133,35 @@ func kindsProblem(p Prompt, kinds []item.Kind) string {
 	return ""
 }
 
-// FindPrompt returns the library's prompt ref names: the user's copy of a starter, or the
-// one with a nickname, ignoring case.
+// FindPrompt returns the library's prompt ref names (PromptIndex), and whether there is
+// one.
 func FindPrompt(library []Prompt, ref spec.PromptRef) (Prompt, bool) {
-	for _, p := range library {
-		if (ref.Starter != "" && p.Starter == ref.Starter) ||
-			(ref.Starter == "" && ref.Nickname != "" && strings.EqualFold(p.Nickname, ref.Nickname)) {
-			return p, true
-		}
+	if i := PromptIndex(library, ref); i >= 0 {
+		return library[i], true
 	}
 
 	return Prompt{}, false
+}
+
+// PromptIndex returns the index in library of the prompt ref names, -1 for none: the one
+// with its UUID, whatever it is called now; else, as a ref from before UUIDs or from
+// another library names one, the user's copy of a starter, or the one with a nickname,
+// ignoring case. The item's own default names no library prompt.
+func PromptIndex(library []Prompt, ref spec.PromptRef) int {
+	if ref.ItemDefault {
+		return -1
+	}
+
+	if ref.UUID != "" {
+		if i := slices.IndexFunc(library, func(p Prompt) bool { return p.UUID == ref.UUID }); i >= 0 {
+			return i
+		}
+	}
+
+	return slices.IndexFunc(library, func(p Prompt) bool {
+		return (ref.Starter != "" && p.Starter == ref.Starter) ||
+			(ref.Starter == "" && ref.Nickname != "" && strings.EqualFold(p.Nickname, ref.Nickname))
+	})
 }
 
 // KindsWords names kinds of item: "pull requests", "issues", "pull requests and issues".

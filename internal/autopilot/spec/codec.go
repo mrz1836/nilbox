@@ -104,7 +104,7 @@ func Load(data []byte) (Spec, error) {
 		return Spec{}, &BrokenError{Reason: ReasonUnreadable, Err: err}
 	}
 
-	s = Normalize(migrate(s))
+	s = Normalize(s)
 
 	if err := Validate(s); err != nil {
 		return s, &BrokenError{Reason: ReasonInvalid, Err: err}
@@ -113,9 +113,15 @@ func Load(data []byte) (Spec, error) {
 	return s, nil
 }
 
-// migrate brings a spec of an older version to Version. Version 1 is the first, so
-// there is nothing older to bring forward yet; a later version adds its step here.
+// migrate brings a spec of an older version to Version, one step per version. Version 2
+// adds only the UUIDs, which a version 1 spec has none of, so a version 1 spec is one of
+// version 2 as it is. A version it doesn't know, newer or none, is left for Validate to
+// refuse.
 func migrate(s Spec) Spec {
+	if s.Version == 1 {
+		s.Version = 2
+	}
+
 	return s
 }
 

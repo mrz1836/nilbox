@@ -45,6 +45,9 @@ type MyScripts interface {
 
 // MyScript is one of the user's own Repo scripts, as a routine runs it.
 type MyScript struct {
+	// UUID names it for good, and a script step names it by it first.
+	UUID string `json:"uuid"`
+
 	// ID names it on this Mac; Name and Command are as the user saved them.
 	ID      int64  `json:"id"`
 	Name    string `json:"name"`
@@ -84,7 +87,7 @@ func (s *Service) MyScripts(ctx context.Context) ([]MyScript, error) {
 	return textutil.NonNil(got), nil
 }
 
-// scriptsOf reads the user's scripts once a cycle, by ID, when some routine runs one:
+// scriptsOf reads the user's scripts once a cycle, in their order, when some routine runs one:
 // what the Ask before running rule reads. A read that fails is kept as failed, so every
 // script step waits rather than run one that may ask.
 func (p *pass) scriptsOf(ctx context.Context) {
@@ -103,17 +106,15 @@ func (p *pass) scriptsOf(ctx context.Context) {
 		return
 	}
 
-	p.scripts = make(map[int64]MyScript, len(mine))
-	for _, m := range mine {
-		p.scripts[m.ID] = m
-	}
+	p.scripts = mine
 }
 
 // scriptAsks holds m's script step while its script asks before each run, until the user's
 // OK for exactly that script on this step, whatever the routine's mode; while the user's
-// scripts can't be read; and while its script is saved under another name than the one it
-// was picked under, until the user picks it again. A script that is gone is let through:
-// its runner refuses it, and the step fails saying so.
+// scripts can't be read; and while its script, found by its ID alone (draft.FindScript), is
+// saved under another name than the one it was picked under, until the user picks it again.
+// A script found by its UUID runs whatever it is called now. A script that is gone is let
+// through: its runner refuses it, and the step fails saying so.
 func (p *pass) scriptAsks(sr *stepRun) verdict {
 	if sr.Step.Script == nil {
 		return verdict{}
@@ -123,12 +124,15 @@ func (p *pass) scriptAsks(sr *stepRun) verdict {
 		return wait(BlockNotReady, "Your scripts couldn't be read; it tries again soon.")
 	}
 
-	sc, ok := p.scripts[sr.Step.Script.ID]
+	at, renamed := draft.FindScript(draftScripts(p.scripts), *sr.Step.Script)
+	if at < 0 {
+		return verdict{}
+	}
+
+	sc := p.scripts[at]
 
 	switch {
-	case !ok:
-		return verdict{}
-	case sc.Name != sr.Step.Script.Name:
+	case renamed:
 		return wait(BlockNotReady, draft.RenamedWords(sr.Step.Script.Name, sc.Name)+" in the routine.")
 	case !sc.Asks:
 		return verdict{}

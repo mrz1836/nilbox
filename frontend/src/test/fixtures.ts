@@ -445,6 +445,7 @@ export function testItem(overrides: Partial<AutopilotTestItem> = {}): AutopilotT
 // myScript is one of the user's own Repo scripts, Lint, which doesn't ask before each run.
 export function myScript(overrides: Partial<AutopilotMyScript> = {}): AutopilotMyScript {
   return {
+    uuid: fixtureUUID(700 + (overrides.id ?? 7)),
     id: 7,
     name: 'Lint',
     command: 'magex lint',
@@ -636,11 +637,18 @@ export function explanation(overrides: Partial<AutopilotExplanation> = {}): Auto
   }
 }
 
+// fixtureUUID is a canonical UUID of its own for the fixture record n, so two prompts, two
+// scripts, or two routines a test makes never share one.
+export function fixtureUUID(n: number): string {
+  return `0b1c2d3e-4f50-4a61-8b72-${n.toString(16).padStart(12, '0')}`
+}
+
 // routine is Snooze passing bot PRs, routine 3, on in Autopilot since the morning, of the
 // account signed in.
 export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRoutine {
   return {
     id: 3,
+    uuid: fixtureUUID(300 + (overrides.id ?? 3)),
     name: 'Snooze passing bot PRs',
     description: '',
     enabled: true,
@@ -1729,6 +1737,7 @@ export function launchResult(overrides: Partial<LaunchResult> = {}): LaunchResul
 export function prompt(overrides: Partial<Prompt> = {}): Prompt {
   return {
     id: 1,
+    uuid: fixtureUUID(overrides.id ?? 1),
     name: 'Review a pull request',
     nickname: 'Review',
     appliesTo: 'pr',
@@ -4319,6 +4328,7 @@ export function scriptVariables(): string[] {
 export function userScript(overrides: Partial<UserScript> = {}): UserScript {
   return {
     id: 1,
+    uuid: fixtureUUID(500 + (overrides.id ?? 1)),
     name: 'Fix all',
     command: 'magex format:fix && magex lint',
     icon: 'play',

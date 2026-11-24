@@ -155,6 +155,6 @@ func (x *cloneIndex) read(ctx context.Context, origins Origins, dir, common stri
 	}
 
 	return indexed{
-		clone: clone{dir: dir, common: common, reftable: reftable}, config: config, origin: origin, onGitHub: onGitHub,
+		dir: dir, common: common, reftable: reftable, config: config, origin: origin, onGitHub: onGitHub,
 	}, nil
 }

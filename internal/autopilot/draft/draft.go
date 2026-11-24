@@ -46,9 +46,10 @@ type Setup interface {
 	PastRules(ctx context.Context) bool
 }
 
-// Prompt is one of the library's prompts as a routine names it: by the starter it came
-// from, else by its nickname.
+// Prompt is one of the library's prompts as a routine names it: by its UUID, else the
+// starter it came from, else its nickname.
 type Prompt struct {
+	UUID     string
 	Starter  string
 	Nickname string
 
@@ -75,9 +76,10 @@ const (
 	ReplyForComment        ReplyFor = "comment"
 )
 
-// Script is one of the user's own Repo scripts as a script step names it: its ID on this
-// Mac, and the name it is saved under now.
+// Script is one of the user's own Repo scripts as a script step names it: its UUID, its ID
+// on this Mac, and the name it is saved under now.
 type Script struct {
+	UUID string
 	ID   int64
 	Name string
 }

@@ -254,13 +254,13 @@ func TestAWaitThatRunsOutSaysWhyItMostLikelyDid(t *testing.T) {
 type verified struct{}
 
 func (verified) Verify(scriptrun.Record) scriptrun.Verification {
-	return scriptrun.Verification{Callbacks: scriptrun.Callbacks{
+	return scriptrun.Verification{
 		Finish: func(_ context.Context, _ scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
 			out.Summary = "Verified on the next start."
 
 			return out
 		},
-	}}
+	}
 }
 
 func TestRestartSettlesARunLeftGoing(t *testing.T) {

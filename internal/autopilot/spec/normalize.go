@@ -9,15 +9,21 @@ import (
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// Normalize returns s cleaned as it is stored: every text trimmed, every list that is a
-// set sorted without repeats (text compared ignoring case, the first spelling kept), a
-// choice written as the catalog spells it, a condition given twice in one list kept
-// once, the conditions' match "all" when it has no conditions, and an agent step's
-// agent "inherit" when it names none. The order of the sources, the conditions, the
-// steps, a GitHub step's actions, and the fallbacks is the user's and is kept. Normalize
-// never changes a value Validate refuses into one it takes, and normalizing twice
-// changes nothing.
+// Normalize returns s cleaned as it is stored, brought to this build's version first
+// (migrate): every text trimmed, a UUID written in lowercase, every list that is a set
+// sorted without repeats (text compared ignoring case, the first spelling kept), a choice
+// written as the catalog spells it, a condition given twice in one list kept once, the
+// conditions' match "all" when it has no conditions, and an agent step's agent "inherit"
+// when it names none. The order of the sources, the conditions, the steps, a GitHub
+// step's actions, and the fallbacks is the user's and is kept. Normalize never changes a
+// value Validate refuses into one it takes, but an older version it brings forward, and
+// normalizing twice changes nothing.
 func Normalize(s Spec) Spec {
+	return normalize(migrate(s))
+}
+
+// normalize is Normalize on a spec already at its version.
+func normalize(s Spec) Spec {
 	out := Spec{
 		Version:    s.Version,
 		Watch:      normalizeWatch(s.Watch),
@@ -170,7 +176,9 @@ func normalizeStep(s Step) Step {
 	}
 
 	if s.Script != nil {
-		out.Script = &ScriptStep{ID: s.Script.ID, Name: strings.TrimSpace(s.Script.Name)}
+		out.Script = &ScriptStep{
+			UUID: normalUUID(s.Script.UUID), ID: s.Script.ID, Name: strings.TrimSpace(s.Script.Name),
+		}
 	}
 
 	return out
@@ -245,12 +253,18 @@ func normalizeLaunchRows(rows []LaunchRow) []LaunchRow {
 	return out
 }
 
-// normalizePrompt trims a prompt's name.
+// normalizePrompt trims a prompt's name and its UUID.
 func normalizePrompt(p PromptRef) PromptRef {
 	return PromptRef{
-		Starter: strings.ToLower(strings.TrimSpace(p.Starter)), Nickname: strings.TrimSpace(p.Nickname),
-		ItemDefault: p.ItemDefault,
+		UUID: normalUUID(p.UUID), Starter: strings.ToLower(strings.TrimSpace(p.Starter)),
+		Nickname: strings.TrimSpace(p.Nickname), ItemDefault: p.ItemDefault,
 	}
+}
+
+// normalUUID trims a UUID and writes it in lowercase, never dropping one Validate would
+// refuse, so the problem shows where it is.
+func normalUUID(u string) string {
+	return strings.ToLower(strings.TrimSpace(u))
 }
 
 // normalizeLimits cleans the limits.

@@ -88,8 +88,10 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 - **Each one's ⋯ menu** has **Edit…**, **Duplicate** (a copy right after it), **Move up** and
   **Move down** (past the nearest of yours shown in that clone), and **Delete…**, which asks
   first; its runs stay in Runs. Run again runs a script as it is saved now, and refuses one
-  you deleted or set to ask before running, which you run from Repo scripts. A script you
-  save again as its run is starting doesn't run, and says so.
+  you deleted (even when a script made since took its place) or set to ask before running,
+  which you run from Repo scripts. A script you save again as its run is starting doesn't run,
+  and says so. Nilbox knows each of your scripts for good, so renaming one, or bringing it back
+  from a reset or a backup, never breaks an [Autopilot](autopilot/README.md) routine that runs it.
 
 ## Running one
 

@@ -151,7 +151,11 @@ func (s *Service) exportPrompts(ctx context.Context, b Bundle, asked bool) (json
 		return nil, 0, nil
 	}
 
-	raw, n, err := s.transfer.ExportPrompts(ctx, bundleNicknames(b))
+	// A prompt is found by its UUID first, so one renamed since the routine last followed it
+	// still travels; without a library to read, by the nickname the routine names.
+	library, _ := s.liveSetup().Library(ctx)
+
+	raw, n, err := s.transfer.ExportPrompts(ctx, bundleNicknames(b, library))
 	if err != nil {
 		return nil, 0, uierr.New("The prompts the routines run couldn't be read.", err)
 	}
@@ -159,9 +163,10 @@ func (s *Service) exportPrompts(ctx context.Context, b Bundle, asked bool) (json
 	return raw, n, nil
 }
 
-// bundleNicknames returns the nicknames of the prompts b's routines name, each once,
-// ignoring case, in order.
-func bundleNicknames(b Bundle) []string {
+// bundleNicknames returns the nicknames of the prompts b's routines name by nickname, each
+// once, ignoring case, in order: each as library names the prompt now, found by its UUID
+// first, else as the routine names it.
+func bundleNicknames(b Bundle, library []LibraryPrompt) []string {
 	var out []string
 
 	for _, r := range b.Routines {
@@ -170,10 +175,33 @@ func bundleNicknames(b Bundle) []string {
 			continue
 		}
 
-		for _, ref := range promptRefs(sp) {
-			if ref.Nickname != "" && !textutil.ContainsFold(out, ref.Nickname) {
-				out = append(out, ref.Nickname)
+		for _, nickname := range nicknamesOf(sp, library) {
+			if !textutil.ContainsFold(out, nickname) {
+				out = append(out, nickname)
 			}
+		}
+	}
+
+	return out
+}
+
+// nicknamesOf returns the nicknames of the prompts sp's steps name by nickname, each as
+// library names the prompt now, found by its UUID first, else as sp names it.
+func nicknamesOf(sp spec.Spec, library []LibraryPrompt) []string {
+	var out []string
+
+	for _, ref := range spec.PromptRefs(&sp) {
+		if ref.Starter != "" {
+			continue
+		}
+
+		nickname := ref.Nickname
+		if p, ok := draft.FindPrompt(library, *ref); ok {
+			nickname = p.Nickname
+		}
+
+		if nickname != "" {
+			out = append(out, nickname)
 		}
 	}
 
@@ -397,7 +425,14 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Imported, erro
 		return out, err
 	}
 
-	if out.Routines, err = s.storeImported(ctx, b, newRefMapper(missing, req.Map)); err != nil {
+	// What the routines name is read after the prompts arrived, before the routines' own
+	// transaction, which a pool-backed read would wait on.
+	setup := s.liveSetup()
+	library, _ := setup.Library(ctx)
+	mine, _ := setup.Scripts(ctx)
+	stamp := func(raw json.RawMessage) json.RawMessage { return stampRaw(raw, library, mine) }
+
+	if out.Routines, err = s.storeImported(ctx, b, newRefMapper(missing, req.Map), stamp); err != nil {
 		return Imported{Routines: []string{}, Prompts: out.Prompts}, uierr.New("The routines couldn't be imported.", err)
 	}
 
@@ -423,20 +458,23 @@ func (s *Service) importPrompts(ctx context.Context, b Bundle) ([]string, error)
 	return textutil.NonNil(added), nil
 }
 
-// storeImported stores b's routines, mapped, switched off, the account signed in's, at the
-// end of the list, each under a free name, in one transaction, and returns their names.
-func (s *Service) storeImported(ctx context.Context, b Bundle, mapper refMapper) ([]string, error) {
+// storeImported stores b's routines, mapped, then stamped (stamp), switched off, the account
+// signed in's, at the end of the list, each under a free name, in one transaction, and
+// returns their names.
+func (s *Service) storeImported(ctx context.Context, b Bundle, mapper refMapper,
+	stamp func(json.RawMessage) json.RawMessage,
+) ([]string, error) {
 	viewer := s.viewer(ctx)
 	names := []string{}
 
 	err := s.reorder(ctx, func(q *queries.Queries, rows []queries.AutopilotRoutine) ([]queries.AutopilotRoutine, error) {
 		for _, r := range b.Routines {
-			k, ok := keptFrom(r.Name, r.Description, r.Template, r.Mode, mapper.apply(r.Spec))
+			k, ok := keptFrom(r.Name, r.Description, r.Template, r.Mode, stamp(mapper.apply(r.Spec)))
 			if !ok {
 				continue
 			}
 
-			k.name, k.account = freeName(k.name, rows), viewer
+			k.name, k.account, k.uuid = freeName(k.name, rows), viewer, r.UUID
 
 			row, err := insertKept(ctx, q, s.clock, k, int64(len(rows)))
 			if err != nil {
@@ -832,4 +870,20 @@ func (m refMapper) profile(agentID, profile string) string {
 	}
 
 	return to
+}
+
+// stampRaw returns raw, a spec as a file holds it, with each prompt and script it names
+// stamped with what it is here now (draft.Stamped), when it loads; one that doesn't, as a
+// newer build's, arrives as it is.
+func stampRaw(raw json.RawMessage, library []draft.Prompt, mine []draft.Script) json.RawMessage {
+	sp, err := spec.Load(raw)
+	if err != nil {
+		return raw
+	}
+
+	if _, data, ok := draft.Stamped(library, mine, sp); ok {
+		return data
+	}
+
+	return raw
 }

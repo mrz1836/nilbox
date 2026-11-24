@@ -1,10 +1,9 @@
 module github.com/mrz1836/nilbox
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/google/uuid v1.6.0
 	github.com/magefile/mage v1.17.2
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/stretchr/testify v1.12.1
@@ -22,6 +21,7 @@ require (
 	github.com/ebitengine/purego v0.11.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.4 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

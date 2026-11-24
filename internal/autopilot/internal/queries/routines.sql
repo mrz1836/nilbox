@@ -1,7 +1,8 @@
 -- name: ListRoutines :many
 -- ListRoutines returns every routine not deleted, in the user's order.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash,
+       uuid
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id;
@@ -9,7 +10,8 @@ ORDER BY sort_order, id;
 -- name: GetRoutine :one
 -- GetRoutine returns one routine, or sql.ErrNoRows when it is gone or deleted.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash,
+       uuid
 FROM autopilot_routines
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
@@ -26,14 +28,14 @@ WHERE name_key = sqlc.arg(name_key) AND id <> sqlc.arg(other_than) AND deleted_a
 LIMIT 1;
 
 -- name: InsertRoutine :one
--- InsertRoutine stores a new routine, and returns its ID.
+-- InsertRoutine stores a new routine under its UUID, and returns its ID.
 INSERT INTO autopilot_routines (
     account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-    enabled_at, broken_reason, created_at, updated_at
+    enabled_at, broken_reason, created_at, updated_at, uuid
 ) VALUES (
     sqlc.arg(account_login), sqlc.arg(name), sqlc.arg(name_key), sqlc.arg(description), sqlc.arg(enabled),
     sqlc.arg(mode), sqlc.arg(spec), sqlc.arg(spec_version), sqlc.arg(template_key), sqlc.arg(sort_order),
-    sqlc.narg(enabled_at), sqlc.arg(broken_reason), sqlc.arg(created_at), sqlc.arg(updated_at)
+    sqlc.narg(enabled_at), sqlc.arg(broken_reason), sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(uuid)
 )
 RETURNING id;
 
@@ -57,11 +59,12 @@ UPDATE autopilot_routines SET
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: SetRoutineSpec :execrows
--- SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
--- renamed, while its spec is still the one read (was), with the hash of the spec its user
--- accepted as one that may merge past the rules, '' for none.
+-- SetRoutineSpec replaces a routine's spec alone, and the version it is written in, as when a
+-- prompt it names is renamed, while its spec is still the one read (was), with the hash of the
+-- spec its user accepted as one that may merge past the rules, '' for none.
 UPDATE autopilot_routines SET
     spec = sqlc.arg(spec),
+    spec_version = sqlc.arg(spec_version),
     past_rules_hash = sqlc.arg(past_rules_hash),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND spec = sqlc.arg(was) AND deleted_at IS NULL;
@@ -108,3 +111,17 @@ UPDATE autopilot_routines SET
     graduate_declined_at = sqlc.arg(declined_at),
     updated_at = sqlc.arg(declined_at)
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
+
+-- name: CountRoutineUUID :one
+-- CountRoutineUUID counts the routines with uuid, the deleted ones included, whose UUIDs
+-- are never given again: one means it is taken.
+SELECT COUNT(*) FROM autopilot_routines WHERE uuid = sqlc.arg(uuid);
+
+-- name: RoutinesWithoutUUID :many
+-- RoutinesWithoutUUID returns the IDs of the routines with no UUID yet, the deleted ones
+-- included, as a build from before UUIDs inserts them.
+SELECT id FROM autopilot_routines WHERE uuid = '' ORDER BY id;
+
+-- name: SetRoutineUUID :exec
+-- SetRoutineUUID gives a routine a UUID. Nothing else changes, its updated_at included.
+UPDATE autopilot_routines SET uuid = sqlc.arg(uuid) WHERE id = sqlc.arg(id);

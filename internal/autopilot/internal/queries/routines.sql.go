@@ -23,6 +23,19 @@ func (q *Queries) CountAllRoutines(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countRoutineUUID = `-- name: CountRoutineUUID :one
+SELECT COUNT(*) FROM autopilot_routines WHERE uuid = ?1
+`
+
+// CountRoutineUUID counts the routines with uuid, the deleted ones included, whose UUIDs
+// are never given again: one means it is taken.
+func (q *Queries) CountRoutineUUID(ctx context.Context, uuid string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRoutineUUID, uuid)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteRoutine = `-- name: DeleteRoutine :execrows
 UPDATE autopilot_routines SET
     enabled = 0,
@@ -49,7 +62,8 @@ func (q *Queries) DeleteRoutine(ctx context.Context, arg DeleteRoutineParams) (i
 
 const getRoutine = `-- name: GetRoutine :one
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash,
+       uuid
 FROM autopilot_routines
 WHERE id = ?1 AND deleted_at IS NULL
 `
@@ -78,6 +92,7 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 		&i.DeletedAt,
 		&i.GraduateDeclinedAt,
 		&i.PastRulesHash,
+		&i.UUID,
 	)
 	return i, err
 }
@@ -85,11 +100,11 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 const insertRoutine = `-- name: InsertRoutine :one
 INSERT INTO autopilot_routines (
     account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-    enabled_at, broken_reason, created_at, updated_at
+    enabled_at, broken_reason, created_at, updated_at, uuid
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8, ?9, ?10,
-    ?11, ?12, ?13, ?14
+    ?11, ?12, ?13, ?14, ?15
 )
 RETURNING id
 `
@@ -109,9 +124,10 @@ type InsertRoutineParams struct {
 	BrokenReason string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	UUID         string
 }
 
-// InsertRoutine stores a new routine, and returns its ID.
+// InsertRoutine stores a new routine under its UUID, and returns its ID.
 func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertRoutine,
 		arg.AccountLogin,
@@ -128,6 +144,7 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 		arg.BrokenReason,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.UUID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -136,7 +153,8 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 
 const listRoutines = `-- name: ListRoutines :many
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash,
+       uuid
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id
@@ -172,6 +190,7 @@ func (q *Queries) ListRoutines(ctx context.Context) ([]AutopilotRoutine, error) 
 			&i.DeletedAt,
 			&i.GraduateDeclinedAt,
 			&i.PastRulesHash,
+			&i.UUID,
 		); err != nil {
 			return nil, err
 		}
@@ -204,6 +223,35 @@ func (q *Queries) RoutineNamed(ctx context.Context, arg RoutineNamedParams) (int
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const routinesWithoutUUID = `-- name: RoutinesWithoutUUID :many
+SELECT id FROM autopilot_routines WHERE uuid = '' ORDER BY id
+`
+
+// RoutinesWithoutUUID returns the IDs of the routines with no UUID yet, the deleted ones
+// included, as a build from before UUIDs inserts them.
+func (q *Queries) RoutinesWithoutUUID(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, routinesWithoutUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setRoutineEnabled = `-- name: SetRoutineEnabled :execrows
@@ -317,25 +365,28 @@ func (q *Queries) SetRoutinePastRules(ctx context.Context, arg SetRoutinePastRul
 const setRoutineSpec = `-- name: SetRoutineSpec :execrows
 UPDATE autopilot_routines SET
     spec = ?1,
-    past_rules_hash = ?2,
-    updated_at = ?3
-WHERE id = ?4 AND spec = ?5 AND deleted_at IS NULL
+    spec_version = ?2,
+    past_rules_hash = ?3,
+    updated_at = ?4
+WHERE id = ?5 AND spec = ?6 AND deleted_at IS NULL
 `
 
 type SetRoutineSpecParams struct {
 	Spec          string
+	SpecVersion   int64
 	PastRulesHash string
 	UpdatedAt     time.Time
 	ID            int64
 	Was           string
 }
 
-// SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
-// renamed, while its spec is still the one read (was), with the hash of the spec its user
-// accepted as one that may merge past the rules, ” for none.
+// SetRoutineSpec replaces a routine's spec alone, and the version it is written in, as when a
+// prompt it names is renamed, while its spec is still the one read (was), with the hash of the
+// spec its user accepted as one that may merge past the rules, ” for none.
 func (q *Queries) SetRoutineSpec(ctx context.Context, arg SetRoutineSpecParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setRoutineSpec,
 		arg.Spec,
+		arg.SpecVersion,
 		arg.PastRulesHash,
 		arg.UpdatedAt,
 		arg.ID,
@@ -345,6 +396,21 @@ func (q *Queries) SetRoutineSpec(ctx context.Context, arg SetRoutineSpecParams) 
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setRoutineUUID = `-- name: SetRoutineUUID :exec
+UPDATE autopilot_routines SET uuid = ?1 WHERE id = ?2
+`
+
+type SetRoutineUUIDParams struct {
+	UUID string
+	ID   int64
+}
+
+// SetRoutineUUID gives a routine a UUID. Nothing else changes, its updated_at included.
+func (q *Queries) SetRoutineUUID(ctx context.Context, arg SetRoutineUUIDParams) error {
+	_, err := q.db.ExecContext(ctx, setRoutineUUID, arg.UUID, arg.ID)
+	return err
 }
 
 const updateRoutine = `-- name: UpdateRoutine :execrows

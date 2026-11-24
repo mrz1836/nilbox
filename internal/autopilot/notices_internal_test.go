@@ -194,7 +194,7 @@ func TestAProblemIsANoticeAboutNoItem(t *testing.T) {
 		Problem: search, Routine: "Tell me about security failures", RoutineCreated: made, Banner: new(true), Burst: true,
 	}))
 	require.NoError(t, NewProblemNotices(h).Problem(t.Context(), ProblemNotice{
-		Problem: Problem{Key: "4:wont_load", RoutineID: 4, Kind: ProblemWontLoad, Detail: "Made by a newer version", Since: since},
+		Key: "4:wont_load", RoutineID: 4, Kind: ProblemWontLoad, Detail: "Made by a newer version", Since: since,
 	}))
 
 	assert.Equal(t, []Notice{

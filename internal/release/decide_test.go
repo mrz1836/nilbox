@@ -173,7 +173,7 @@ func toolAndRepoCases() []decideCase {
 			name: "magex missing", id: CheckTool, state: CheckBlock, text: "magex isn't available",
 			fixes: []Fix{FixOpenSettings},
 			change: func(f *Facts) {
-				f.Tool = ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}
+				f.Tool = ToolFacts{State: integrations.StateMissing}
 			},
 		},
 		{
@@ -1031,7 +1031,7 @@ func TestDecideArgv(t *testing.T) {
 		t.Parallel()
 
 		f := readyFacts()
-		f.Tool = ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}
+		f.Tool = ToolFacts{State: integrations.StateMissing}
 
 		o := Decide(f)
 		assert.Equal(t, []string{}, o.Argv)

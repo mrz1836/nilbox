@@ -570,7 +570,7 @@ func (s *Service) lastChecks(ctx context.Context) map[string]LastRun {
 // tool returns what the app knows of go-pre-commit now.
 func (s *Service) tool(ctx context.Context) ToolFacts {
 	if s.tools == nil {
-		return ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}, Copies: []string{}}
+		return ToolFacts{Features: []integrations.Feature{}, Copies: []string{}}
 	}
 
 	return s.tools.HooksTool(ctx)

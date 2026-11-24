@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/launcher"
@@ -29,14 +30,19 @@ func (m myScripts) MyScripts(ctx context.Context) ([]autopilot.MyScript, error) 
 		return nil, err
 	}
 
+	return myScriptsOf(got), nil
+}
+
+// myScriptsOf returns the user's scripts got as Autopilot reads them.
+func myScriptsOf(got []scripts.RoutineScript) []autopilot.MyScript {
 	out := make([]autopilot.MyScript, 0, len(got))
 	for _, s := range got {
 		out = append(out, autopilot.MyScript{
-			ID: s.ID, Name: s.Name, Command: s.Command, Asks: s.Confirm, Look: s.Look, Shows: s.Shows,
+			UUID: s.UUID, ID: s.ID, Name: s.Name, Command: s.Command, Asks: s.Confirm, Look: s.Look, Shows: s.Shows,
 		})
 	}
 
-	return out, nil
+	return out
 }
 
 // scriptClones finds an item's clone, as a launch finds it.
@@ -279,10 +285,15 @@ func (s scriptSteps) script(ctx context.Context, ref spec.ScriptStep) (autopilot
 		return autopilot.MyScript{}, err
 	}
 
+	named := make([]draft.Script, 0, len(mine))
 	for _, m := range mine {
-		if m.ID == ref.ID {
-			return m, nil
-		}
+		named = append(named, draft.Script{UUID: m.UUID, ID: m.ID, Name: m.Name})
+	}
+
+	// A script renamed since it was picked by its ID alone waits in the engine (its
+	// scriptAsks) before it ever reaches here.
+	if at, _ := draft.FindScript(named, ref); at >= 0 {
+		return mine[at], nil
 	}
 
 	return autopilot.MyScript{}, uierr.New(fmt.Sprintf("%q is no longer one of your scripts: pick another in the routine.",

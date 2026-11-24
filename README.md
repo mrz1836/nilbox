@@ -243,7 +243,7 @@ when no release is newer yet, it says so and gives the command to build from sou
 To build Nilbox yourself, you need:
 
 - **macOS 13.3+** with the Xcode Command Line Tools (`xcode-select --install`)
-- **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.19.0`)
+- **[Go](https://go.dev/dl/) 1.27+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.19.0`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - The **GitHub CLI** and a coding agent, as above
 
@@ -1688,7 +1688,7 @@ current.
 ## 🧪 Examples & Tests
 
 All tests run via [GitHub Actions](https://github.com/mrz1836/nilbox/actions) and use
-[Go version 1.26](https://go.dev/doc/go1.26). View the
+[Go version 1.27](https://go.dev/doc/go1.27). View the
 [Go configuration](.github/workflows/fortress.yml) and the
 [frontend configuration](.github/workflows/frontend.yml).
 

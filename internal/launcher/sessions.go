@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -249,7 +247,7 @@ type SessionLedger interface {
 
 // newSessionID mints a session's own ID: a random UUID.
 func newSessionID() string {
-	return uuid.NewString()
+	return textutil.NewUUID()
 }
 
 // sessionRef is the session a launch starts or resumes: id is minted for a new one, and

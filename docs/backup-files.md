@@ -42,6 +42,7 @@ export is a section of the file; one you leave unticked is absent.
   "scripts": {
     "scripts": [
       {
+        "uuid": "5d2e8f41-7a63-4c90-9b18-e4f6a2c3d5b7",
         "name": "Fix all",
         "command": "magex format:fix && magex lint",
         "icon": "play",
@@ -58,11 +59,12 @@ export is a section of the file; one you leave unticked is absent.
     "app": "v0.4.0",
     "routines": [
       {
+        "uuid": "3a7f1c52-9d84-4e6b-8f21-6c0d5e9b4a13",
         "name": "Tell me about failing checks",
         "mode": "ask",
         "enabled": true,
         "spec": {
-          "version": 1,
+          "version": 2,
           "watch": {"sources": [{"lists": ["authored"]}]},
           "trigger": {"event": "checks_failed"},
           "conditions": {"match": "all", "of": []},
@@ -91,7 +93,7 @@ as it was. The example leaves most out, as a file edited by hand may.
 | `settings` | Your settings ([below](#settings)). |
 | `repositories` | Your clone folder, other repository locations, and pinned and muted repositories and orgs ([below](#repositories)). |
 | `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults, `startersAdded`, and `slotsSeeded` included. |
-| `launchDefaults` | Your org and repository [launch defaults](guide/launch-defaults.md), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
+| `launchDefaults` | Your org and repository [launch defaults](guide/launch-defaults.md), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. Beside them, `promptUUIDs` holds each named prompt's UUID by its slot (`pr`, `issue`, `checks`, `conflicts`, `changes`, `rereview`), left out of an older file. An import finds each prompt among the file's own prompts first, then in your library by its UUID, then by its nickname. |
 | `scripts` | Your own [scripts](guide/repo-scripts.md), in their order ([below](#scripts)). |
 | `autopilot` | Your Autopilot routines, exactly as `autopilot.json` holds them ([below](#autopilot)). |
 
@@ -145,10 +147,18 @@ is each entry left out.
 
 ### Scripts
 
-`scripts` lists your scripts in their order, each with every field the script editor saves:
-`name`, `command`, `icon` (`play`, `test`, `lint`, `build`, or `configure`), `scope` (`all`,
-`go`, or `repos`), `repos` (`owner/name`, for `repos` alone), `runsIn` (`app`, `terminal`, or
-`""` for the setting), and `confirm` (*Ask before running*). A script has no ID in a file.
+`scripts` lists your scripts in their order, each with its `uuid`, which names it for good (left
+out of an older file), and every field the script editor saves: `name`, `command`, `icon`
+(`play`, `test`, `lint`, `build`, or `configure`), `scope` (`all`, `go`, or `repos`), `repos`
+(`owner/name`, for `repos` alone), `runsIn` (`app`, `terminal`, or `""` for the setting), and
+`confirm` (*Ask before running*). Its ID is this Mac's alone, and never in a file.
+
+An import finds a script by its `uuid` first. One the same as the script here with that UUID is
+left as it is; one changed since is saved over it under Replace, keeping its UUID, so a routine
+that runs it still does, and under Merge, which never changes your own, it is added as a copy
+with a UUID of its own. A script whose UUID no script here has is matched as before: Merge skips
+one identical to a script here, and Replace keeps it. A script added keeps its `uuid` when no
+script here has it.
 
 ### Autopilot
 
@@ -172,19 +182,28 @@ it has or to inherit; its `prompts` arrive only where no prompt here has the nic
 every routine arrives switched off, added at the end of the list under its name, or another
 when a routine here has it.
 
-Each routine has its `name` (unique, ignoring case), `description` (left out when empty),
+Each routine has its `uuid`, which names it for good (left out of an older file; a routine
+brought back or imported keeps it when no routine here has it, and is otherwise given a new
+one), its `name` (unique, ignoring case), `description` (left out when empty),
 `mode` (`dryRun`, `ask`, or `auto`), `enabled` (whether it was on where it was exported),
 `template` (the template it was made from, left out for none), and `spec`, its definition: one
-JSON object with its own `version`, naming prompts by nickname or by starter and profiles by
-agent and name, never by ID, so it works on another Mac. A routine has no ID and no account in
+JSON object with its own `version` (`2` today; this version of the app reads a version `1` spec
+as well, and an older one reads a version `2` spec as made by a newer version, left as it is),
+naming each prompt by its `uuid` beside its nickname or starter, each of your scripts by its
+`uuid` beside its ID and name, and profiles by agent and name, so it works on another Mac: a
+UUID this Mac doesn't know falls back to the name. A routine has no ID and no account in
 a file, and never its history: what it matched, ran, or was told. Nor does a file hold your
 confirmation that a routine may merge your own pull requests past the rules (its Merge it's
 `allowBypass`): a routine with that tick arrives asking for it again, and merges only what
 GitHub allows until you save it, confirming it.
 
-An import matches routines by name, ignoring case in any alphabet. A routine the same as the
-file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either mode;
-any other match is saved over and switched off, and a routine this Mac lacks is added,
+An import matches routines by `uuid` first, then by name, ignoring case in any alphabet, each
+routine here matched once. A routine found by its UUID keeps its name here and its history,
+whatever it was renamed to since the backup; one added takes a free name. A prompt a routine
+names is found first among the prompts the same file brings, so a prompt the import renames
+(as "Review 2" beside your own "Review") stays the one the routine runs. A routine the same as
+the file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either
+mode; any other match is saved over and switched off, and a routine this Mac lacks is added,
 switched off. Replace also deletes the routines the file doesn't name. A routine here that a
 newer version of the app wrote is never saved over or deleted: it is left as it is, with a
 note. One of the file's whose `spec` this version can't read (as one a newer version wrote,

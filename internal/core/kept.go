@@ -88,9 +88,16 @@ func (r restored) info(home string, reset *store.Reset) *appinfo.Restored {
 // restoreScripts brings back the user's own scripts from the database set aside at
 // startup, when reset says one was, as after a reset the user asked for or a database the
 // app could not use, and returns how many came back. They have no copy kept beside the
-// database, so a database deleted brings none back. What can't be brought back is logged,
+// database, so a database deleted brings none back. First it gives a UUID to every script
+// without one, as a build from before UUIDs stores them. What can't be done is logged,
 // never fatal.
 func restoreScripts(ctx context.Context, pool *sql.DB, opts Options, reset *store.Reset, logger *slog.Logger) int {
+	if given, err := scripts.GiveUUIDs(ctx, pool); err != nil {
+		logger.WarnContext(ctx, "could not give your scripts their UUIDs", "error", err)
+	} else if given > 0 {
+		logger.InfoContext(ctx, "gave your scripts their UUIDs", "scripts", given)
+	}
+
 	if reset == nil {
 		return 0
 	}
@@ -145,8 +152,9 @@ func (k *kept) restore(ctx context.Context, reset *store.Reset) restored {
 // as after it was set aside, damaged, or deleted: from the database set aside (setAside,
 // "" for none), or else from their copy, each switched off. It runs after the prompts and
 // the launch defaults, so the prompts a routine names are back first; a routine names
-// them by nickname, which the restored library keeps, so nothing needs matching. What
-// cannot be brought back is logged, never fatal.
+// them by UUID, which the restored library keeps, beside the nickname, so nothing needs
+// matching, and the routines' follow at startup writes what each names now. What cannot
+// be brought back is logged, never fatal.
 func (k *kept) restoreRoutines(ctx context.Context, setAside string) autopilot.Restored {
 	got, err := autopilot.Restore(ctx, k.pool, k.clock, setAside, k.routinesFile)
 	if err != nil {
@@ -162,15 +170,19 @@ func (k *kept) restoreRoutines(ctx context.Context, setAside string) autopilot.R
 }
 
 // restoreDefaults brings back the launch defaults from where the prompts came from, each
-// prompt they name matched to its restored prompt by nickname, and returns how many came
-// back.
+// prompt they name matched to its restored prompt by its UUID, else by its nickname, and
+// returns how many came back.
 func (k *kept) restoreDefaults(ctx context.Context, from prompts.Restored) (int, error) {
 	list, err := k.readDefaults(ctx, from)
 	if err != nil || len(list) == 0 {
 		return 0, err
 	}
 
-	return launchdefaults.Restore(ctx, k.defaults, list, func(nickname string) (int64, bool) {
+	return launchdefaults.Restore(ctx, k.defaults, list, func(uuid, nickname string) (int64, bool) {
+		if id, ok := from.UUIDs[uuid]; ok && uuid != "" {
+			return id, true
+		}
+
 		id, ok := from.IDs[nickname]
 
 		return id, ok
@@ -178,13 +190,16 @@ func (k *kept) restoreDefaults(ctx context.Context, from prompts.Restored) (int,
 }
 
 // readDefaults reads the launch defaults kept where the prompts came from: the database
-// set aside, whose prompt IDs from.Nicknames names, or else, and when that database has
-// none it can read, the launch defaults' copy. A copy that is not there holds none.
+// set aside, whose prompt IDs from.Nicknames and from.PromptUUIDs name, or else, and when
+// that database has none it can read, the launch defaults' copy. A copy that is not there
+// holds none.
 func (k *kept) readDefaults(ctx context.Context, from prompts.Restored) ([]launchdefaults.Kept, error) {
 	var snapErr error
 
 	if from.Nicknames != nil {
-		list, err := launchdefaults.ReadSnapshot(ctx, from.From, func(id int64) string { return from.Nicknames[id] })
+		list, err := launchdefaults.ReadSnapshot(ctx, from.From, func(id int64) (string, string) {
+			return from.Nicknames[id], from.PromptUUIDs[id]
+		})
 		if err == nil {
 			return list, nil
 		}
@@ -243,7 +258,8 @@ func (k *kept) keepFile(ctx context.Context, path string, restored bool, what st
 }
 
 // saveDefaults rewrites the launch defaults' copy after a change to the prompt library,
-// since it names prompts by nickname and one may have been renamed. A failure is logged.
+// since it names prompts by nickname, beside their UUIDs, and one may have been renamed. A
+// failure is logged.
 func (k *kept) saveDefaults(ctx context.Context) {
 	if err := k.defaultsFile.Save(ctx, k.defaults, k.prompts); err != nil {
 		k.logger.WarnContext(ctx, "could not save the copy of the launch defaults",
