@@ -108,7 +108,7 @@ func TestReplaceMatchesByNicknameAndDeletesTheRest(t *testing.T) {
 	plan, count, links := applyBundle(t, s, db, b, backup.ModeReplace, false)
 	assert.Equal(t, []string{
 		"update Review", "same LGTM", "add Fresh", "add Fix checks",
-		"remove Address review", "remove Fix checks", "remove Fix dep security", "remove Heal Dependabot PR",
+		"remove Address review", "remove Audit major update", "remove Fix checks", "remove Fix dep security", "remove Heal Dependabot PR",
 		"remove Needs changes", "remove Needs repro", "remove Nudge", "remove Question", "remove Re-review",
 		"remove Re-run failed jobs", "remove Resolve conflicts", "remove Update OK", "remove Upgrade deps",
 		"remove Upgrade majors too", "remove Work on it",
@@ -118,7 +118,7 @@ func TestReplaceMatchesByNicknameAndDeletesTheRest(t *testing.T) {
 		"update Default reply for requested changes", "update Default comment reply", "update Default nudge reply",
 	}, items(plan.Plan))
 	assert.Equal(t, []string{"“Quick look” is kept: the launch defaults for acme-org use it."}, plan.Notes)
-	assert.Equal(t, backup.Count{Add: 2, Update: 1 + 9, Same: 1, Remove: 15}, count,
+	assert.Equal(t, backup.Count{Add: 2, Update: 1 + 9, Same: 1, Remove: 16}, count,
 		"the prompts, and the nine defaults the file changes or leaves with none")
 
 	assert.Equal(t, []string{"Fix checks", "Fresh", lgtmNick, "Quick look", reviewNick}, nicknames(t, s),

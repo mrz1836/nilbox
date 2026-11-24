@@ -23,6 +23,7 @@ Prompts Nilbox ships, which the user's library holds a copy of unless they delet
 - `fix-dependency-security`: "Fix dep security" (Fix a dependency update's security checks), `agent`, applies to `pr`.
 - `re-review`: "Re-review" (Re-review a pull request), `agent`, applies to `pr`.
 - `reply-nudge`: "Nudge" (Nudge the author), `reply` for `comment`, applies to `pr`.
+- `audit-major-update`: "Audit major update" (Audit a major dependency update), `agent`, applies to `pr`.
 - `heal-dependabot-pr`: "Heal Dependabot PR" (Heal a dependency update), `agent`, applies to `pr`.
 - `address-review`: "Address review" (Address a review's requested changes), `agent`, applies to `pr`.
 - `resolve-conflicts`: "Resolve conflicts" (Resolve a pull request's merge conflicts), `agent`, applies to `pr`.

@@ -205,8 +205,8 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 12, Replies: 6}, n,
-		"the starters are twelve agent prompts, two of them for repositories, and six replies")
+	assert.Equal(t, ExportResult{Prompts: 13, Replies: 6}, n,
+		"the starters are thirteen agent prompts, two of them for repositories, and six replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -233,6 +233,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
 		StarterFixDependencySecurity, StarterRereview, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts,
 		StarterRerunFailedJobs, StarterReplyNeedsRepro, StarterReplyNudge, StarterDepsMinor, StarterDepsMajor,
+		StarterAuditMajorUpdate,
 	}, got.StartersAdded)
 	assert.Equal(t, []string{"checks_failing", "conflicts", "changes_requested", "rereview"}, got.SlotsSeeded,
 		"the situations' slots the library filled travel with it")
@@ -751,8 +752,8 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{
-		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Nudge",
-		"Question", "Quick look", "Re-review",
+		"Address review", "Audit major update", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes",
+		"Needs repro", "Nudge", "Question", "Quick look", "Re-review",
 		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Upgrade deps", "Upgrade majors too",
 		"Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")

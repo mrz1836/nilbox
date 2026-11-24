@@ -61,7 +61,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "all.json")
 	n, err := s.Export(ctx, path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 12, Replies: 7}, n)
+	assert.Equal(t, ExportResult{Prompts: 13, Replies: 7}, n)
 
 	b, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -71,13 +71,16 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 		kinds[p.Nickname] = string(p.Purpose) + " " + string(p.Action) + " " + string(p.AppliesTo)
 	}
 
+	const agentPR = "agent  pr"
+
 	assert.Equal(t, map[string]string{
-		reviewNick: "agent  pr", "Work on it": "agent  issue", "Quick look": "agent  pr", "Fix checks": "agent  pr",
+		reviewNick: agentPR, "Work on it": "agent  issue", "Quick look": agentPR, "Fix checks": agentPR,
 		lgtmNick: "reply approve pr", "Update OK": "reply approve pr", "Needs changes": "reply request_changes pr",
-		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": "agent  pr",
-		"Heal Dependabot PR": "agent  pr", "Address review": "agent  pr", "Resolve conflicts": "agent  pr",
-		"Re-run failed jobs": "agent  pr", "Needs repro": "reply comment issue", "Re-review": "agent  pr",
+		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": agentPR,
+		"Heal Dependabot PR": agentPR, "Address review": agentPR, "Resolve conflicts": agentPR,
+		"Re-run failed jobs": agentPR, "Needs repro": "reply comment issue", "Re-review": agentPR,
 		"Nudge": "reply comment pr", "Upgrade deps": "agent  repo", "Upgrade majors too": "agent  repo",
+		"Audit major update": agentPR,
 	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues and a prompt for "+
 		"repositories too")
 

@@ -165,8 +165,8 @@ func TestSeed(t *testing.T) {
 	ctx := t.Context()
 
 	assert.Equal(t, []string{
-		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Nudge", "Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
+		"Address review", "Audit major update", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM",
+		"Needs changes", "Needs repro", "Nudge", "Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
 		"Upgrade deps", "Upgrade majors too", "Work on it",
 	}, nicknames(t, s))
 
@@ -199,8 +199,8 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, s.Delete(ctx, quick.ID))
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
-		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Nudge", "Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Upgrade deps",
+		"Address review", "Audit major update", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM",
+		"Needs changes", "Needs repro", "Nudge", "Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Upgrade deps",
 		"Upgrade majors too", "Work on it",
 	}, nicknames(t, s))
 }

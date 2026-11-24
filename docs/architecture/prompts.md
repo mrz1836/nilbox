@@ -199,21 +199,25 @@ applies to; for an item gone or of a kind the prompt isn't for, the same sample,
 `deps-20260115` (`repoPreviewData`). `CheckResult` adds to the problems the preview (`Execute`), the
 `Notice` an agent prompt would end with, and each variable's value (`Values`).
 
-## The starters (`starters.go`, `starters_routines.go`, `starters_repo.go`)
+## The starters (`starters.go`, `starters_major.go`, `starters_routines.go`, `starters_repo.go`)
 
-`Starters()` lists the 18 a build ships, in the order `Seed` adds them, each a `Starter` with its
+`Starters()` lists the 19 a build ships, in the order `Seed` adds them, each a `Starter` with its
 key (its copy's `starter_key`), title, nickname, applies-to, text, and settings:
 
 - `builtStarters`, the launcher's and the sheets': `review-pr`, `work-on-issue`, `quick-look` (set
   to Claude Code's `sonnet` at `low` effort without a worktree), `fix-checks`, the replies
   `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, and `reply-question`,
-  `fix-dependency-security`, `re-review`, and the reply `reply-nudge`;
+  `fix-dependency-security`, `re-review`, the reply `reply-nudge`, and `audit-major-update`
+  (`starters_major.go`: at `high` effort, out of plan mode, in a worktree), which audits a
+  dependency update beyond its checks and ends in one of three verdicts: safe, adapted and pushed
+  with `pushOnce`, or, for a bot's update only (`IsBot`), a note and the bot's own ignore command,
+  which closes it;
 - `routineStarters`, the ones Autopilot's templates run: `heal-dependabot-pr`, `address-review`,
   `resolve-conflicts`, `rerun-failed-jobs` (`haiku` at `low` effort), and `reply-needs-repro`, a
   comment reply for issues;
 - `repoStarters`: `deps-minor` and `deps-major`, out of plan mode in a worktree.
 
-That is twelve agent prompts and six replies. A starter reply's `Slot` is the default it becomes
+That is thirteen agent prompts and six replies. A starter reply's `Slot` is the default it becomes
 while that slot has none: LGTM `approve`, Update OK `approve_bots`, Needs changes
 `request_changes`, Question `comment`, and Nudge `nudge`; Needs repro fills none.
 
@@ -226,8 +230,8 @@ each agent starter with hostile values in every session and trust it can launch 
 every command in its backticks to read as plain shell words, so a value someone else chose reaches a
 command only through `shellquote`, and only when plain. `TestEveryStarterIsClean` requires each to
 parse with no diagnostic and fill in for every sample. Golden files under `testdata/` pin Review and
-Work on it (the launcher's original prompts, byte for byte), Fix dep security, and the two for
-repositories; `-update` rewrites them.
+Work on it (the launcher's original prompts, byte for byte), Fix dep security, Audit major
+update, and the two for repositories; `-update` rewrites them.
 
 A change to a starter's text keeps the text it replaces in `Earlier`, byte for byte, each pinned by
 its SHA-256 in `TestEarlierStarterTextsAreAsShipped` (only `fix-dependency-security` has any, two).

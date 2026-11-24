@@ -339,6 +339,13 @@ func builtStarters() []Starter {
 			Key: StarterReplyNudge, Name: "Nudge the author", Nickname: "Nudge", AppliesTo: AppliesToPR,
 			Body: replyNudgeBody, Purpose: PurposeReply, ReplyAction: ReplyComment, Slot: SlotNudge,
 		},
+		{
+			// It builds and runs the repository at the update's head, so it works in a worktree
+			// of its own, out of plan mode, which would stop it before the first build, and at
+			// high effort, since a missed breaking change is what it is for.
+			Key: StarterAuditMajorUpdate, Name: "Audit a major dependency update", Nickname: "Audit major update",
+			AppliesTo: AppliesToPR, Body: auditMajorUpdateBody, Effort: "high", PlanMode: new(false), Worktree: new(true),
+		},
 	}
 }
 

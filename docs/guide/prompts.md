@@ -11,7 +11,7 @@ and optional **launch settings**.
 
 ## Starter prompts
 
-The app adds twelve starter prompts, each once, besides six [starter replies](#starter-replies):
+The app adds thirteen starter prompts, each once, besides six [starter replies](#starter-replies):
 **Review** (review a pull request), **Work on it** (work on an issue), **Quick look** (a fast read
 of a pull request's diff for blockers only, set to Sonnet at low effort without a worktree), **Fix
 checks** (find and fix a pull request's failing checks, then push the fix), and **Fix dep security**
@@ -19,9 +19,16 @@ checks** (find and fix a pull request's failing checks, then push the fix), and 
 version that fixes it, never silence a scanner, and push with one exact `git push` to the pull
 request's own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
 another outside contributor's, and for a branch or remote whose name isn't plain, it commits the fix
-but pushes nothing), and **Re-review** (review a pull request again, only what changed since the
+but pushes nothing), **Re-review** (review a pull request again, only what changed since the
 commit your last verdict was on, or the whole of it when that commit is no longer in its branch's
-history, as after a force-push). Four more are the starters Autopilot's
+history, as after a force-push), and **Audit major update** (audit a dependency update, a major one
+above all, before it merges, since passing checks don't prove it's safe: read what each new version
+changes upstream, breaking changes and build needs alike, find where the repository uses it and what
+its checks never ran, run every check and build itself, then either say it's safe to merge, adapt
+the code and push as Fix dep security does, or, for a dependency the repository can't take, post a
+note saying why and tell Dependabot `@dependabot ignore this major version`, which closes the pull
+request; it never approves or merges, only reports on a person's pull request, and starts in a
+worktree at high effort, out of plan mode). Four more are the starters Autopilot's
 [templates](autopilot/templates-and-quick-setup.md) run: **Heal Dependabot PR** (adapt the code to
 what a dependency update broke, never pinning it back or silencing a check, and push as Fix dep
 security does), **Address review** (work through the changes a review asked for, acting only on
