@@ -1541,12 +1541,14 @@ WHERE a.login = ?2
   AND i.kind = 'pr'
   AND i.node_id <> ''
   AND i.state NOT IN ('CLOSED', 'MERGED')
-  AND d.checks_state IN ('PENDING', 'EXPECTED')
-  AND d.fetched_at < ?3
+  AND (d.checks_state IN ('PENDING', 'EXPECTED')
+    OR (d.checks_state = '' AND d.checks_awaiting = 0 AND d.checks_awaiting_on_github = 0
+      AND i.item_updated_at >= ?3))
+  AND d.fetched_at < ?4
   AND (
     ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
       AND l.dismissed_at IS NULL
-      AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?4))
+      AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?5))
     OR (CAST(?1 AS BOOLEAN) = 1
       AND EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.follow = 1))
   )
@@ -1554,10 +1556,11 @@ ORDER BY d.fetched_at, i.id
 `
 
 type ListRunningChecksParams struct {
-	Watched    bool
-	Login      string
-	ReadBefore time.Time
-	Now        *time.Time
+	Watched     bool
+	Login       string
+	ActiveSince time.Time
+	ReadBefore  time.Time
+	Now         *time.Time
 }
 
 type ListRunningChecksRow struct {
@@ -1574,9 +1577,12 @@ type ListRunningChecksRow struct {
 
 // ListRunningChecks returns the open pull requests of the account with login whose checks
 // were running (PENDING or EXPECTED) when their details were last read, before
-// read_before, the longest unread first, each with its number, its repository's owner and
-// name, and whether it is listed and whether a routine's search follows it: the listed ones
-// neither dismissed nor snoozed at now, and, while watched says this copy reads the
+// read_before, or whose head commit had no checks at all then, none held for approval
+// either, and whose last activity on GitHub (item_updated_at) is no older than
+// active_since, as when it was read just after it was opened or pushed to, before GitHub
+// queued its checks; the longest unread first, each with its number, its repository's owner
+// and name, and whether it is listed and whether a routine's search follows it: the listed
+// ones neither dismissed nor snoozed at now, and, while watched says this copy reads the
 // routines' searches (none does while Autopilot is off), the ones a routine's search
 // watches and follows (item_watches.follow), whatever their triage, since a routine acts on
 // their checks. They are the ones the inbox follows until their checks end. The follow
@@ -1587,6 +1593,7 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 	rows, err := q.db.QueryContext(ctx, listRunningChecks,
 		arg.Watched,
 		arg.Login,
+		arg.ActiveSince,
 		arg.ReadBefore,
 		arg.Now,
 	)

@@ -103,6 +103,99 @@ func TestRefreshRunningFollowsOnlyThePullRequestsWhoseChecksRun(t *testing.T) {
 	assert.Len(t, h.client.itemsIDs, 3, "once every check ended, a round asks GitHub nothing")
 }
 
+// noChecks is a pull request's details while its head commit has no checks at all.
+func noChecks() github.ItemDetails {
+	d := prDetails()
+	d.Checks = github.Checks{}
+
+	return d
+}
+
+// uncheckedHarness refreshes an inbox of #1, opened a moment ago with no checks yet, #2
+// with none and no activity for days, #3 opened a moment ago with its only run held for
+// approval, and #4 opened a moment ago with its checks passed, and returns the harness and
+// when the three were opened.
+func uncheckedHarness(t *testing.T) (*harness, time.Time) {
+	t.Helper()
+
+	h := newHarness(t)
+	opened := h.clock.Now().Add(-10 * time.Second)
+
+	items := []github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false), pr(3, "OWNER", false), pr(4, "OWNER", false)}
+	for _, i := range []int{0, 2, 3} {
+		items[i].CreatedAt, items[i].UpdatedAt = opened, opened
+	}
+
+	held := noChecks()
+	held.Checks.Awaiting = 1
+
+	h.client.inbox = fetched(items, nil, nil)
+	h.client.details = map[string]github.ItemDetails{
+		nodeID(1): noChecks(), nodeID(2): noChecks(), nodeID(3): held, nodeID(4): withChecks("SUCCESS"),
+	}
+
+	h.refresh(t)
+
+	return h, opened
+}
+
+func TestRefreshRunningFollowsAPullRequestWhoseChecksHaveNotStarted(t *testing.T) {
+	t.Parallel()
+
+	h, _ := uncheckedHarness(t)
+
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+	assert.Empty(t, h.client.itemsIDs, "a whole refresh just read them all")
+
+	h.clock.Advance(FollowInterval)
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): open(h, 1, withChecks("PENDING"))}
+
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+	assert.Equal(t, [][]string{{nodeID(1)}}, h.client.itemsIDs,
+		"only the one opened a moment ago with no checks yet: not the one quiet for days, the held one, or the passed one")
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "PENDING", itemByNumber(t, snap.ReviewRequested, 1).Details.Checks.State,
+		"its card shows the checks GitHub queued since the refresh")
+
+	h.clock.Advance(followUnchecked + time.Second)
+	h.client.items[nodeID(1)] = open(h, 1, withChecks("SUCCESS"))
+
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+	assert.Equal(t, []string{nodeID(1)}, h.client.itemsIDs[1],
+		"once its checks run, it is followed as any other, however long ago it was active")
+
+	h.clock.Advance(FollowInterval)
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+	assert.Len(t, h.client.itemsIDs, 2, "once its checks ended, a round asks GitHub nothing")
+}
+
+func TestRefreshRunningLetsGoOfAPullRequestThatNeverHasChecks(t *testing.T) {
+	t.Parallel()
+
+	h, opened := uncheckedHarness(t)
+
+	// GitHub answers as for a repository that runs no checks: nothing moved since it opened.
+	quiet := pr(1, "OWNER", false)
+	quiet.State = github.StateOpen
+	quiet.CreatedAt, quiet.UpdatedAt = opened, opened
+	h.client.items = map[string]*github.ItemUpdate{
+		nodeID(1): {Found: true, Item: quiet, Details: noChecks(), RateLimit: itemRate()},
+	}
+
+	for round := 1; round <= 3; round++ {
+		h.clock.Advance(FollowInterval)
+		require.NoError(t, h.svc.refreshRunning(t.Context()))
+		require.Len(t, h.client.itemsIDs, round, "read every round while it was active within followUnchecked")
+		assert.LessOrEqual(t, h.clock.Now().Sub(opened), followUnchecked)
+	}
+
+	h.clock.Advance(FollowInterval)
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+	assert.Len(t, h.client.itemsIDs, 3, "past followUnchecked, one with no checks is left to the whole refresh")
+}
+
 func TestRefreshRunningLeavesAPullRequestGitHubDidNotAnswerFor(t *testing.T) {
 	t.Parallel()
 

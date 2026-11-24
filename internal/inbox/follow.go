@@ -19,15 +19,28 @@ import (
 	"github.com/mrz1836/nilbox/internal/reporules"
 )
 
-// The follow of the pull requests whose checks are running: GitHub's own page updates
-// as the checks end, and the inbox's five-minute refresh would leave the card behind.
+// The follow of the pull requests whose checks are running, or about to: GitHub's own page
+// updates as the checks start and end, and the inbox's five-minute refresh would leave the
+// card behind.
 const (
 	// FollowInterval is how often, unless the settings say otherwise, the follow reads
-	// again the pull requests whose checks were still running. A round asks GitHub one
-	// request per followBatch of them, about a point each, and nothing while none runs: at
+	// again the pull requests whose checks were still running, or hadn't started within
+	// followUnchecked of their last activity. A round asks GitHub one request per
+	// followBatch of them, about a point each, and nothing while none runs or waits to: at
 	// most some 160 points an hour, three percent of the GraphQL budget, and only while
 	// checks run.
 	FollowInterval = 45 * time.Second
+
+	// followUnchecked is how long after a pull request's last activity on GitHub (its
+	// updatedAt, which opening it and a push to it move) the follow reads it again while its
+	// head commit has no checks at all. A pull request read just after it was opened or
+	// pushed to, as a refresh that lists it at once or the push watch's read, has none until
+	// GitHub Actions has queued its runs some seconds later, and would show none until the
+	// next whole refresh; once a round reads them running, the follow goes on as for any
+	// other. One in a repository that runs no checks costs a few reads after each activity,
+	// and one whose runs GitHub holds for approval none, since nothing starts them until a
+	// maintainer approves.
+	followUnchecked = 3 * time.Minute
 
 	// followFresh is how recently a pull request's details must have been read for a
 	// round to leave it alone, as after a whole refresh or the round before: a little less
@@ -50,15 +63,17 @@ const (
 )
 
 // refreshRunning reads again, in requests of followBatch sent side by side, the listed pull
-// requests whose checks were still running when the inbox last read them, neither
+// requests whose checks were still running when the inbox last read them, or whose head
+// commit had no checks yet within followUnchecked of their last activity, neither
 // dismissed nor snoozed, nor of a repository or org the user muted, and the ones a
 // routine's search follows, muted or not, in the copy that reads the routines' searches
 // alone (so in none while Autopilot is off), and stores each as RefreshItem would, so a card
-// shows its checks end about as soon as GitHub's own page does, a routine sees them settle
-// within about a round, and one GitHub no longer asks the user to review leaves Review
-// requested, telling no outcome. A pull request whose checks end, pass or fail, is left
-// alone from then on. It asks GitHub nothing while none runs, and leaves alone one read in
-// the last little while. A pull request GitHub doesn't answer for, or whose request
+// shows its checks start and end about as soon as GitHub's own page does, a routine sees
+// them settle within about a round, and one GitHub no longer asks the user to review leaves
+// Review requested, telling no outcome. A pull request whose checks end, pass or fail, is
+// left alone from then on, and so is one with none once followUnchecked has passed. It asks
+// GitHub nothing while none runs or waits to, and leaves alone one read in the last little
+// while. A pull request GitHub doesn't answer for, or whose request
 // failed, is left as it was, for the next round or whole refresh. Once it has let go of
 // every pull request, it tells the outcome sink of each merge or close an answer it stored
 // shows, and the Changed seam the items it stored.
@@ -88,7 +103,8 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 	// routines' searches: none does while Autopilot is off, and what is stored of them then
 	// is stale.
 	listed, err := s.q.ListRunningChecks(ctx, queries.ListRunningChecksParams{
-		Watched: holdsWatches(s.watchSource), Login: login, ReadBefore: now.Add(-followFresh), Now: &now,
+		Watched: holdsWatches(s.watchSource), Login: login, ReadBefore: now.Add(-followFresh),
+		ActiveSince: now.Add(-followUnchecked), Now: &now,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("read the pull requests whose checks run: %w", err)

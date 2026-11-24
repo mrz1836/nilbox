@@ -140,6 +140,13 @@ routine follows), and none is read while no checks run: at most some 160 points 
 while checks run. One stops being read as soon as its checks end, passed or failed, and a dismissed
 or snoozed one isn't read at all.
 
+A pull request read just after it was opened or pushed to often has no checks yet, since GitHub
+Actions queues its runs some seconds later. So one with no checks at all is read again the same way
+for three minutes after its last activity on GitHub: its card shows its checks within about a round
+rather than at the next whole refresh, and from then on they are followed as above. One in a
+repository that runs no checks costs a few reads after each activity and no more, and one whose runs
+wait for a maintainer's approval isn't read.
+
 ## After a merge
 
 A merge into a branch can give every other open pull request on it conflicts, or put it behind, and
