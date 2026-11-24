@@ -22,6 +22,7 @@ import {
   searchReviewAssignees,
   openExternal,
   reviewerCandidates,
+  type InboxItem,
   type MergeMethod,
   type Review,
   type ReviewAction,
@@ -79,6 +80,10 @@ export interface ReviewSheetProps extends SheetCommonProps {
   // ignoring is Settings → Reviewing's Ignored workflows, which the held runs' lines name and
   // add to; without it, they offer to ignore none.
   ignoring?: IgnoredWorkflows | null | undefined
+  // onRemoveReview takes the user off the pull request's requested reviewers on GitHub, and
+  // resolves with why it couldn't, or '' once it did, when the inbox closes the sheet;
+  // without it the sheet doesn't offer it.
+  onRemoveReview?: ((item: InboxItem) => Promise<string>) | undefined
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -107,8 +112,8 @@ function keepsDraft(result: ReviewResult): boolean {
 }
 
 // Notice is what the sheet says of one pull request after an action on it: an action
-// refused for a push since, or why one failed. It says it only while that pull request
-// shows, never of the next one the sheet steps to.
+// refused for a push since, or why one failed, as Remove me as reviewer. It says it only
+// while that pull request shows, never of the next one the sheet steps to.
 interface Notice {
   id: number
   message: string
@@ -184,6 +189,7 @@ export function ReviewSheet({
   toast,
   onToast,
   ignoring = null,
+  onRemoveReview,
 }: ReviewSheetProps) {
   const titleId = useId()
   const tabsId = useId()
@@ -216,12 +222,14 @@ export function ReviewSheet({
   const [confirming, setConfirming] = useState<ReviewOffer | null>(null)
   const [pushed, setPushed] = useState<Notice | null>(null)
   const [approved, setApproved] = useState<Notice | null>(null)
+  const [unrequestFailed, setUnrequestFailed] = useState<Notice | null>(null)
   // actedOn is the pull request the last action ran on, and the action, whose error the
   // composer shows, or, for an approval of held runs, their bar.
   const [actedOn, setActedOn] = useState<{ id: number; action: ReviewAction }>({ id: 0, action: '' })
   const [progress, setProgress] = useActionProgress('review:progress', id)
   const pushedHere = pushed?.id === id ? pushed.message : ''
   const approvedHere = approved?.id === id ? approved.message : ''
+  const unrequestFailedHere = unrequestFailed?.id === id ? unrequestFailed.message : ''
   const actError = actedOn.id === id ? act.error : ''
   const approving = actedOn.action === 'approve_runs'
 
@@ -379,6 +387,26 @@ export function ReviewSheet({
           })
         }
 
+  // removeMe takes the user off the pull request's requested reviewers, from their own line
+  // in Reviewers or the action menu's foot, while the card says GitHub asks them by name, as
+  // the card's menu offers it. It needs no right to edit the reviewers: GitHub lets anyone
+  // asked take themselves off. A team's request stays, and the inbox's toast says so.
+  const removeMe =
+    onRemoveReview === undefined || item === undefined || item.reviewRequest !== 'you'
+      ? undefined
+      : () => {
+          setProgress({ title: 'Remove me as reviewer', target, steps: ['Removing you as a reviewer on GitHub'] })
+          setUnrequestFailed(null)
+
+          void onRemoveReview(item).then((error) => {
+            setProgress(null)
+
+            if (error !== '') {
+              setUnrequestFailed({ id, message: error })
+            }
+          })
+        }
+
   const run = (action: ReviewAction) => {
     if (review === null) {
       return
@@ -507,7 +535,7 @@ export function ReviewSheet({
 
   // A read that finds the pull request merged or closed since the inbox read it hands it to
   // the host, which moves on from it, unless an action runs or left its notice here.
-  useEnded(review, working || pushedHere !== '' || approvedHere !== '', onEnded)
+  useEnded(review, working || pushedHere !== '' || approvedHere !== '' || unrequestFailedHere !== '', onEnded)
 
   const close = () => {
     if (!working) {
@@ -556,6 +584,15 @@ export function ReviewSheet({
         />
         <div className="space-y-2 px-5 empty:hidden">
           {loaded.error !== '' && <ErrorBanner>{loaded.error}</ErrorBanner>}
+          {unrequestFailedHere !== '' && (
+            <ErrorBanner
+              onClose={() => {
+                setUnrequestFailed(null)
+              }}
+            >
+              Couldn’t remove you as a reviewer: {unrequestFailedHere}
+            </ErrorBanner>
+          )}
           {(pushedHere !== '' || (review?.stale === true && !loaded.checking && review.fetchedAt !== '')) && (
             <div className="mt-2 flex items-center gap-3 rounded-md border border-warning/60 px-3 py-2 text-sm text-warning">
               <span className="flex-1">
@@ -792,6 +829,7 @@ export function ReviewSheet({
                         ignored={ignoring?.names}
                         onIgnore={ignoreWorkflow}
                         mark={mark}
+                        onRemoveMe={removeMe}
                         reviewers={
                           canEditReviewers
                             ? {
@@ -838,6 +876,7 @@ export function ReviewSheet({
                       resolution={resolution}
                       sessions={sessions}
                       onManageReplies={onManageReplies}
+                      onRemoveReview={removeMe}
                       textRef={textRef}
                     />
                   </div>

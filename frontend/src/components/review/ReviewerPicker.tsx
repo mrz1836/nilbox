@@ -65,7 +65,7 @@ function TeamGlyph() {
 // It opens on what the sheet read before, with no request; when the app's knowledge of the
 // repository is due a read (stale), it reads it once as it opens, and its answer replaces
 // the list in place, keeping what the user checked. The user's own request is theirs to take
-// off with Remove me as reviewer.
+// off with Remove me as reviewer, beside their name in Reviewers or in the action menu.
 export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose }: ReviewerPickerProps) {
   const id = useId()
   const now = useNow()
@@ -98,7 +98,7 @@ export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose 
     icon: r.team ? <TeamGlyph /> : <PersonAvatar login={r.author} />,
     hint: '',
     aside: r.state === '' ? '' : 'asked again',
-    locked: r.mine ? 'Take yourself off with Remove me as reviewer, in the card’s menu.' : '',
+    locked: r.mine ? 'Take yourself off with Remove me as reviewer, beside your name or in the action menu.' : '',
     section: 'Requested',
   }))
   const personRows = (list: typeof people, section: string): Choice[] =>

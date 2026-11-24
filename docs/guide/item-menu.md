@@ -48,7 +48,7 @@ done, or read, when the work behind it is finished.
 | Change | Where | Cost |
 |---|---|---|
 | Unassign me | The card's menu, or the issue sheet's | 1 REST point |
-| Remove me as reviewer | The card's menu | 1 REST point |
+| Remove me as reviewer | The card's menu, or the review sheet's (**×** beside your name, or its action menu) | 1 REST point |
 | Nudge the author (a comment on the pull request) | A card's **Nudge**, its menu, or its details, after you read the comment | 1 REST point |
 | Re-request my review | The review sheet, once its author pushed since you requested changes | 1 REST point |
 | Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |

@@ -38,6 +38,9 @@ export interface ReviewComposerProps {
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
   onManageReplies?: (() => void) | undefined
+  // onRemoveReview takes the user off the pull request's requested reviewers, from the
+  // menu's foot, or is undefined while GitHub doesn't ask them by name.
+  onRemoveReview?: (() => void) | undefined
   // textRef is the text box, which a quoted reply focuses.
   textRef?: RefObject<HTMLTextAreaElement | null>
 }
@@ -153,7 +156,8 @@ export function useReplyBody(id: number, isBot: boolean, draft: ReviewDraft, act
 // ReviewComposer is where the review is written and sent: a reply from the library to start
 // from (the default one for the review, and for a bot's or a person's pull request, fills
 // the text until the user writes their own), the text, the line comments waiting to go,
-// the action button, and a launch to ask a coding agent for its own review.
+// the action button, whose menu ends with Remove me as reviewer while GitHub asks the user
+// by name, and a launch to ask a coding agent for its own review.
 export function ReviewComposer({
   review,
   item,
@@ -168,6 +172,7 @@ export function ReviewComposer({
   resolution,
   sessions,
   onManageReplies,
+  onRemoveReview,
   textRef,
 }: ReviewComposerProps) {
   const { list, fallback, body } = reply
@@ -176,6 +181,8 @@ export function ReviewComposer({
   const firstNote = commentFirst(offer, body, draft.comments.length)
   // A note that says why the comment can't be posted holds the button back.
   const noteBlocks = firstNote !== '' && offer !== undefined && offer.commentBlocked !== ''
+  const extra: MenuItem[] =
+    onRemoveReview === undefined ? [] : [{ label: 'Remove me as reviewer', onSelect: onRemoveReview }]
 
   const picking = usePickReply(review.id, fillReply, (text, replyId) => {
     onDraft((d) => ({ ...d, body: text, edited: true, replyId }))
@@ -239,6 +246,7 @@ export function ReviewComposer({
           onRun={onRun}
           blocked={(action) => heldBack(offerOf(action), sentText(action, draft, body), draft.comments.length)}
           menuOnly={menuOnly}
+          extra={extra}
         />
       }
       launch={launch}

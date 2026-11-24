@@ -655,19 +655,30 @@ export function InboxView({
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
   // in a toast.
-  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended, nudgeDialog } =
-    useItemActions({
-      inbox,
-      snoozeDays,
-      onSnoozeSettings,
-      repoRules,
-      onSettingsSaved,
-      onRepoRuleSettings,
-      showToast,
-      closeToast,
-      onOpen: sheets ? openFromMenu : undefined,
-      onManageReplies,
-    })
+  const {
+    triage,
+    edits,
+    dismissIt,
+    snoozeIt,
+    restoreIt,
+    changeRule,
+    unassignOn,
+    removeReviewOn,
+    seen,
+    ended,
+    nudgeDialog,
+  } = useItemActions({
+    inbox,
+    snoozeDays,
+    onSnoozeSettings,
+    repoRules,
+    onSettingsSaved,
+    onRepoRuleSettings,
+    showToast,
+    closeToast,
+    onOpen: sheets ? openFromMenu : undefined,
+    onManageReplies,
+  })
 
   // Each opening of a sheet is heard once, and marks read the item it opened on and the one
   // it moved from.
@@ -779,6 +790,19 @@ export function InboxView({
   // says so once GitHub made it, and it hears why when it couldn't.
   const unassignHere = async (it: InboxItem): Promise<string> => {
     const error = await unassignOn(it)
+
+    if (error === '') {
+      setViewing(null)
+    }
+
+    return error
+  }
+
+  // removeReviewHere takes the user off a pull request's requested reviewers from its sheet:
+  // the sheet closes and the toast says so once GitHub made it, and it hears why when it
+  // couldn't.
+  const removeReviewHere = async (it: InboxItem): Promise<string> => {
+    const error = await removeReviewOn(it)
 
     if (error === '') {
       setViewing(null)
@@ -1039,6 +1063,7 @@ export function InboxView({
               onFilesSettings={onFilesSettings}
               onToast={showToast}
               ignoring={ignoring}
+              onRemoveReview={removeReviewHere}
             />
           )}
           {sheetProps !== null && sheets && viewing?.kind === 'issue' && (

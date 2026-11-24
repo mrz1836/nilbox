@@ -56,6 +56,9 @@ export interface ReviewSummaryProps extends IgnoreProps {
   // assignees changes who the pull request is assigned to, while the user may
   // (review.canEditAssignees); without it, the assignees only show.
   assignees?: AssigneesEditing | undefined
+  // onRemoveMe takes the user off the pull request's requested reviewers, from × on their
+  // own line, which needs no right to edit the reviewers; without it their line offers none.
+  onRemoveMe?: (() => void) | undefined
 }
 
 // readyTone is each readiness's color.
@@ -523,15 +526,19 @@ function Suggestions({
 // Edit, which opens the reviewer picker; a request offers × to take it off, and someone who
 // reviewed and isn't asked now ↻ to ask again (never the user, the author, or a bot), a
 // line fading while its edit runs; and with no one asked, it offers its first few
-// suggestions as one-click requests.
+// suggestions as one-click requests. The user's own request is never the picker's to take
+// off: given onRemoveMe, their line offers × for Remove me as reviewer instead, whether or
+// not they may edit the others.
 function Reviewers({
   review,
   onShow,
   editing,
+  onRemoveMe,
 }: {
   review: Review
   onShow?: ((url: string) => void) | undefined
   editing?: ReviewersEditing | undefined
+  onRemoveMe?: (() => void) | undefined
 }) {
   const [picking, setPicking] = useState(false)
   // busy is the key of the request whose edit runs, or ''; failed why the last one failed.
@@ -642,6 +649,16 @@ function Reviewers({
                     <XIcon className="size-3" />
                   </RowAction>
                 )}
+                {onRemoveMe !== undefined && r.mine && r.requested && !r.team && (
+                  <RowAction
+                    label="Remove me as reviewer"
+                    title="Take yourself off its requested reviewers on GitHub. Uses one REST request."
+                    disabled={busy !== ''}
+                    onClick={onRemoveMe}
+                  >
+                    <XIcon className="size-3" />
+                  </RowAction>
+                )}
                 {canEdit && askAgain && (
                   <RowAction
                     label={`Ask ${r.author} to review again`}
@@ -731,6 +748,7 @@ export function ReviewSummary({
   mark = 'current',
   reviewers,
   assignees,
+  onRemoveMe,
 }: ReviewSummaryProps) {
   const { change } = review
 
@@ -743,7 +761,7 @@ export function ReviewSummary({
         {change.areas.length > 0 && <span className="text-xs text-muted">in {areasText(change.areas)}</span>}
       </div>
       <Closes review={review} />
-      <Reviewers review={review} onShow={onShowReview} editing={reviewers} />
+      <Reviewers review={review} onShow={onShowReview} editing={reviewers} onRemoveMe={onRemoveMe} />
       <AssigneesSection
         look="summary"
         itemId={review.id}

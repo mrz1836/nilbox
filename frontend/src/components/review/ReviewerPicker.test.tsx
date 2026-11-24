@@ -84,6 +84,51 @@ describe('the reviewers list', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('offers × on the user’s own request for Remove me as reviewer, edit rights or not', async () => {
+    const removeMe = vi.fn()
+    const edit = vi.fn().mockResolvedValue('')
+    const { unmount } = renderAt(
+      <ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} onRemoveMe={removeMe} />,
+    )
+
+    const mine = screen.getByRole('button', { name: 'Remove me as reviewer' })
+    expect(mine).toHaveAttribute('title', 'Take yourself off its requested reviewers on GitHub. Uses one REST request.')
+    await userEvent.click(mine)
+    expect(removeMe).toHaveBeenCalledOnce()
+    expect(edit, 'never through the reviewer edit').not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove the review request for octo-asked' }))
+    expect(edit, 'the others’ × is unchanged').toHaveBeenLastCalledWith([], ['octo-asked'])
+    unmount()
+
+    renderAt(<ReviewSummary review={editable({ canEditReviewers: false })} item={undefined} onRemoveMe={removeMe} />)
+    expect(screen.getByRole('button', { name: 'Remove me as reviewer' }), 'no triage access needed').toBeEnabled()
+    expect(screen.queryByRole('button', { name: /Remove the review request/ })).not.toBeInTheDocument()
+  })
+
+  it('offers no Remove me as reviewer without onRemoveMe, nor for a team’s or a past request', () => {
+    const { unmount } = renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing()} />)
+
+    expect(screen.queryByRole('button', { name: 'Remove me as reviewer' })).not.toBeInTheDocument()
+    unmount()
+
+    renderAt(
+      <ReviewSummary
+        review={editable({
+          reviews: [
+            entry('octo-user', { state: 'APPROVED', mine: true }),
+            entry('acme-org/ops', { requested: true, team: true, mine: true }),
+          ],
+        })}
+        item={undefined}
+        reviewers={editing()}
+        onRemoveMe={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Remove me as reviewer' })).not.toBeInTheDocument()
+  })
+
   it('never offers to ask the author, a bot, or the user again', () => {
     renderAt(
       <ReviewSummary
@@ -157,6 +202,10 @@ describe('ReviewerPicker', () => {
     expect(section('Requested').getByRole('checkbox', { name: /octo-asked/ })).toBeChecked()
     expect(section('Requested').getByRole('checkbox', { name: /acme-org\/ops/ })).toBeChecked()
     expect(section('Requested').getByRole('checkbox', { name: /octo-user/ }), 'the user’s own is theirs').toBeDisabled()
+    expect(section('Requested').getByText('octo-user').closest('label')).toHaveAttribute(
+      'title',
+      'Take yourself off with Remove me as reviewer, beside your name or in the action menu.',
+    )
     expect(
       section('Suggested for this pull request').getByRole('checkbox', { name: /octo-suggested/ }),
     ).toHaveAccessibleName('octo-suggested Octo Suggested Changed these files')

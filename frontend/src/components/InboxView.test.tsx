@@ -2408,6 +2408,30 @@ describe('InboxView review sheet', () => {
     expect(platform.offerReleaseAfterMerge).not.toHaveBeenCalled()
   })
 
+  it('takes the user off a pull request’s reviewers from its sheet, which closes, and says why it couldn’t', async () => {
+    const asked = item({ id: 1, title: 'Add the widget cache', reviewRequest: 'you' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
+    platform.removeReviewRequest.mockRejectedValueOnce(new Error('GitHub refused it.'))
+    platform.removeReviewRequest.mockImplementation(storing(snapshot()))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove me as reviewer' }))
+    expect(await within(sheet).findByText(/GitHub refused it\./)).toBeInTheDocument()
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove me as reviewer' }))
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(within(toast).getByText('Removed you as a reviewer on GitHub')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    expect(platform.removeReviewRequest).toHaveBeenCalledTimes(2)
+    expect(platform.removeReviewRequest).toHaveBeenLastCalledWith(1)
+  })
+
   describe('after a close', () => {
     // close closes the inbox's pull request from the review sheet, with result, and returns
     // the toast that reports it.

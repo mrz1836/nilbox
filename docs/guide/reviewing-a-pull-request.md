@@ -319,9 +319,9 @@ request (for someone without access to the repository, say). In the summary, hov
 **×** to take it off, or someone who reviewed and isn't asked now for **↻** to ask them again
 (never you, the author, a bot, or a team); while no one has reviewed it or is asked to, it says
 **No one is asked to review yet.** and offers up to three of the picker's people, each asked in one
-click, and **More…** for the picker. Your own request stays checked in the picker, and has no **×**:
-ask for your review again with [Re-request my review](#re-request-my-review), and take yourself off
-with **Remove me as reviewer**, in the card's menu. The people you ask rank higher among those who
+click, and **More…** for the picker. Your own request stays checked in the picker: ask for your
+review again with [Re-request my review](#re-request-my-review), and take yourself off with
+[Remove me as reviewer](#remove-me-as-reviewer). The people you ask rank higher among those who
 work on the repository from then on ([People](#people)).
 
 ## Assignees
@@ -428,6 +428,17 @@ none of your text, so the draft stays for that review. It isn't offered after an
 nothing pushed since, or on your own pull request; it can't run while GitHub already asks you
 (**GitHub already asks you to review it again.**), or for an account without write access, since
 GitHub asks only collaborators to review.
+
+## Remove me as reviewer
+
+While a pull request asks for your review by name, hover your own **awaiting review** line under
+**Reviewers** for **×**, or pick **Remove me as reviewer** at the foot of the action menu; the
+card's menu offers the same. It needs no triage access, since anyone asked may take themselves off,
+and costs one REST request. While it runs, the sheet shows the step and takes no input; once GitHub
+takes you off, the sheet closes and a toast confirms it, naming the team the pull request still
+asks when it asked one too. When GitHub refuses, the sheet stays open and says why. A request made
+only to a team you are in offers neither, since GitHub takes a team's request off for every member
+or for none ([the item menu](item-menu.md)).
 
 ## Line comments
 

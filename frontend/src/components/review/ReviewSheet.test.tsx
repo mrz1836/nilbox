@@ -799,6 +799,108 @@ describe('ReviewSheet', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('GitHub refused it.')
   })
 
+  it('takes the user off its requested reviewers, from their own line or the menu', async () => {
+    const asksYou = review({
+      reviews: [
+        {
+          author: 'octo-user',
+          state: '',
+          url: '',
+          requested: true,
+          team: false,
+          mine: true,
+          bot: false,
+          submittedAt: '',
+          outdated: false,
+        },
+      ],
+    })
+    platform.openReview.mockResolvedValue(asksYou)
+    platform.refreshReview.mockResolvedValue(asksYou)
+    const card = item({ id: 1, reviewRequest: 'you' })
+    const finish = deferred<string>()
+    const onRemoveReview = vi
+      .fn<(it: InboxItem) => Promise<string>>()
+      .mockReturnValueOnce(finish.promise)
+      .mockResolvedValueOnce('')
+    renderAt(<Harness item={card} onRemoveReview={onRemoveReview} />)
+
+    const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
+    await userEvent.click(within(reviewers).getByRole('button', { name: 'Remove me as reviewer' }))
+
+    expect(onRemoveReview).toHaveBeenCalledExactlyOnceWith(card)
+    const status = await screen.findByRole('status')
+    expect(
+      within(status).getByRole('heading', { name: 'Remove me as reviewer acme-org/example-repo#7' }),
+    ).toBeInTheDocument()
+    expect(within(status).getByRole('listitem')).toHaveTextContent('Removing you as a reviewer on GitHub…')
+
+    act(() => {
+      finish.resolve('')
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    })
+
+    await choose('Remove me as reviewer')
+    expect(onRemoveReview).toHaveBeenCalledTimes(2)
+    expect(onRemoveReview).toHaveBeenLastCalledWith(card)
+  })
+
+  it('says why it couldn’t take the user off, only while that pull request shows', async () => {
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    const onRemoveReview = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('GitHub refused it.')
+    renderAt(<Harness item={item({ id: 1, reviewRequest: 'you' })} onRemoveReview={onRemoveReview} />)
+
+    await choose('Remove me as reviewer')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t remove you as a reviewer: GitHub refused it.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('2 of 3 in Assigned')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // Back on the pull request it was about, it shows again, until closed.
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('GitHub refused it.')
+    await userEvent.click(within(alert).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('offers no Remove me as reviewer unless GitHub asks the user by name', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        reviews: [
+          {
+            author: 'octo-user',
+            state: '',
+            url: '',
+            requested: true,
+            team: false,
+            mine: true,
+            bot: false,
+            submittedAt: '',
+            outdated: false,
+          },
+        ],
+      }),
+    )
+
+    for (const reviewRequest of ['team', 'none'] as const) {
+      const { unmount } = renderAt(
+        <Harness item={item({ id: 1, reviewRequest })} onRemoveReview={vi.fn<(it: InboxItem) => Promise<string>>()} />,
+      )
+
+      const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
+      expect(within(reviewers).queryByRole('button', { name: 'Remove me as reviewer' })).not.toBeInTheDocument()
+      await userEvent.click(await screen.findByRole('button', { name: 'More review actions' }))
+      expect(screen.queryByRole('menuitem', { name: 'Remove me as reviewer' })).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
   it('says what an action met only of its own pull request, never of the next one stepped to', async () => {
     platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
     platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))

@@ -198,6 +198,13 @@ summary's reviewers offer the edit inline too: a requested person's or team's ro
 the request off, and a reviewer's (not the user's, the author's, or a bot's, which
 `ReviewEntry.mine` and `bot` tell) ↻ to ask them again, each row busy while its edit runs, and with
 no one asked it suggests up to three people to ask in one click, with More… to open the picker.
+The user's own request is never the edit's (Go refuses it, `ErrOwnReviewRequest`, and the picker
+locks their row): while the card says GitHub asks them by name (`reviewRequest` `you`),
+`ReviewSheet`'s `removeMe` puts × on their row and Remove me as reviewer at the action menu's foot
+(`ActionButton`'s `extra`), with or without the right to edit the others. It runs the inbox's own
+edit through the host, as the issue sheet's Unassign me does: `InboxView`'s `removeReviewHere`
+calls `useItemActions`' `removeReviewOn`, the card menu's path, and closes the sheet once GitHub
+took the user off, the toast saying so; a refusal stays in the sheet as an alert.
 After an edit that GitHub made any of, `ReviewSheet` builds the sheet again through `useReview`'s
 rebuild, which asks GitHub nothing, since the inbox rewrote the card from GitHub's answer, and reads
 the candidates again from the directory, which now ranks the people the user picked.

@@ -79,6 +79,9 @@ export interface ItemActions {
   // unassignOn takes the user off the item on GitHub and says so once GitHub made it; it
   // resolves with why it couldn't, or ''.
   unassignOn: (item: InboxItem) => Promise<string>
+  // removeReviewOn takes the user off the pull request's requested reviewers on GitHub and
+  // says so once GitHub made it, marking it read; it resolves with why it couldn't, or ''.
+  removeReviewOn: (item: InboxItem) => Promise<string>
   // seen marks read the items a sheet showed, as it opens on one, steps away from one, or
   // closes. The user asked for none of it, so a failure goes to the console, the items
   // back as they were.
@@ -286,6 +289,28 @@ export function useItemActions({
     return ''
   }
 
+  // removeReviewOn takes the user off the pull request's requested reviewers on GitHub, from
+  // its card's menu or its sheet, and says so once GitHub made it: a pull request that still
+  // asks a team stays in Review requested, and the toast says which. The removal is the
+  // user's own activity, so the item is marked read. It resolves with why it couldn't, or ''.
+  const removeReviewOn = async (item: InboxItem): Promise<string> => {
+    const result = await removeReviewRequest(item.id)
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    const after = findItem(result.data, item.id)
+
+    mark(item, false)
+    showToast({
+      text: 'Removed you as a reviewer on GitHub',
+      detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
+    })
+
+    return ''
+  }
+
   // nudging is the Nudge dialog the rows open. The comment it posts is the user's own
   // activity, so the item is marked read once GitHub posted it.
   const nudging = useNudge({
@@ -326,21 +351,11 @@ export function useItemActions({
       mark(item, false)
     },
     onRemoveReview: async (item) => {
-      const result = await removeReviewRequest(item.id)
+      const error = await removeReviewOn(item)
 
-      if (!result.ok) {
-        failed('remove you as a reviewer of', item, result.error)
-
-        return
+      if (error !== '') {
+        failed('remove you as a reviewer of', item, error)
       }
-
-      const after = findItem(result.data, item.id)
-
-      mark(item, false)
-      showToast({
-        text: 'Removed you as a reviewer on GitHub',
-        detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
-      })
     },
     onNudge: nudging.onNudge,
     onOpen,
@@ -376,6 +391,7 @@ export function useItemActions({
     restoreIt,
     changeRule,
     unassignOn,
+    removeReviewOn,
     seen,
     ended,
     nudgeDialog: nudging.dialog,
