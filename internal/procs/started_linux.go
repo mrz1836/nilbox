@@ -59,13 +59,13 @@ func startedAtIn(root string, pid int) time.Time {
 // second field, is in parentheses and may hold spaces and parentheses itself, so the
 // fields are counted from the last closing parenthesis.
 func startTicks(stat string) (int64, bool) {
-	end := strings.LastIndexByte(stat, ')')
-	if end < 0 {
+	_, rest, ok := strings.CutLast(stat, ")")
+	if !ok {
 		return 0, false
 	}
 
 	// The fields after the name start at the third.
-	fields := strings.Fields(stat[end+1:])
+	fields := strings.Fields(rest)
 
 	const first = 3
 	if len(fields) < startTimeField-first+1 {
