@@ -4,7 +4,8 @@
 
 Each list has four tabs: the list itself with its count (**Review requested 14**), then
 **Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. In a narrow
-window those three show only their icons and counts, with their names on hover. Snoozing or
+window those three show only their icons and counts, with their names on hover. The list's
+[sort](inbox-cards.md#sorting-a-list) applies on each of them too. Snoozing or
 dismissing an item moves it out of its list's own tab, so the lists only show what still needs
 you. A list with nothing in any of its four tabs hides until something arrives, and comes back
 on its own tab.

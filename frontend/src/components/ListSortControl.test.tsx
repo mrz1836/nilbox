@@ -22,6 +22,7 @@ function Stored(props: Partial<ListSortControlProps> & { onStored?: (order: read
   return (
     <ListSortControl
       title="Assigned"
+      tab="inbox"
       sort="status"
       onSortChange={vi.fn()}
       statuses={statuses}
@@ -80,7 +81,35 @@ describe('ListSortControl', () => {
     expect(screen.getByRole('button', { name: 'Status order' })).toBeInTheDocument()
   })
 
-  it('offers Status only while the list has statuses, or is sorted by status', () => {
+  it('words Recent and the name sorts for the tab’s own order', () => {
+    const { rerender } = render(<Stored sort="recent" />)
+    expect(screen.getByRole('radio', { name: 'Recent' }).closest('label')).toHaveAttribute(
+      'title',
+      'Newest activity first',
+    )
+    expect(screen.getByRole('radio', { name: 'Repo' }).closest('label')).toHaveAttribute(
+      'title',
+      'By repository, A–Z, newest activity first in each',
+    )
+
+    rerender(<Stored sort="recent" tab="snoozed" />)
+    expect(screen.getByRole('radio', { name: 'Recent' }).closest('label')).toHaveAttribute(
+      'title',
+      'Soonest back first',
+    )
+    expect(screen.getByRole('radio', { name: 'Author' }).closest('label')).toHaveAttribute(
+      'title',
+      'By author, A–Z, soonest back first in each',
+    )
+
+    rerender(<Stored sort="recent" tab="dismissed" />)
+    expect(screen.getByRole('radio', { name: 'Recent' }).closest('label')).toHaveAttribute(
+      'title',
+      'Most recently dismissed first',
+    )
+  })
+
+  it('offers Status only while the tab has statuses, or the list is sorted by status', () => {
     const { rerender } = render(<Stored sort="recent" statuses={[]} />)
     expect(sorts()).toEqual(['Recent', 'Repo', 'Author'])
 

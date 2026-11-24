@@ -39,15 +39,41 @@ describe('shownItems', () => {
     expect(ids(shownItems(list, 'muted', undefined, newestFirst))).toEqual([92])
   })
 
-  it('orders the list’s own tab by project status, in the user’s order, and no other tab', () => {
+  it('orders the list’s own tab by project status, in the user’s order', () => {
     expect(ids(shownItems(list, 'inbox', undefined, byStatus))).toEqual([3, 4, 1, 2])
     const stored = ['Done', 'In progress', 'Backlog']
 
     expect(ids(shownItems(list, 'inbox', undefined, { sort: 'status', stored, kind: 'all' }))).toEqual([1, 3, 4, 2])
-    expect(ids(shownItems(list, 'snoozed', undefined, byStatus))).toEqual([90])
   })
 
-  it('orders the list’s own tab by repository or author, A–Z, pinned first and newest first in each', () => {
+  it('sorts the other tabs too, Recent keeping each one’s own order', () => {
+    const tabs = triaged([])
+    tabs.snoozed = [
+      item({ id: 10, repo: 'acme-org/web', author: 'zoe' }),
+      issue(11, 'Done'),
+      item({ id: 12, repo: 'acme-org/api', author: 'ana' }),
+    ]
+    tabs.dismissed = [issue(20, 'Done'), issue(21), issue(22, 'In progress')]
+    tabs.muted = [item({ id: 30, author: 'zoe' }), item({ id: 31, author: 'ana' })]
+
+    expect(ids(shownItems(tabs, 'snoozed', undefined, newestFirst)), 'soonest back first').toEqual([10, 11, 12])
+    expect(ids(shownItems(tabs, 'snoozed', undefined, { ...newestFirst, sort: 'repo' }))).toEqual([12, 11, 10])
+    expect(ids(shownItems(tabs, 'muted', undefined, { ...newestFirst, sort: 'author' }))).toEqual([31, 30])
+    expect(ids(shownItems(tabs, 'dismissed', undefined, byStatus)), 'ranked by the tab’s own statuses').toEqual([
+      22, 20, 21,
+    ])
+  })
+
+  it('narrows only the list’s own tab to its kind, whatever the sort', () => {
+    const tabs = triaged([item({ id: 1, kind: 'pr', repo: 'acme-org/web' }), issue(2)])
+    tabs.muted = [item({ id: 30, kind: 'pr', repo: 'acme-org/web' }), issue(31)]
+    const repoIssues = { sort: 'repo' as const, stored: [], kind: 'issue' as const }
+
+    expect(ids(shownItems(tabs, 'inbox', undefined, repoIssues))).toEqual([2])
+    expect(ids(shownItems(tabs, 'muted', undefined, repoIssues))).toEqual([31, 30])
+  })
+
+  it('orders a tab by repository or author, A–Z, pinned first and newest first in each', () => {
     const card = (id: number, repo: string, author: string, pinnedAt = '') =>
       item({ id, number: id, repo, author, pinnedAt })
     const named = triaged([
@@ -60,7 +86,6 @@ describe('shownItems', () => {
 
     expect(ids(shownItems(named, 'inbox', undefined, { ...newestFirst, sort: 'repo' }))).toEqual([4, 2, 5, 1, 3])
     expect(ids(shownItems(named, 'inbox', undefined, { ...newestFirst, sort: 'author' }))).toEqual([4, 2, 3, 5, 1])
-    expect(ids(shownItems(named, 'snoozed', undefined, { ...newestFirst, sort: 'repo' }))).toEqual([90])
   })
 
   it('shows only the kind the list shows on its own tab, sorted as it is, and every item on the others', () => {
@@ -104,11 +129,11 @@ describe('shownOrder', () => {
 })
 
 describe('statusRanking', () => {
-  it('ranks the whole list’s statuses, the user’s order first', () => {
-    const list = triaged([issue(1, 'Done'), issue(2, 'In progress')])
+  it('ranks the tab’s statuses, the user’s order first', () => {
+    const items = [issue(1, 'Done'), issue(2, 'In progress')]
 
-    expect(statusRanking(list, [])).toEqual(['In progress', 'Done'])
-    expect(statusRanking(list, ['Done', 'In progress'])).toEqual(['Done', 'In progress'])
+    expect(statusRanking(items, [])).toEqual(['In progress', 'Done'])
+    expect(statusRanking(items, ['Done', 'In progress'])).toEqual(['Done', 'In progress'])
   })
 })
 
@@ -169,7 +194,7 @@ describe('sheetCards', () => {
     expect(ids(sheetCards(list, 'inbox', undefined, newestFirst, 2))).toEqual([1, 2, 3])
   })
 
-  it('steps through the cards in the repository order the list shows', () => {
+  it('steps through the cards in the repository order the tab shows, on any tab', () => {
     const list = triaged([
       item({ id: 1, repo: 'acme-org/web' }),
       item({ id: 2, repo: 'acme-org/api' }),
@@ -177,6 +202,9 @@ describe('sheetCards', () => {
     ])
 
     expect(ids(sheetCards(list, 'inbox', undefined, { ...newestFirst, sort: 'repo' }, 1))).toEqual([2, 1, 3])
+
+    list.dismissed = [item({ id: 4, repo: 'acme-org/web' }), item({ id: 5, repo: 'acme-org/api' })]
+    expect(ids(sheetCards(list, 'dismissed', undefined, { ...newestFirst, sort: 'repo' }, 4))).toEqual([5, 4])
   })
 
   it('keeps a card of the kind the list leaves out in its place among the cards of either kind', () => {

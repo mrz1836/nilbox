@@ -1,18 +1,33 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
 import { moveStatus, statusKey, type Status } from '../lib/statusOrder'
+import type { TriageTab } from '../lib/triage'
 import { usePopover } from '../lib/usePopover'
 import type { ListSort } from '../platform'
 import { iconButtonClass, quietButtonClass, Segmented, type SegmentOption } from './controls'
 import { ChevronDownIcon, SortIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 
-// sortOptions are the sorts every list offers, in the order the control shows them.
-const sortOptions: readonly SegmentOption<ListSort>[] = [
-  { value: 'recent', label: 'Recent', title: 'Newest activity first' },
-  { value: 'repo', label: 'Repo', title: 'By repository, A–Z, newest first in each' },
-  { value: 'author', label: 'Author', title: 'By author, A–Z, newest first in each' },
-]
+// tabOrders are each tab's own order, which Recent keeps, and which the cards of one
+// repository or author keep among themselves.
+const tabOrders: Readonly<Record<TriageTab, string>> = {
+  inbox: 'newest activity first',
+  snoozed: 'soonest back first',
+  dismissed: 'most recently dismissed first',
+  muted: 'newest activity first',
+}
+
+// sortOptions are the sorts every tab offers, in the order the control shows them, worded
+// for tab.
+function sortOptions(tab: TriageTab): SegmentOption<ListSort>[] {
+  const own = tabOrders[tab]
+
+  return [
+    { value: 'recent', label: 'Recent', title: own.charAt(0).toUpperCase() + own.slice(1) },
+    { value: 'repo', label: 'Repo', title: `By repository, A–Z, ${own} in each` },
+    { value: 'author', label: 'Author', title: `By author, A–Z, ${own} in each` },
+  ]
+}
 
 // statusOption is the sort a list offers while it has project statuses to sort by.
 const statusOption: SegmentOption<ListSort> = {
@@ -29,13 +44,15 @@ const moveClass =
   'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
 export interface ListSortControlProps {
-  // title is the list's, which names the controls.
+  // title is the list's, which names the controls, and tab the tab the list shows, whose
+  // own order Recent is.
   title: string
+  tab: TriageTab
   // sort is how the list is sorted.
   sort: ListSort
   onSortChange: (sort: ListSort) => void
-  // statuses are the statuses found in the list, with their colors. Status is offered
-  // only while there are some, or while the list is already sorted by status.
+  // statuses are the statuses found in the tab, with their colors. Status is offered only
+  // while there are some, or while the list is already sorted by status.
   statuses: readonly Status[]
   // order is the whole order the list sorts by (see statusOrder), and customized
   // reports whether the user has placed any status in it.
@@ -52,13 +69,14 @@ interface Move {
   seq: number
 }
 
-// ListSortControl is a list's choice of sort: newest activity first, by repository or
-// author A to Z, or, while the list has project statuses, by status. While sorted by
-// status, a button beside it opens the status order: the statuses found in the list, top
-// ranked first, each moved up or down with its arrows. A move is stored at once, and Reset
-// puts every status back where its name places it.
+// ListSortControl is a list's choice of sort, which applies to every tab: the tab's own
+// order (Recent), by repository or author A to Z, or, while the tab has project statuses,
+// by status. While sorted by status, a button beside it opens the status order: the
+// statuses found in the tab, top ranked first, each moved up or down with its arrows. A
+// move is stored at once, and Reset puts every status back where its name places it.
 export function ListSortControl({
   title,
+  tab,
   sort,
   onSortChange,
   statuses,
@@ -67,7 +85,7 @@ export function ListSortControl({
   onOrderChange,
 }: ListSortControlProps) {
   const byStatus = sort === 'status'
-  const options = statuses.length > 0 || byStatus ? [...sortOptions, statusOption] : sortOptions
+  const options = statuses.length > 0 || byStatus ? [...sortOptions(tab), statusOption] : sortOptions(tab)
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, triggerRef, panelRef } = popover

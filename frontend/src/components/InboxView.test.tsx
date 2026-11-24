@@ -1947,29 +1947,21 @@ describe('InboxView’s list sort', () => {
     expect(titles(shown)).toEqual(['Deferred work', 'Work under way', 'Ready work', 'Work with no project'])
   })
 
-  it('offers no sort for a list with one item, and no Status for one without project statuses', async () => {
+  it('offers the sort whatever a list holds, and no Status without project statuses', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ yours: list([item({ id: 2, kind: 'issue', details: details() })]) }),
     )
-    const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
-
-    const one = await section('Yours')
-    expect(one.queryByRole('radiogroup', { name: 'Sort Yours by' })).not.toBeInTheDocument()
-    unmount()
-
-    platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({
-        yours: list([
-          item({ id: 2, kind: 'issue', details: details() }),
-          item({ id: 3, number: 3, kind: 'issue', details: details() }),
-        ]),
-      }),
-    )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const two = await section('Yours')
-    expect(two.getByRole('radiogroup', { name: 'Sort Yours by' })).toBeInTheDocument()
-    expect(two.queryByRole('radio', { name: 'Status' })).not.toBeInTheDocument()
+    const one = await section('Yours')
+    expect(one.getByRole('radiogroup', { name: 'Sort Yours by' })).toBeInTheDocument()
+    expect(one.queryByRole('radio', { name: 'Status' })).not.toBeInTheDocument()
+
+    await userEvent.click(one.getByRole('button', { name: 'Collapse Yours' }))
+    expect(
+      one.queryByRole('radiogroup', { name: 'Sort Yours by' }),
+      'a collapsed list has none',
+    ).not.toBeInTheDocument()
   })
 
   it('shows the Snoozed, Dismissed, and Muted tabs as icons where the header is narrow', async () => {
@@ -1986,15 +1978,35 @@ describe('InboxView’s list sort', () => {
     )
   })
 
-  it('keeps the sort while a list sorted other than newest first holds one item, to turn it back', async () => {
+  it('sorts the Muted tab too, with the list’s one choice', async () => {
+    const muted = (id: number, title: string, author: string) =>
+      item({ id, number: id, title, author, repo: 'acme-org/muted-repo', repoRule: 'muted' })
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ yours: list([item({ id: 2, kind: 'issue', details: details() })]) }),
+      snapshot({
+        reviewRequested: list([
+          item({ id: 1, title: 'Not muted' }),
+          muted(2, 'Muted by Zoe', 'zoe'),
+          muted(3, 'Muted by Ana', 'ana'),
+          muted(4, 'Muted by Bo', 'bo'),
+        ]),
+      }),
     )
-    platform.getInboxOrder.mockResolvedValue({ sorts: { yours: 'author' }, statusOrder: [], kinds: {} })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Yours')
-    expect(shown.getByRole('radio', { name: 'Author' })).toBeChecked()
+    const shown = await section('Review requested')
+    await userEvent.click(shown.getByRole('tab', { name: /^Muted/ }))
+    expect(titles(shown)).toEqual(['Muted by Zoe', 'Muted by Ana', 'Muted by Bo'])
+    expect(shown.getByRole('radio', { name: 'Recent' }).closest('label')).toHaveAttribute(
+      'title',
+      'Newest activity first',
+    )
+
+    await userEvent.click(shown.getByRole('radio', { name: 'Author' }))
+    expect(titles(shown)).toEqual(['Muted by Ana', 'Muted by Bo', 'Muted by Zoe'])
+    expect(platform.setListSort).toHaveBeenLastCalledWith('reviewRequested', 'author')
+
+    await userEvent.click(shown.getByRole('tab', { name: /^Review requested/ }))
+    expect(shown.getByRole('radio', { name: 'Author' }), 'one choice for every tab').toBeChecked()
   })
 })
 

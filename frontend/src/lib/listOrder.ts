@@ -6,10 +6,10 @@ import { sortByAuthor, sortByRepo } from './nameOrder'
 import { sortByStatus, statusesOf, statusOrder } from './statusOrder'
 import type { TriagedList, TriageTab } from './triage'
 
-// ShownOrder is how a list orders its own tab, by newest activity, by project status in
-// the user's order of status names (see statusOrder), or by repository or author A to Z
-// (see nameOrder), and which kind of item it shows there: every one, or only its pull
-// requests or its issues.
+// ShownOrder is how a list orders each of its tabs, in each tab's own order (Recent), by
+// project status in the user's order of status names (see statusOrder), or by repository
+// or author A to Z (see nameOrder), and which kind of item it shows on its own tab: every
+// one, or only its pull requests or its issues.
 export interface ShownOrder {
   sort: ListSort
   stored: readonly string[]
@@ -31,20 +31,21 @@ export function ofKind(items: readonly InboxItem[], kind: ListKind): readonly In
   return kind === 'all' ? items : items.filter((i) => i.kind === kind)
 }
 
-// statusRanking is the order a list's own tab sorts its statuses in: the user's stored
-// order, with each status of the list's items they haven't placed placed by its name.
-// The statuses are the whole list's, matched by a filter or not.
-export function statusRanking(list: TriagedList, stored: readonly string[]): string[] {
+// statusRanking is the order a list's tab sorts its statuses in: the user's stored order,
+// with each status of the tab's items, all of them, they haven't placed placed by its
+// name. The items are the whole tab's, matched by a filter or not.
+export function statusRanking(items: readonly InboxItem[], stored: readonly string[]): string[] {
   return statusOrder(
     stored,
-    statusesOf(list.inbox).map((s) => s.name),
+    statusesOf(items).map((s) => s.name),
   )
 }
 
 // shownItems is a list tab's items as its section shows them: the filter's matches while
-// one is on, and on the list's own tab only the kind it shows (ofKind), in its sort: by
-// project status (statusRanking), repository, or author, or newest activity first as the
-// list comes.
+// one is on, on the list's own tab only the kind it shows (ofKind), and on every tab in
+// the list's sort: by project status (statusRanking), repository, or author, or the tab's
+// own order as triage gives it (Recent): the list's newest activity first, Snoozed's
+// soonest back, Dismissed's most recently dismissed.
 export function shownItems(
   list: TriagedList,
   tab: TriageTab,
@@ -52,16 +53,11 @@ export function shownItems(
   order: ShownOrder,
 ): readonly InboxItem[] {
   const shown = matched ?? list
-
-  if (tab !== 'inbox') {
-    return shown[tab]
-  }
-
-  const items = ofKind(shown.inbox, order.kind)
+  const items = tab === 'inbox' ? ofKind(shown.inbox, order.kind) : shown[tab]
 
   switch (order.sort) {
     case 'status':
-      return sortByStatus(items, statusRanking(list, order.stored))
+      return sortByStatus(items, statusRanking(list[tab], order.stored))
     case 'repo':
       return sortByRepo(items)
     case 'author':

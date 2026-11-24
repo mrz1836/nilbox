@@ -352,13 +352,15 @@ Status field was renamed or deleted shows its name alone. Pull requests show no 
 
 ### Sorting a list
 
-Every list with more than one item has a **Recent | Repo | Author** toggle at the right of its
-header, plus **Status** while its issues are in projects (**Yours** in practice). **Recent** is the
-usual order: pinned items first, then newest activity. **Repo** and **Author** keep the pinned
-items first, then group the rest by repository (`owner/name`) or by author, A–Z and ignoring case;
-items in one group stay newest first. There are no group headers: the cards are only reordered, and
-the sheets step through them in the same order. Each list keeps its own choice, so Review requested
-can sort by repository while Yours sorts by status.
+Every open list has a **Recent | Repo | Author** toggle at the right of its header, on each of its
+tabs and whatever they hold, plus **Status** while the tab's issues are in projects (**Yours** in
+practice). **Recent** is the tab's own order: on the list's own tab, pinned items first, then newest
+activity; on **Snoozed**, soonest back first; on **Dismissed**, most recently dismissed first; and on
+**Muted**, the list's order. **Repo** and **Author** keep the pinned items first, then group the
+rest by repository (`owner/name`) or by author, A–Z and ignoring case; items in one group keep the
+tab's own order. There are no group headers: the cards are only reordered, and the sheets step
+through them in the same order. Each list keeps one choice for all its tabs, so Review requested
+can sort by repository, its Muted tab included, while Yours sorts by status.
 
 **Status** keeps the pinned items first, then lists the issues by their project status, an issue in
 several projects by its best one; issues of one status stay newest first, and issues without a

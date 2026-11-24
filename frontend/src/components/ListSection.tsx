@@ -127,11 +127,11 @@ export interface ListSectionProps {
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed, what was
 // dismissed, and what is in a muted repository or org, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
-// rendered at all. A list with more than one item on its own tab can sort it by newest
-// activity, repository, or author, and by project status while its items are in GitHub
-// projects (ListSortControl), left of the toggle, and a list that holds both pull requests
-// and issues can show only one kind on its own tab, left of that, its count then reading
-// "N of M". Where the header is too narrow for all of it, the Snoozed, Dismissed, and Muted
+// rendered at all. An open list can sort whichever tab it shows by that tab's own order,
+// repository, or author, and by project status while the tab's items are in GitHub
+// projects (ListSortControl), left of the toggle; its one sort applies to every tab. A
+// list that holds both pull requests and issues can show only one kind on its own tab,
+// left of that, its count then reading "N of M". Where the header is too narrow for all of it, the Snoozed, Dismissed, and Muted
 // tabs show only their icons and counts (compactLabel).
 //
 // A list with nothing in any of its tabs is hidden but stays mounted, and comes back on its
@@ -168,10 +168,10 @@ export function ListSection({
   const sectionRef = useRef<HTMLElement>(null)
   const rows = use(AutopilotRowsContext)
   const [tab, setTab] = useState<TriageTab>('inbox')
-  // The list's own tab can sort by project status; the statuses are those of its items,
-  // and the order the user's, with each status they haven't placed placed by its name.
-  const statuses = statusesOf(triaged.inbox)
-  const ranked = statusRanking(triaged, order.stored)
+  // A tab can sort by project status; the statuses are those of its items, and the order
+  // the user's, with each status they haven't placed placed by its name.
+  const statuses = statusesOf(triaged[tab])
+  const ranked = statusRanking(triaged[tab], order.stored)
   const shown = matched ?? triaged
   // The sheets step through the cards in this same order (shownItems).
   const items = shownItems(triaged, tab, matched, order)
@@ -180,9 +180,9 @@ export function ListSection({
   const empty = isEmptyList(triaged)
   // elsewhere are the other tabs that hold matches, for a tab that holds none.
   const elsewhere = filtering ? triageTabs.filter((t) => t !== tab && matched[t].length > 0) : []
-  // The sort shows on the list's own tab while it has more than one item to order, or is
-  // sorted other than newest first, so it can always be turned back.
-  const sortable = tab === 'inbox' && !collapsed && (triaged.inbox.length > 1 || order.sort !== 'recent')
+  // The sort shows on every tab of an open list, whatever it holds, so it never comes and
+  // goes as items do.
+  const sortable = !collapsed
   // The kind shows on the list's own tab while it holds both kinds, or shows only one, so
   // it can always be turned back; narrowed says it shows only one.
   const narrowed = order.kind !== 'all'
@@ -325,6 +325,7 @@ export function ListSection({
         {sortable && (
           <ListSortControl
             title={title}
+            tab={tab}
             sort={order.sort}
             onSortChange={order.onSortChange}
             statuses={statuses}
