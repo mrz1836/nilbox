@@ -814,6 +814,7 @@ export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
 export type ListKind = settings.ListKind
+export type ListSort = settings.ListSort
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
@@ -1112,7 +1113,7 @@ export const {
   SetNotificationsTab: setNotificationsTab,
   SetConversationOrder: setConversationOrder,
   InboxOrder: getInboxOrder,
-  SetStatusSort: setStatusSort,
+  SetListSort: setListSort,
   SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
   SetHiddenLabels: setHiddenLabels,

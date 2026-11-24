@@ -84,7 +84,7 @@ func TestAdoptSectionsCarriesTheAssignedListOverToYours(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []ListKey{ListYours}, got.CollapsedSections, "Yours takes Assigned's")
 	assert.Equal(t, map[ListKey]ListKind{ListYours: ListKindPRs}, got.InboxOrder.Kinds, "Authored's is dropped")
-	assert.Equal(t, []ListKey{ListReviewRequested}, got.InboxOrder.StatusSorted,
+	assert.Equal(t, map[ListKey]ListSort{ListReviewRequested: ListSortStatus}, got.InboxOrder.Sorts,
 		"Yours keeps a value of its own, and Review requested is untouched")
 
 	stored, err := prefs.New(db, nil).GetMany(ctx,

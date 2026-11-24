@@ -3,23 +3,25 @@ import { useState } from 'react'
 import {
   getInboxOrder,
   setListKind,
+  setListSort,
   setStatusOrder,
-  setStatusSort,
   type InboxOrder,
   type ListKey,
   type ListKind,
+  type ListSort,
 } from '../platform'
 import { logFailure, serial } from './call'
 import { useQuery } from './useQuery'
 
 // InboxOrderState is how the inbox orders its lists, as the user last left it.
 export interface InboxOrderState {
-  // order is which lists are sorted by project status, the user's order of the statuses,
-  // and which lists show only one kind of item. It is null until the stored order loads, so a list never shows in one
-  // order and then jumps to another.
+  // order is how each list is sorted, the user's order of the project statuses, and which
+  // lists show only one kind of item. It is null until the stored order loads, so a list
+  // never shows in one order and then jumps to another.
   order: InboxOrder | null
-  // setStatusSort sorts a list by project status, or by newest activity again.
-  setStatusSort: (list: ListKey, on: boolean) => void
+  // setListSort sorts a list by project status, repository, or author, or by newest
+  // activity again.
+  setListSort: (list: ListKey, sort: ListSort) => void
   // setListKind shows only a list's pull requests, or only its issues, or every item again.
   setListKind: (list: ListKey, kind: ListKind) => void
   // setStatusOrder stores the user's order of status names, first ranked highest; an
@@ -29,7 +31,7 @@ export interface InboxOrderState {
 
 // newestFirst is every list by newest activity, as a stored order that cannot be read
 // shows.
-const newestFirst: InboxOrder = { statusSorted: [], statusOrder: [], kinds: {} }
+const newestFirst: InboxOrder = { sorts: {}, statusOrder: [], kinds: {} }
 
 // useInboxOrder loads how the inbox orders its lists once, and stores each change. A
 // change shows at once and is stored in the order it was made; one that cannot be stored
@@ -47,15 +49,15 @@ export function useInboxOrder(): InboxOrderState {
 
   return {
     order: loaded ? (stored.data ?? newestFirst) : null,
-    setStatusSort: (list, on) => {
+    setListSort: (list, sort) => {
       change(
-        (was) => ({
-          ...was,
-          statusSorted: on
-            ? [...was.statusSorted.filter((l) => l !== list), list]
-            : was.statusSorted.filter((l) => l !== list),
-        }),
-        () => setStatusSort(list, on),
+        (was) => {
+          // Every other list keeps its sort; this one is left out for newest activity.
+          const others = Object.entries(was.sorts).filter(([l]) => l !== list)
+
+          return { ...was, sorts: Object.fromEntries(sort === 'recent' ? others : [...others, [list, sort]]) }
+        },
+        () => setListSort(list, sort),
         `how the ${list} list is sorted`,
       )
     },

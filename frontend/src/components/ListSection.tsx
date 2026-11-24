@@ -10,13 +10,13 @@ import { statusesOf } from '../lib/statusOrder'
 import { isEmptyList, tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
-import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
+import type { AgentSession, InboxItem, ItemResolution, ListKind, ListSort, Worktree } from '../platform'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { iconButtonClass, inkLinkClass, quietButtonClass, Segmented } from './controls'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow } from './ItemRow'
-import { StatusSort } from './StatusSort'
+import { ListSortControl } from './ListSortControl'
 import { TabPanel, tabPanelId, Tabs } from './Tabs'
 import type { TriageActions } from './TriageControls'
 
@@ -58,21 +58,29 @@ function emptyText(tab: TriageTab, title: string): string {
   }
 }
 
+// compactLabel hides the words of the Snoozed, Dismissed, and Muted tabs, leaving their
+// icons and counts, while the list's header is too narrow for them beside the kind switch
+// and the sort: Yours, with both, needs about 55rem, and the window's narrowest leaves the
+// header about 47rem at every text size. The tabs keep their names for assistive tech and
+// as their tooltips.
+const compactLabel = '@max-[60rem]:sr-only'
+
 // kindWords name the items a list shows only one kind of, for its empty tab.
 const kindWords: Readonly<Record<Exclude<ListKind, 'all'>, string>> = {
   pr: 'pull requests',
   issue: 'issues',
 }
 
-// ListOrder is how a list orders its own tab, by newest activity or by project status in
-// the user's order, and which kind of item it shows there, and the calls that change them.
+// ListOrder is how a list orders its own tab, by newest activity, by repository or
+// author, or by project status in the user's order, and which kind of item it shows there,
+// and the calls that change them.
 export interface ListOrder {
-  byStatus: boolean
+  sort: ListSort
   // stored is the user's order of status names (see statusOrder).
   stored: readonly string[]
   // kind is every item ('all'), or only the list's pull requests or its issues.
   kind: ListKind
-  onSortChange: (byStatus: boolean) => void
+  onSortChange: (sort: ListSort) => void
   onOrderChange: (order: readonly string[]) => void
   onKindChange: (kind: ListKind) => void
 }
@@ -119,10 +127,12 @@ export interface ListSectionProps {
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed, what was
 // dismissed, and what is in a muted repository or org, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
-// rendered at all. A list whose items are in GitHub projects can sort its own tab by
-// project status (StatusSort), left of the toggle, and a list that holds both pull requests
+// rendered at all. A list with more than one item on its own tab can sort it by newest
+// activity, repository, or author, and by project status while its items are in GitHub
+// projects (ListSortControl), left of the toggle, and a list that holds both pull requests
 // and issues can show only one kind on its own tab, left of that, its count then reading
-// "N of M".
+// "N of M". Where the header is too narrow for all of it, the Snoozed, Dismissed, and Muted
+// tabs show only their icons and counts (compactLabel).
 //
 // A list with nothing in any of its tabs is hidden but stays mounted, and comes back on its
 // own tab once something arrives.
@@ -161,7 +171,6 @@ export function ListSection({
   // The list's own tab can sort by project status; the statuses are those of its items,
   // and the order the user's, with each status they haven't placed placed by its name.
   const statuses = statusesOf(triaged.inbox)
-  const byStatus = order.byStatus
   const ranked = statusRanking(triaged, order.stored)
   const shown = matched ?? triaged
   // The sheets step through the cards in this same order (shownItems).
@@ -171,9 +180,9 @@ export function ListSection({
   const empty = isEmptyList(triaged)
   // elsewhere are the other tabs that hold matches, for a tab that holds none.
   const elsewhere = filtering ? triageTabs.filter((t) => t !== tab && matched[t].length > 0) : []
-  // The sort shows on the list's own tab while it has a status to sort by, or is sorted
-  // by one, so it can always be turned back.
-  const sortable = tab === 'inbox' && !collapsed && (statuses.length > 0 || byStatus)
+  // The sort shows on the list's own tab while it has more than one item to order, or is
+  // sorted other than newest first, so it can always be turned back.
+  const sortable = tab === 'inbox' && !collapsed && (triaged.inbox.length > 1 || order.sort !== 'recent')
   // The kind shows on the list's own tab while it holds both kinds, or shows only one, so
   // it can always be turned back; narrowed says it shows only one.
   const narrowed = order.kind !== 'all'
@@ -261,7 +270,7 @@ export function ListSection({
       hidden={empty || (filtering && triageTabs.every((t) => matched[t].length === 0))}
       className="rounded-lg border border-border bg-surface"
     >
-      <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
+      <div className={`@container flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
         <Tabs
           baseId={id}
           label={title}
@@ -274,6 +283,8 @@ export function ListSection({
               label: 'Snoozed',
               count: hiddenCount(shown.snoozed.length),
               icon: <ClockIcon className="size-3.5" />,
+              labelClassName: compactLabel,
+              title: 'Snoozed',
               filtered: filtering,
             },
             {
@@ -281,6 +292,8 @@ export function ListSection({
               label: 'Dismissed',
               count: hiddenCount(shown.dismissed.length),
               icon: <ArchiveIcon className="size-3.5" />,
+              labelClassName: compactLabel,
+              title: 'Dismissed',
               filtered: filtering,
             },
             {
@@ -288,6 +301,8 @@ export function ListSection({
               label: 'Muted',
               count: hiddenCount(shown.muted.length),
               icon: <MuteIcon className="size-3.5" />,
+              labelClassName: compactLabel,
+              title: 'Muted',
               filtered: filtering,
             },
           ]}
@@ -308,9 +323,9 @@ export function ListSection({
           />
         )}
         {sortable && (
-          <StatusSort
+          <ListSortControl
             title={title}
-            byStatus={byStatus}
+            sort={order.sort}
             onSortChange={order.onSortChange}
             statuses={statuses}
             order={ranked}

@@ -2,12 +2,24 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { moveStatus, statusKey, type Status } from '../lib/statusOrder'
 import { usePopover } from '../lib/usePopover'
-import { iconButtonClass, quietButtonClass, Segmented } from './controls'
+import type { ListSort } from '../platform'
+import { iconButtonClass, quietButtonClass, Segmented, type SegmentOption } from './controls'
 import { ChevronDownIcon, SortIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 
-// Sort is how a list orders its items.
-type Sort = 'recent' | 'status'
+// sortOptions are the sorts every list offers, in the order the control shows them.
+const sortOptions: readonly SegmentOption<ListSort>[] = [
+  { value: 'recent', label: 'Recent', title: 'Newest activity first' },
+  { value: 'repo', label: 'Repo', title: 'By repository, A–Z, newest first in each' },
+  { value: 'author', label: 'Author', title: 'By author, A–Z, newest first in each' },
+]
+
+// statusOption is the sort a list offers while it has project statuses to sort by.
+const statusOption: SegmentOption<ListSort> = {
+  value: 'status',
+  label: 'Status',
+  title: 'By project status, in your status order',
+}
 
 // moveClass is a status's move up and move down buttons: the small icon button's shape,
 // but lit with the page's background on hover, since the row they sit in turns raised
@@ -16,13 +28,14 @@ type Sort = 'recent' | 'status'
 const moveClass =
   'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
-export interface StatusSortProps {
+export interface ListSortControlProps {
   // title is the list's, which names the controls.
   title: string
-  // byStatus reports whether the list is sorted by project status.
-  byStatus: boolean
-  onSortChange: (byStatus: boolean) => void
-  // statuses are the statuses found in the list, with their colors.
+  // sort is how the list is sorted.
+  sort: ListSort
+  onSortChange: (sort: ListSort) => void
+  // statuses are the statuses found in the list, with their colors. Status is offered
+  // only while there are some, or while the list is already sorted by status.
   statuses: readonly Status[]
   // order is the whole order the list sorts by (see statusOrder), and customized
   // reports whether the user has placed any status in it.
@@ -39,19 +52,22 @@ interface Move {
   seq: number
 }
 
-// StatusSort is a list's choice between newest activity first and project status, and,
-// while sorted by status, a button that opens the status order: the statuses found in
-// the list, top ranked first, each moved up or down with its arrows. A move is stored at
-// once, and Reset puts every status back where its name places it.
-export function StatusSort({
+// ListSortControl is a list's choice of sort: newest activity first, by repository or
+// author A to Z, or, while the list has project statuses, by status. While sorted by
+// status, a button beside it opens the status order: the statuses found in the list, top
+// ranked first, each moved up or down with its arrows. A move is stored at once, and Reset
+// puts every status back where its name places it.
+export function ListSortControl({
   title,
-  byStatus,
+  sort,
   onSortChange,
   statuses,
   order,
   customized,
   onOrderChange,
-}: StatusSortProps) {
+}: ListSortControlProps) {
+  const byStatus = sort === 'status'
+  const options = statuses.length > 0 || byStatus ? [...sortOptions, statusOption] : sortOptions
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, triggerRef, panelRef } = popover
@@ -91,17 +107,12 @@ export function StatusSort({
 
   return (
     <div className="relative flex shrink-0 items-center gap-1">
-      <Segmented<Sort>
+      <Segmented<ListSort>
         label={`Sort ${title} by`}
         size="sm"
-        value={byStatus ? 'status' : 'recent'}
-        options={[
-          { value: 'recent', label: 'Recent', title: 'Newest activity first' },
-          { value: 'status', label: 'Status', title: 'By project status, in your status order' },
-        ]}
-        onChange={(sort) => {
-          onSortChange(sort === 'status')
-        }}
+        value={sort}
+        options={options}
+        onChange={onSortChange}
       />
       {byStatus && (
         <button

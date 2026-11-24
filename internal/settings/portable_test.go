@@ -109,7 +109,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
 		func() (Settings, error) { return svc.SetCelebrations(ctx, CelebrationsQuiet) },
 		func() (Settings, error) { return svc.SetToastSeconds(ctx, 20) },
-		func() (Settings, error) { return svc.SetStatusSort(ctx, ListYours, true) },
+		func() (Settings, error) { return svc.SetListSort(ctx, ListYours, ListSortAuthor) },
 		func() (Settings, error) { return svc.SetListKind(ctx, ListReviewRequested, ListKindIssues) },
 		func() (Settings, error) { return svc.SetStatusOrder(ctx, []string{"In progress", "Blocked"}) },
 		func() (Settings, error) { return svc.SetHiddenLabels(ctx, []string{"size/*", "wontfix"}) },
@@ -286,9 +286,72 @@ func TestAnOlderBackupsInboxSortingComesBackOnYours(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, InboxOrder{
-		StatusSorted: []ListKey{ListReviewRequested, ListYours}, StatusOrder: []string{"Ready"},
-		Kinds: map[ListKey]ListKind{ListYours: ListKindPRs},
+		Sorts:       map[ListKey]ListSort{ListReviewRequested: ListSortStatus, ListYours: ListSortStatus},
+		StatusOrder: []string{"Ready"},
+		Kinds:       map[ListKey]ListKind{ListYours: ListKindPRs},
 	}, got.InboxOrder, "Yours takes Assigned's, and Authored's are dropped")
+}
+
+func TestABackupsStatusSortsComeBackAsStatusSorts(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	part := NewBackupPart(svc)
+	require.NoError(t, testutil.ErrOf(svc.SetListSort(t.Context(), ListReviewRequested, ListSortAuthor)))
+
+	// A backup from before a list could be sorted by repository or author.
+	var p Portable
+	require.NoError(t, json.Unmarshal([]byte(`{"inboxOrder": {
+		"statusSorted": ["yours"], "statusOrder": [], "kinds": {}
+	}}`), &p))
+
+	plan, err := part.PlanPortable(t.Context(), p)
+	require.NoError(t, err)
+	assert.Empty(t, plan.Notes, "it isn't skipped")
+	assert.Equal(t, []string{"Inbox sorting"}, changed(plan.Plan))
+
+	applyPlan(t, part, db, plan)
+
+	got, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[ListKey]ListSort{ListYours: ListSortStatus}, got.InboxOrder.Sorts,
+		"Yours is sorted by status, and Review requested, which the file leaves out, is newest first again")
+}
+
+func TestABackupsListSortsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	from, _, _ := newTestService(t)
+	require.NoError(t, testutil.ErrOf(from.SetListSort(t.Context(), ListReviewRequested, ListSortRepo)))
+	require.NoError(t, testutil.ErrOf(from.SetListSort(t.Context(), ListYours, ListSortAuthor)))
+
+	exported, err := NewBackupPart(from).Portable(t.Context())
+	require.NoError(t, err)
+
+	data, err := json.Marshal(exported)
+	require.NoError(t, err)
+
+	var file struct {
+		InboxOrder map[string]json.RawMessage `json:"inboxOrder"`
+	}
+	require.NoError(t, json.Unmarshal(data, &file))
+	assert.JSONEq(t, `{"reviewRequested": "repo", "yours": "author"}`, string(file.InboxOrder["sorts"]))
+	assert.NotContains(t, file.InboxOrder, "statusSorted", "the legacy list is only read")
+
+	var p Portable
+	require.NoError(t, json.Unmarshal(data, &p))
+
+	to, db, _ := newTestService(t)
+	part := NewBackupPart(to)
+
+	plan, err := part.PlanPortable(t.Context(), p)
+	require.NoError(t, err)
+	applyPlan(t, part, db, plan)
+
+	got, err := to.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[ListKey]ListSort{ListReviewRequested: ListSortRepo, ListYours: ListSortAuthor},
+		got.InboxOrder.Sorts)
 }
 
 func TestPlanPortableLeavesWhatTheFileLacks(t *testing.T) {

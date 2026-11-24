@@ -259,8 +259,8 @@ type Settings struct {
 	// last chose.
 	ConversationOrder ConversationOrder `json:"conversationOrder"`
 
-	// InboxOrder is which inbox lists are sorted by project status, and the order of the
-	// statuses.
+	// InboxOrder is how each inbox list is sorted, the order of the project statuses, and
+	// which lists show only one kind of item.
 	InboxOrder InboxOrder `json:"inboxOrder"`
 
 	// HiddenLabels are the patterns of the labels the inbox's cards leave out (see

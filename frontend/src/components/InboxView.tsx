@@ -354,7 +354,7 @@ export function InboxView({
   ignoring = null,
 }: InboxViewProps) {
   const { snapshot, loadError, refreshError, refreshing, progress, caughtUp, refresh } = inbox
-  const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
+  const { order, setListSort, setStatusOrder, setListKind } = inboxOrder
   // chosenOrder is the conversations' order the user chose here, shared by both sheets at
   // once, until the stored setting they remember it in comes back the same.
   const [chosenOrder, setChosenOrder] = useState<ConversationOrder | null>(null)
@@ -1001,8 +1001,8 @@ export function InboxView({
               reveal={key === revealIn ? reveal : null}
               order={{
                 ...shownOrder(order, key),
-                onSortChange: (on) => {
-                  setStatusSort(key, on)
+                onSortChange: (sort) => {
+                  setListSort(key, sort)
                 },
                 onOrderChange: setStatusOrder,
                 onKindChange: (kind) => {

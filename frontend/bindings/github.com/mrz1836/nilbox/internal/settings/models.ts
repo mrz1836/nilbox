@@ -132,16 +132,16 @@ export const ConversationOrder = {
 } as const;
 
 /**
- * InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
- * status, the order of the statuses, and which show only one kind of item. Every field is
- * a plain value.
+ * InboxOrder is how the inbox orders and narrows its lists: how each is sorted, the order
+ * of the project statuses, and which show only one kind of item. Every field is a plain
+ * value.
  */
 export interface InboxOrder {
     /**
-     * StatusSorted lists the inbox lists sorted by project status, in the order the inbox
-     * shows them. Every other list keeps its newest activity first.
+     * Sorts holds each list sorted other than by newest activity first, with its sort. A
+     * list it leaves out keeps its newest activity first.
      */
-    "statusSorted": ListKey[] | null;
+    "sorts": { [_ in ListKey]?: ListSort } | null;
 
     /**
      * StatusOrder is the user's order of project status names, first ranked highest. It
@@ -189,6 +189,25 @@ export const ListKind = {
     ListKindAll: "all",
     ListKindPRs: "pr",
     ListKindIssues: "issue",
+} as const;
+
+/**
+ * ListSort is how an inbox list is sorted: newest activity first, or grouped by project
+ * status, repository, or author, each group newest first.
+ */
+export type ListSort = "recent" | "status" | "repo" | "author";
+
+/**
+ * The values of ListSort, by the names of their Go constants.
+ */
+export const ListSort = {
+    /**
+     * The sorts a list can have.
+     */
+    ListSortRecent: "recent",
+    ListSortStatus: "status",
+    ListSortRepo: "repo",
+    ListSortAuthor: "author",
 } as const;
 
 /**
@@ -542,8 +561,8 @@ export interface Settings {
     "conversationOrder": ConversationOrder;
 
     /**
-     * InboxOrder is which inbox lists are sorted by project status, and the order of the
-     * statuses.
+     * InboxOrder is how each inbox list is sorted, the order of the project statuses, and
+     * which lists show only one kind of item.
      */
     "inboxOrder": InboxOrder;
 

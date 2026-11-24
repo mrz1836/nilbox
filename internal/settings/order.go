@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"maps"
 	"strings"
 	"unicode/utf8"
 
@@ -13,10 +13,40 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
-// keyStatusSortPrefix starts the key that stores whether an inbox list is sorted by
-// project status rather than by newest activity: "ui.statusSort.<list key>", holding
-// "true" or "false". Each list has its own key, as each collapsed section does.
+// keyListSortPrefix starts the key that stores how an inbox list is sorted:
+// "ui.listSort.<list key>", holding a ListSort. Each list has its own key, as each
+// collapsed section does.
+const keyListSortPrefix = "ui.listSort."
+
+// keyStatusSortPrefix starts the key that stored whether an inbox list was sorted by
+// project status, before a list could be sorted any other way: "ui.statusSort.<list key>",
+// holding "true" or "false". It is only read now, for a list that has no
+// "ui.listSort.<list key>" yet, and true reads as ListSortStatus.
 const keyStatusSortPrefix = "ui.statusSort."
+
+// ListSort is how an inbox list is sorted: newest activity first, or grouped by project
+// status, repository, or author, each group newest first.
+type ListSort string
+
+// The sorts a list can have.
+const (
+	ListSortRecent ListSort = "recent"
+	ListSortStatus ListSort = "status"
+	ListSortRepo   ListSort = "repo"
+	ListSortAuthor ListSort = "author"
+)
+
+// ErrInvalidListSort is returned for a sort that is not one a list can have.
+var ErrInvalidListSort = errors.New("unknown sort")
+
+// listSorts is the sorts as a choice: a stored one that can't be read is newest activity
+// first.
+func listSorts() choice[ListSort] {
+	return choice[ListSort]{
+		values:   []ListSort{ListSortRecent, ListSortStatus, ListSortRepo, ListSortAuthor},
+		fallback: ListSortRecent, invalid: ErrInvalidListSort,
+	}
+}
 
 // keyListKindPrefix starts the key that stores which kind of item an inbox list shows on
 // its own tab: "ui.listKind.<list key>", holding a ListKind. Each list has its own key.
@@ -60,13 +90,13 @@ const (
 // that is.
 var ErrInvalidStatusOrder = errors.New("invalid status order")
 
-// InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
-// status, the order of the statuses, and which show only one kind of item. Every field is
-// a plain value.
+// InboxOrder is how the inbox orders and narrows its lists: how each is sorted, the order
+// of the project statuses, and which show only one kind of item. Every field is a plain
+// value.
 type InboxOrder struct {
-	// StatusSorted lists the inbox lists sorted by project status, in the order the inbox
-	// shows them. Every other list keeps its newest activity first.
-	StatusSorted []ListKey `json:"statusSorted"`
+	// Sorts holds each list sorted other than by newest activity first, with its sort. A
+	// list it leaves out keeps its newest activity first.
+	Sorts map[ListKey]ListSort `json:"sorts"`
 
 	// StatusOrder is the user's order of project status names, first ranked highest. It
 	// is empty until the user changes it.
@@ -82,30 +112,51 @@ func listKindKey(list ListKey) string {
 	return keyListKindPrefix + string(list)
 }
 
-// statusSortKey is the preference that stores whether list is sorted by project status.
+// listSortKey is the preference that stores how list is sorted.
+func listSortKey(list ListKey) string {
+	return keyListSortPrefix + string(list)
+}
+
+// statusSortKey is the legacy preference that stored whether list was sorted by project
+// status, read only while list has no listSortKey.
 func statusSortKey(list ListKey) string {
 	return keyStatusSortPrefix + string(list)
 }
 
 // orderKeys returns the preferences the inbox order reads.
 func orderKeys() []string {
-	keys := make([]string, 0, 2*len(listKeys())+1)
+	keys := make([]string, 0, 3*len(listKeys())+1)
 	for _, list := range listKeys() {
-		keys = append(keys, statusSortKey(list), listKindKey(list))
+		keys = append(keys, listSortKey(list), statusSortKey(list), listKindKey(list))
 	}
 
 	return append(keys, KeyStatusOrder)
 }
 
-// decodeInboxOrder reads the inbox order from the stored preferences. A sort that is not
-// a boolean is newest activity first, a kind that can't be read shows every item, and an
+// decodeListSort reads how list is sorted from the stored preferences: its own sort, once
+// one is stored, else status for a legacy status sort that is on, else newest activity
+// first. A sort that can't be read is newest activity first.
+func decodeListSort(stored map[string]string, list ListKey) ListSort {
+	if raw, ok := stored[listSortKey(list)]; ok {
+		return listSorts().decode(raw)
+	}
+
+	if prefval.Bool(stored[statusSortKey(list)], false) {
+		return ListSortStatus
+	}
+
+	return ListSortRecent
+}
+
+// decodeInboxOrder reads the inbox order from the stored preferences. A sort that can't
+// be read is newest activity first, a kind that can't be read shows every item, and an
 // order that can't be read is empty.
 func decodeInboxOrder(stored map[string]string) InboxOrder {
-	out := InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}}
+	out := InboxOrder{Sorts: map[ListKey]ListSort{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}}
 
 	for _, list := range listKeys() {
-		if prefval.Bool(stored[statusSortKey(list)], false) {
-			out.StatusSorted = append(out.StatusSorted, list)
+		if sort := decodeListSort(stored, list); sort != ListSortRecent {
+			out.Sorts[list] = sort
 		}
 
 		if kind := listKinds().decode(stored[listKindKey(list)]); kind != ListKindAll {
@@ -155,14 +206,18 @@ func (s *Service) InboxOrder(ctx context.Context) (InboxOrder, error) {
 	return decodeInboxOrder(stored), nil
 }
 
-// SetStatusSort stores whether an inbox list is sorted by project status, rather than by
-// newest activity, and returns the settings with it.
-func (s *Service) SetStatusSort(ctx context.Context, section ListKey, on bool) (Settings, error) {
+// SetListSort stores how an inbox list is sorted, newest activity first or grouped by
+// project status, repository, or author, and returns the settings with it.
+func (s *Service) SetListSort(ctx context.Context, section ListKey, sort ListSort) (Settings, error) {
 	if err := sections().check(section); err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(statusSortKey(section), prefval.EncodeBool(on)))
+	if err := listSorts().check(sort); err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setting(listSortKey(section), string(sort)))
 }
 
 // SetListKind stores which kind of item an inbox list shows on its own tab, every one or
@@ -215,20 +270,16 @@ func checkStatusOrder(order []string) (map[string]string, error) {
 	return map[string]string{KeyStatusOrder: encoded}, nil
 }
 
-// adoptFormerOrder reads an inbox order an older backup holds, which names the former
-// Authored and Assigned lists, as AdoptSections reads their stored keys: Yours takes the
-// Assigned list's status sort and kind, unless the order gives Yours a kind of its own, and
-// the Authored list's are dropped. An order that names neither comes back as it is.
-func adoptFormerOrder(order InboxOrder) InboxOrder {
+// adoptFormerOrder reads an inbox order a backup holds. An older backup names its status
+// sorts in a list of their own, StatusSorted (see adoptStatusSorted), and one older still
+// names the former Authored and Assigned lists, which it reads as AdoptSections reads their
+// stored keys: Yours takes the Assigned list's status sort and kind, unless the order gives
+// Yours a sort or a kind of its own, and the Authored list's are dropped. Sorts are kept as
+// they are, and an order that names none of these comes back as it is.
+func adoptFormerOrder(order PortableInboxOrder) InboxOrder {
 	out := InboxOrder{
-		StatusSorted: make([]ListKey, 0, len(order.StatusSorted)), StatusOrder: order.StatusOrder,
+		Sorts: adoptStatusSorted(order), StatusOrder: order.StatusOrder,
 		Kinds: make(map[ListKey]ListKind, len(order.Kinds)),
-	}
-
-	for _, list := range order.StatusSorted {
-		if now, ok := currentList(list); ok && !slices.Contains(out.StatusSorted, now) {
-			out.StatusSorted = append(out.StatusSorted, now)
-		}
 	}
 
 	_, ownKind := order.Kinds[ListYours]
@@ -236,6 +287,22 @@ func adoptFormerOrder(order InboxOrder) InboxOrder {
 	for list, kind := range order.Kinds {
 		if now, ok := currentList(list); ok && (list != formerAssigned || !ownKind) {
 			out.Kinds[now] = kind
+		}
+	}
+
+	return out
+}
+
+// adoptStatusSorted returns the order's sorts with each list its StatusSorted names, read
+// through currentList, sorted by status, unless the sorts give that list one of its own.
+func adoptStatusSorted(order PortableInboxOrder) map[ListKey]ListSort {
+	out := make(map[ListKey]ListSort, len(order.Sorts)+len(order.StatusSorted))
+	maps.Copy(out, order.Sorts)
+
+	for _, list := range order.StatusSorted {
+		now, ok := currentList(list)
+		if _, has := out[now]; ok && !has {
+			out[now] = ListSortStatus
 		}
 	}
 
@@ -256,35 +323,43 @@ func currentList(list ListKey) (ListKey, bool) {
 	return list, true
 }
 
-// checkInboxOrder refuses an inbox order that names a list that isn't one, a kind a list
-// can't show, or a status order SetStatusOrder would refuse, and returns the writes of
-// the whole order: every list's sort and kind, and the status order.
+// checkInboxOrder refuses an inbox order that names a list that isn't one, a sort a list
+// can't have, a kind a list can't show, or a status order SetStatusOrder would refuse, and
+// returns the writes of the whole order: every list's sort and kind, and the status order.
 func checkInboxOrder(order InboxOrder) (map[string]string, error) {
 	values, err := checkStatusOrder(order.StatusOrder)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, list := range order.StatusSorted {
-		if err = sections().check(list); err != nil {
-			return nil, err
-		}
+	if err = checkPerList(order.Sorts, listSorts()); err != nil {
+		return nil, err
 	}
 
-	for list, kind := range order.Kinds {
-		if err = sections().check(list); err != nil {
-			return nil, err
-		}
-
-		if err = listKinds().check(kind); err != nil {
-			return nil, err
-		}
+	if err = checkPerList(order.Kinds, listKinds()); err != nil {
+		return nil, err
 	}
 
 	for _, list := range listKeys() {
-		values[statusSortKey(list)] = prefval.EncodeBool(slices.Contains(order.StatusSorted, list))
+		values[listSortKey(list)] = string(cmp.Or(order.Sorts[list], ListSortRecent))
 		values[listKindKey(list)] = string(cmp.Or(order.Kinds[list], ListKindAll))
 	}
 
 	return values, nil
+}
+
+// checkPerList refuses a value per list that names a list that isn't one, or holds a value
+// that isn't one of the choices.
+func checkPerList[T ~string](perList map[ListKey]T, choices choice[T]) error {
+	for list, v := range perList {
+		if err := sections().check(list); err != nil {
+			return err
+		}
+
+		if err := choices.check(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

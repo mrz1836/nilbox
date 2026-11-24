@@ -1342,7 +1342,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     reviewTab: 'files',
     notificationsTab: 'app',
     conversationOrder: 'oldest',
-    inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
+    inboxOrder: { sorts: {}, statusOrder: [], kinds: {} },
     hiddenLabels: ['size/*'],
     defaultHiddenLabels: ['size/*'],
     cardAvatars: true,

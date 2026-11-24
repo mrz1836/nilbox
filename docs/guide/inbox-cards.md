@@ -350,10 +350,16 @@ and click it to open the project on GitHub. A closed project, and an item archiv
 project, are left out, and the first five projects an issue is in are read. A project whose
 Status field was renamed or deleted shows its name alone. Pull requests show no projects.
 
-### Sorting by status
+### Sorting a list
 
-A list whose issues are in projects, **Yours** in practice, has a **Recent | Status** toggle at the
-right of its header. **Recent** is the usual order: pinned items first, then newest activity.
+Every list with more than one item has a **Recent | Repo | Author** toggle at the right of its
+header, plus **Status** while its issues are in projects (**Yours** in practice). **Recent** is the
+usual order: pinned items first, then newest activity. **Repo** and **Author** keep the pinned
+items first, then group the rest by repository (`owner/name`) or by author, A–Z and ignoring case;
+items in one group stay newest first. There are no group headers: the cards are only reordered, and
+the sheets step through them in the same order. Each list keeps its own choice, so Review requested
+can sort by repository while Yours sorts by status.
+
 **Status** keeps the pinned items first, then lists the issues by their project status, an issue in
 several projects by its best one; issues of one status stay newest first, and issues without a
 status come last. Click the arrows icon beside the toggle for **Status order**: the statuses found
@@ -368,9 +374,9 @@ statuses you placed that are not in the list now keep their places.
 ### Showing one kind
 
 A list that holds both pull requests and issues, **Yours** in practice, has an **All | PRs |
-Issues** switch to the left of that toggle. **PRs** or **Issues** shows only that kind on the list's
-own tab, in the same order, and its count then reads *N of M*, so nothing is hidden without saying
-so; the sheets step through the same cards. A kind with nothing left in the list says so, with
+Issues** switch to the left of the sort toggle. **PRs** or **Issues** shows only that kind on the
+list's own tab, in the same order, and its count then reads *N of M*, so nothing is hidden without
+saying so; the sheets step through the same cards. A kind with nothing left in the list says so, with
 **Show all**. Snoozed, Dismissed, and Muted always show both kinds. The choice is kept for each list
 across launches, and a notification that opens a card of the other kind shows the whole list again.
 

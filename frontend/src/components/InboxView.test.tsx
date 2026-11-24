@@ -1832,7 +1832,7 @@ describe('InboxView’s projects tip', () => {
   })
 })
 
-describe('InboxView’s status sort', () => {
+describe('InboxView’s list sort', () => {
   // assigned is an inbox whose Assigned list holds issues in a project, newest first.
   const assigned = () =>
     snapshot({
@@ -1870,16 +1870,73 @@ describe('InboxView’s status sort', () => {
     await userEvent.click(shown.getByRole('radio', { name: 'Status' }))
 
     expect(titles(shown)).toEqual(['Work under way', 'Ready work', 'Deferred work', 'Work with no project'])
-    expect(platform.setStatusSort).toHaveBeenCalledWith('yours', true)
+    expect(platform.setListSort).toHaveBeenCalledWith('yours', 'status')
 
     await userEvent.click(shown.getByRole('radio', { name: 'Recent' }))
     expect(titles(shown)).toEqual(['Deferred work', 'Work with no project', 'Ready work', 'Work under way'])
+    expect(platform.setListSort).toHaveBeenLastCalledWith('yours', 'recent')
+  })
+
+  it('sorts Review requested by repository and by author, pinned first, without Status', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        // Pinned first, then newest first, as the inbox lists them.
+        reviewRequested: list([
+          item({
+            id: 4,
+            number: 4,
+            title: 'Pinned docs by Zed',
+            repo: 'acme-org/zeta',
+            author: 'zed',
+            pinnedAt: '2026-06-15T10:00:00Z',
+          }),
+          item({ id: 1, number: 1, title: 'Web by Zoe', repo: 'acme-org/web', author: 'zoe' }),
+          item({ id: 2, number: 2, title: 'API by Bo', repo: 'acme-org/api', author: 'bo' }),
+          item({ id: 3, number: 3, title: 'Web by Ana', repo: 'acme-org/web', author: 'ana' }),
+        ]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const shown = await section('Review requested')
+    const sort = within(shown.getByRole('radiogroup', { name: 'Sort Review requested by' }))
+    expect(sort.getAllByRole('radio').map((radio) => radio.closest('label')?.textContent)).toEqual([
+      'Recent',
+      'Repo',
+      'Author',
+    ])
+    expect(titles(shown)).toEqual(['Pinned docs by Zed', 'Web by Zoe', 'API by Bo', 'Web by Ana'])
+
+    await userEvent.click(sort.getByRole('radio', { name: 'Repo' }))
+    expect(titles(shown)).toEqual(['Pinned docs by Zed', 'API by Bo', 'Web by Zoe', 'Web by Ana'])
+    expect(platform.setListSort).toHaveBeenCalledWith('reviewRequested', 'repo')
+
+    await userEvent.click(sort.getByRole('radio', { name: 'Author' }))
+    expect(titles(shown)).toEqual(['Pinned docs by Zed', 'Web by Ana', 'API by Bo', 'Web by Zoe'])
+    expect(platform.setListSort).toHaveBeenLastCalledWith('reviewRequested', 'author')
+  })
+
+  it('opens sorted by repository as it was left', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([
+          item({ id: 1, number: 1, title: 'Web change', repo: 'acme-org/web' }),
+          item({ id: 2, number: 2, title: 'API change', repo: 'acme-org/api' }),
+        ]),
+      }),
+    )
+    platform.getInboxOrder.mockResolvedValue({ sorts: { reviewRequested: 'repo' }, statusOrder: [], kinds: {} })
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const shown = await section('Review requested')
+    expect(shown.getByRole('radio', { name: 'Repo' })).toBeChecked()
+    expect(titles(shown)).toEqual(['API change', 'Web change'])
   })
 
   it('opens sorted by status as it was left, in the user’s order', async () => {
     platform.getInboxSnapshot.mockResolvedValue(assigned())
     platform.getInboxOrder.mockResolvedValue({
-      statusSorted: ['yours'],
+      sorts: { yours: 'status' },
       statusOrder: ['Deferred', 'In progress', 'Ready'],
       kinds: {},
     })
@@ -1890,14 +1947,54 @@ describe('InboxView’s status sort', () => {
     expect(titles(shown)).toEqual(['Deferred work', 'Work under way', 'Ready work', 'Work with no project'])
   })
 
-  it('offers no sort for a list without project statuses', async () => {
+  it('offers no sort for a list with one item, and no Status for one without project statuses', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ yours: list([item({ id: 2, kind: 'issue', details: details() })]) }),
     )
+    const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const one = await section('Yours')
+    expect(one.queryByRole('radiogroup', { name: 'Sort Yours by' })).not.toBeInTheDocument()
+    unmount()
+
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        yours: list([
+          item({ id: 2, kind: 'issue', details: details() }),
+          item({ id: 3, number: 3, kind: 'issue', details: details() }),
+        ]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const two = await section('Yours')
+    expect(two.getByRole('radiogroup', { name: 'Sort Yours by' })).toBeInTheDocument()
+    expect(two.queryByRole('radio', { name: 'Status' })).not.toBeInTheDocument()
+  })
+
+  it('shows the Snoozed, Dismissed, and Muted tabs as icons where the header is narrow', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(assigned())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const shown = await section('Yours')
-    expect(shown.queryByRole('radiogroup', { name: 'Sort Yours by' })).not.toBeInTheDocument()
+    for (const name of ['Snoozed', 'Dismissed', 'Muted']) {
+      expect(shown.getByRole('tab', { name })).toHaveAttribute('title', name)
+      expect(within(shown.getByRole('tab', { name })).getByText(name)).toHaveClass('@max-[60rem]:sr-only')
+    }
+    expect(within(shown.getByRole('tab', { name: /^Yours/ })).getByText('Yours')).not.toHaveClass(
+      '@max-[60rem]:sr-only',
+    )
+  })
+
+  it('keeps the sort while a list sorted other than newest first holds one item, to turn it back', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ yours: list([item({ id: 2, kind: 'issue', details: details() })]) }),
+    )
+    platform.getInboxOrder.mockResolvedValue({ sorts: { yours: 'author' }, statusOrder: [], kinds: {} })
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const shown = await section('Yours')
+    expect(shown.getByRole('radio', { name: 'Author' })).toBeChecked()
   })
 })
 
@@ -1942,7 +2039,7 @@ describe('InboxView’s kind switch', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ yours: list([item({ id: 1, kind: 'issue', title: 'An issue', details: details() })]) }),
     )
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { yours: 'pr' } })
+    platform.getInboxOrder.mockResolvedValue({ sorts: {}, statusOrder: [], kinds: { yours: 'pr' } })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const shown = await section('Yours')
@@ -1957,7 +2054,7 @@ describe('InboxView’s kind switch', () => {
 
   it('shows every item again to reveal a card of the kind the list leaves out', async () => {
     platform.getInboxSnapshot.mockResolvedValue(mixed())
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { yours: 'issue' } })
+    platform.getInboxOrder.mockResolvedValue({ sorts: {}, statusOrder: [], kinds: { yours: 'issue' } })
     render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 2, seq: 1 }} />)
 
     const shown = await section('Yours')

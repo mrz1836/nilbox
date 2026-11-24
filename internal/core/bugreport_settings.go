@@ -132,10 +132,17 @@ func cardsLine(s settings.Settings) string {
 		statusOrder = counted(false, len(s.InboxOrder.StatusOrder))
 	}
 
+	sorted := map[settings.ListSort]int{}
+	for _, sort := range s.InboxOrder.Sorts {
+		sorted[sort]++
+	}
+
 	return pageLine("Cards", "density "+string(s.CardDensity), "author pictures "+onOff(s.CardAvatars),
 		"unread dots "+onOff(s.CardUnread),
 		"hidden labels "+counted(sameSet(s.HiddenLabels, s.DefaultHiddenLabels), len(s.HiddenLabels)),
-		fmt.Sprintf("lists sorted by status %d", len(s.InboxOrder.StatusSorted)), "status order "+statusOrder,
+		fmt.Sprintf("lists not newest first %d (status %d, repo %d, author %d)", len(s.InboxOrder.Sorts),
+			sorted[settings.ListSortStatus], sorted[settings.ListSortRepo], sorted[settings.ListSortAuthor]),
+		"status order "+statusOrder,
 		fmt.Sprintf("lists showing one kind %d", len(s.InboxOrder.Kinds)),
 		fmt.Sprintf("collapsed lists %d", len(s.CollapsedSections)))
 }

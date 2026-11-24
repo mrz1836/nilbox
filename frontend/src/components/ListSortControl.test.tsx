@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Status } from '../lib/statusOrder'
-import { StatusSort, type StatusSortProps } from './StatusSort'
+import { ListSortControl, type ListSortControlProps } from './ListSortControl'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -15,14 +15,14 @@ const statuses: Status[] = [
 ]
 
 // Stored keeps the order each change stores, as the inbox does.
-function Stored(props: Partial<StatusSortProps> & { onStored?: (order: readonly string[]) => void }) {
+function Stored(props: Partial<ListSortControlProps> & { onStored?: (order: readonly string[]) => void }) {
   const { onStored, ...rest } = props
   const [order, setOrder] = useState<readonly string[]>(['In progress', 'Gone', 'Ready', 'Deferred'])
 
   return (
-    <StatusSort
+    <ListSortControl
       title="Assigned"
-      byStatus
+      sort="status"
       onSortChange={vi.fn()}
       statuses={statuses}
       order={order}
@@ -43,21 +43,53 @@ function rows() {
     .map((row) => row.textContent)
 }
 
-describe('StatusSort', () => {
-  it('switches between newest activity and project status', async () => {
+// sorts names the sorts the control offers, in its order.
+function sorts() {
+  return within(screen.getByRole('radiogroup', { name: 'Sort Assigned by' }))
+    .getAllByRole('radio')
+    .map((radio) => radio.closest('label')?.textContent)
+}
+
+describe('ListSortControl', () => {
+  it('switches between newest activity, repository, author, and project status', async () => {
     const onSortChange = vi.fn()
-    const { rerender } = render(<Stored byStatus={false} onSortChange={onSortChange} />)
+    const { rerender } = render(<Stored sort="recent" onSortChange={onSortChange} />)
 
     const sort = screen.getByRole('radiogroup', { name: 'Sort Assigned by' })
     expect(within(sort).getByRole('radio', { name: 'Recent' })).toBeChecked()
     expect(screen.queryByRole('button', { name: 'Status order' })).not.toBeInTheDocument()
 
-    await userEvent.click(within(sort).getByRole('radio', { name: 'Status' }))
-    expect(onSortChange).toHaveBeenCalledWith(true)
+    await userEvent.click(within(sort).getByRole('radio', { name: 'Repo' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('repo')
 
-    rerender(<Stored byStatus onSortChange={onSortChange} />)
+    rerender(<Stored sort="repo" onSortChange={onSortChange} />)
+    expect(within(sort).getByRole('radio', { name: 'Repo' })).toBeChecked()
+    expect(
+      screen.queryByRole('button', { name: 'Status order' }),
+      'the order is only for status',
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(within(sort).getByRole('radio', { name: 'Author' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('author')
+
+    await userEvent.click(within(sort).getByRole('radio', { name: 'Status' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('status')
+
+    rerender(<Stored sort="status" onSortChange={onSortChange} />)
     expect(within(sort).getByRole('radio', { name: 'Status' })).toBeChecked()
     expect(screen.getByRole('button', { name: 'Status order' })).toBeInTheDocument()
+  })
+
+  it('offers Status only while the list has statuses, or is sorted by status', () => {
+    const { rerender } = render(<Stored sort="recent" statuses={[]} />)
+    expect(sorts()).toEqual(['Recent', 'Repo', 'Author'])
+
+    rerender(<Stored sort="recent" />)
+    expect(sorts()).toEqual(['Recent', 'Repo', 'Author', 'Status'])
+
+    rerender(<Stored sort="status" statuses={[]} />)
+    expect(sorts(), 'so it can be turned back').toEqual(['Recent', 'Repo', 'Author', 'Status'])
+    expect(screen.getByRole('radio', { name: 'Status' })).toBeChecked()
   })
 
   it('shows the statuses found, in the order, with their colors', async () => {

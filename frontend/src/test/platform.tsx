@@ -518,13 +518,12 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setReviewTab: (reviewTab) => stored({ reviewTab }),
     setNotificationsTab: (notificationsTab) => stored({ notificationsTab }),
     setConversationOrder: (conversationOrder) => stored({ conversationOrder }),
-    getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [], kinds: {} }),
-    setStatusSort: (section, on) =>
-      stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [], kinds: {} } }),
+    getInboxOrder: () => Promise.resolve({ sorts: {}, statusOrder: [], kinds: {} }),
+    setListSort: (section, sort) =>
+      stored({ inboxOrder: { sorts: sort === 'recent' ? {} : { [section]: sort }, statusOrder: [], kinds: {} } }),
     setListKind: (section, kind) =>
-      stored({ inboxOrder: { statusSorted: [], statusOrder: [], kinds: kind === 'all' ? {} : { [section]: kind } } }),
-    setStatusOrder: (statusOrder) =>
-      stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [], kinds: {} } }),
+      stored({ inboxOrder: { sorts: {}, statusOrder: [], kinds: kind === 'all' ? {} : { [section]: kind } } }),
+    setStatusOrder: (statusOrder) => stored({ inboxOrder: { sorts: {}, statusOrder: statusOrder ?? [], kinds: {} } }),
     setHiddenLabels: (hiddenLabels) => stored({ hiddenLabels: hiddenLabels ?? [] }),
     setCardAvatars: (cardAvatars) => stored({ cardAvatars }),
     setCardDensity: (cardDensity) => stored({ cardDensity }),

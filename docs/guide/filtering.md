@@ -53,7 +53,7 @@ Descriptions and comments aren't kept on your Mac, so the filter can't search th
 
 ## The inbox while filtered
 
-Each list keeps its order (pinned items first, then the status sort) and shows only its matches, and
+Each list keeps its order (pinned items first, then its sort) and shows only its matches, and
 its tab says how many, as **5 of 38**, in a dashed pill of its own. Snoozed, Dismissed, and Muted
 count their matches too, and a tab with none points to the one that has some, as **No matches here ·
 2 in Snoozed**. A list with no match anywhere hides and comes back as you left it, and a collapsed

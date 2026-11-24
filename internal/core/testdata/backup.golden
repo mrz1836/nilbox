@@ -87,7 +87,7 @@
     "celebrations": "milestones",
     "toastSeconds": 12,
     "inboxOrder": {
-      "statusSorted": [],
+      "sorts": {},
       "statusOrder": [],
       "kinds": {}
     },

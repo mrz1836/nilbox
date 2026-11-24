@@ -8,6 +8,12 @@ export interface TabItem<T extends string> {
   count?: string
   // icon sits before the label; it is decorative, since the label names the tab.
   icon?: ReactNode
+  // labelClassName adds to the label's own text, such as a container query that hides it
+  // where the row is narrow, leaving the icon: the tab keeps its name for assistive tech,
+  // and title can still show it on hover.
+  labelClassName?: string
+  // title is the tab's tooltip, if any.
+  title?: string
   // strong sets the label in the weight of a heading, for the tab that names the whole set.
   strong?: boolean
   // filtered marks a count of what a filter matches, as in "5 of 38": its badge is drawn
@@ -96,6 +102,7 @@ export function Tabs<T extends string>({
             role="tab"
             id={tabId(baseId, tab.value)}
             aria-label={count === '' ? tab.label : `${tab.label} ${spoken}`}
+            title={tab.title}
             aria-selected={selected}
             aria-controls={tabPanelId(baseId)}
             tabIndex={selected ? 0 : -1}
@@ -106,7 +113,9 @@ export function Tabs<T extends string>({
             className={`-mb-px flex items-center gap-1.5 border-b-2 border-transparent px-2.5 pb-2 text-sm text-muted transition-colors hover:text-text aria-selected:border-accent aria-selected:text-text ${tabClassName}`}
           >
             {tab.icon}
-            <span className={tab.strong === true ? 'font-semibold' : 'font-medium'}>{tab.label}</span>
+            <span className={`${tab.strong === true ? 'font-semibold' : 'font-medium'} ${tab.labelClassName ?? ''}`}>
+              {tab.label}
+            </span>
             {count !== '' && (
               <span
                 data-filtered={filtered || undefined}

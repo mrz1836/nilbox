@@ -100,8 +100,11 @@ func privateSettings() settings.Settings {
 		CollapsedSections: []settings.ListKey{settings.ListYours, settings.ListReviewRequested},
 		ConversationOrder: settings.ConversationNewest,
 		InboxOrder: settings.InboxOrder{
-			StatusSorted: []settings.ListKey{settings.ListYours}, StatusOrder: []string{"Private status"},
-			Kinds: map[settings.ListKey]settings.ListKind{settings.ListReviewRequested: settings.ListKindPRs},
+			Sorts: map[settings.ListKey]settings.ListSort{
+				settings.ListYours: settings.ListSortStatus, settings.ListReviewRequested: settings.ListSortAuthor,
+			},
+			StatusOrder: []string{"Private status"},
+			Kinds:       map[settings.ListKey]settings.ListKind{settings.ListReviewRequested: settings.ListKindPRs},
 		},
 		HiddenLabels:        []string{"size/*", "private-label/*", "wontfix"},
 		DefaultHiddenLabels: settings.DefaultHiddenLabels(),
@@ -236,7 +239,8 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 			"openai off, parts the default (3)",
 		"Snoozing: 3 days · wake on commits 1, reviews decisions, comments 1, ready for review on",
 		"Cards: density compact · author pictures on · unread dots on · hidden labels the user's own (3) · " +
-			"lists sorted by status 1 · status order the user's own (1) · lists showing one kind 1 · collapsed lists 2",
+			"lists not newest first 2 (status 1, repo 0, author 1) · status order the user's own (1) · " +
+			"lists showing one kind 1 · collapsed lists 2",
 		"Reviewing: merge method squash · merge own past the rules on · nudge after 48 h · snooze after a nudge on · " +
 			"ignored workflows 1 · auto-merge bots on (2) · conversation newest first",
 		"Reviewing replies: approve a starter · approve bots none · request changes the user's own · comment none · " +

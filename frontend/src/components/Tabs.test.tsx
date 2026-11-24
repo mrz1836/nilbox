@@ -32,6 +32,26 @@ function Harness() {
 }
 
 describe('Tabs', () => {
+  it('can hide a tab’s words where the row is narrow, keeping its name and a tooltip', () => {
+    render(
+      <Tabs
+        baseId="t"
+        label="Panes"
+        value="one"
+        onChange={() => undefined}
+        tabs={[
+          { value: 'one', label: 'One' },
+          { value: 'two', label: 'Two', count: '4', labelClassName: '@max-[60rem]:sr-only', title: 'Two' },
+        ]}
+      />,
+    )
+
+    const two = screen.getByRole('tab', { name: 'Two 4' })
+    expect(two).toHaveAttribute('title', 'Two')
+    expect(screen.getByText('Two')).toHaveClass('@max-[60rem]:sr-only')
+    expect(screen.getByRole('tab', { name: 'One' })).not.toHaveAttribute('title')
+  })
+
   it('names each tab with its count and labels the panel with the selected tab', async () => {
     render(<Harness />)
 

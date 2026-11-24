@@ -1,15 +1,17 @@
 // The order a list's cards show in, which the sheets step through as the list shows them.
 
-import type { InboxItem, InboxOrder, ListKey, ListKind } from '../platform'
+import type { InboxItem, InboxOrder, ListKey, ListKind, ListSort } from '../platform'
 import type { FilteredList } from './inboxFilter'
+import { sortByAuthor, sortByRepo } from './nameOrder'
 import { sortByStatus, statusesOf, statusOrder } from './statusOrder'
 import type { TriagedList, TriageTab } from './triage'
 
-// ShownOrder is how a list orders its own tab, by newest activity or by project status in
-// the user's order of status names (see statusOrder), and which kind of item it shows
-// there: every one, or only its pull requests or its issues.
+// ShownOrder is how a list orders its own tab, by newest activity, by project status in
+// the user's order of status names (see statusOrder), or by repository or author A to Z
+// (see nameOrder), and which kind of item it shows there: every one, or only its pull
+// requests or its issues.
 export interface ShownOrder {
-  byStatus: boolean
+  sort: ListSort
   stored: readonly string[]
   kind: ListKind
 }
@@ -18,7 +20,7 @@ export interface ShownOrder {
 // newest activity while the stored order loads.
 export function shownOrder(order: InboxOrder | null, key: ListKey): ShownOrder {
   return {
-    byStatus: order?.statusSorted.includes(key) ?? false,
+    sort: order?.sorts[key] ?? 'recent',
     stored: order?.statusOrder ?? [],
     kind: order?.kinds[key] ?? 'all',
   }
@@ -40,8 +42,9 @@ export function statusRanking(list: TriagedList, stored: readonly string[]): str
 }
 
 // shownItems is a list tab's items as its section shows them: the filter's matches while
-// one is on, and on the list's own tab only the kind it shows (ofKind), ordered by project
-// status (statusRanking) while it is sorted so.
+// one is on, and on the list's own tab only the kind it shows (ofKind), in its sort: by
+// project status (statusRanking), repository, or author, or newest activity first as the
+// list comes.
 export function shownItems(
   list: TriagedList,
   tab: TriageTab,
@@ -56,7 +59,16 @@ export function shownItems(
 
   const items = ofKind(shown.inbox, order.kind)
 
-  return order.byStatus ? sortByStatus(items, statusRanking(list, order.stored)) : items
+  switch (order.sort) {
+    case 'status':
+      return sortByStatus(items, statusRanking(list, order.stored))
+    case 'repo':
+      return sortByRepo(items)
+    case 'author':
+      return sortByAuthor(items)
+    default:
+      return items
+  }
 }
 
 // keptInPlace returns shown, the cards a sheet steps through, holding the card with id,

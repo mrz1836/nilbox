@@ -535,6 +535,14 @@ export function SetListKind(section: $models.ListKey, kind: $models.ListKind): $
 }
 
 /**
+ * SetListSort stores how an inbox list is sorted, newest activity first or grouped by
+ * project status, repository, or author, and returns the settings with it.
+ */
+export function SetListSort(section: $models.ListKey, sort: $models.ListSort): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(379344673, section, sort);
+}
+
+/**
  * SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
  * with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
  * adds or removes the icon.
@@ -802,14 +810,6 @@ export function SetStatusPart(id: statusprefs$0.PartID, on: boolean): $Cancellab
  */
 export function SetStatusProvider(id: statusprefs$0.ProviderID, on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1063031482, id, on);
-}
-
-/**
- * SetStatusSort stores whether an inbox list is sorted by project status, rather than by
- * newest activity, and returns the settings with it.
- */
-export function SetStatusSort(section: $models.ListKey, on: boolean): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(314342387, section, on);
 }
 
 /**

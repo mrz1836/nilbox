@@ -12,6 +12,7 @@ export {
     ConversationOrder,
     ListKey,
     ListKind,
+    ListSort,
     MergeMethod,
     NotificationsTab,
     RefreshKind,

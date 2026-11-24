@@ -77,7 +77,7 @@ type Portable struct {
 	TextSize            *TextSize            `json:"textSize,omitempty"`
 	Celebrations        *Celebrations        `json:"celebrations,omitempty"`
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
-	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
+	InboxOrder          *PortableInboxOrder  `json:"inboxOrder,omitempty"`
 	HiddenLabels        *[]string            `json:"hiddenLabels,omitempty"`
 	CardAvatars         *bool                `json:"cardAvatars,omitempty"`
 	CardDensity         *CardDensity         `json:"cardDensity,omitempty"`
@@ -88,6 +88,16 @@ type Portable struct {
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
 	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
 	Autopilot           *PortableAutopilot   `json:"autopilot,omitempty"`
+}
+
+// PortableInboxOrder is the inbox order in portable form: the order itself, and the
+// status sorts an older backup names in a list of their own, before a list could be sorted
+// any other way. The embedded order flattens into the same JSON object, and StatusSorted
+// is only read, from an older file; adoptFormerOrder makes each a status sort.
+type PortableInboxOrder struct {
+	InboxOrder
+
+	StatusSorted []ListKey `json:"statusSorted,omitempty"`
 }
 
 // PortableAutopilot is Autopilot's settings in portable form, each left as it is when a
@@ -209,7 +219,8 @@ func portableOf(set Settings) Portable {
 		MergeMethod:   &set.MergeMethod, BypassOwn: &set.BypassOwn, NudgeAfterHours: &set.NudgeAfterHours,
 		NudgeSnooze: &set.NudgeSnooze,
 		Theme:       &set.Theme, TextSize: &set.TextSize, Celebrations: &set.Celebrations, ToastSeconds: &set.ToastSeconds,
-		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
+		InboxOrder: &PortableInboxOrder{InboxOrder: set.InboxOrder}, HiddenLabels: &set.HiddenLabels,
+		CardAvatars: &set.CardAvatars,
 		CardDensity: &set.CardDensity, CardUnread: &set.CardUnread, IgnoredWorkflows: &set.IgnoredWorkflows,
 		MergeBotsOn: &set.MergeBotsOn, MergeBots: &set.MergeBots,
 		Integrations: &PortableIntegration{
@@ -505,8 +516,8 @@ func (s *Service) portableFields() []portableField {
 			func(c Celebrations) string { return string(c) }),
 		pointerField("How long messages stay", tellsNothing, func(p Portable) *int { return p.ToastSeconds },
 			func(_ context.Context, n int) (map[string]string, error) { return checkToastSeconds(n) }, seconds),
-		pointerField("Inbox sorting", tellsNothing, func(p Portable) *InboxOrder { return p.InboxOrder },
-			func(_ context.Context, order InboxOrder) (map[string]string, error) {
+		pointerField("Inbox sorting", tellsNothing, func(p Portable) *PortableInboxOrder { return p.InboxOrder },
+			func(_ context.Context, order PortableInboxOrder) (map[string]string, error) {
 				return checkInboxOrder(adoptFormerOrder(order))
 			}, nil),
 		pointerField("Hidden labels", tellsNothing, func(p Portable) *[]string { return p.HiddenLabels },

@@ -3,7 +3,8 @@
 [Docs](../README.md) › [User guide](../README.md#user-guide) · Design: [`internal/inbox`](../architecture/inbox.md), [`internal/reporules`](../architecture/reporules.md)
 
 Each list has four tabs: the list itself with its count (**Review requested 14**), then
-**Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. Snoozing or
+**Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. In a narrow
+window those three show only their icons and counts, with their names on hover. Snoozing or
 dismissing an item moves it out of its list's own tab, so the lists only show what still needs
 you. A list with nothing in any of its four tabs hides until something arrives, and comes back
 on its own tab.
