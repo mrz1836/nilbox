@@ -49,7 +49,8 @@ state, its branch, the pull request or issue it was made for (the number opens i
 a **copied** tag when it is linked by its commits' copies, and while the inbox lists the item,
 a dot for its checks and a draft tag), its work (the count of uncommitted files, and ↑ the
 commits not on GitHub, or, muted, ⧉ the commits on GitHub only as copies, as in **⧉ 10 on
-#42**: see [copied work](#copied-work)), what works in it (an agent and how its session
+#42**: see [copied work](#copied-work), and **17 missing**: see [missing
+files](#files-missing-from-the-folder)), what works in it (an agent and how its session
 stands, a routine's agent in the background, another program by its pid, or, muted, the last
 session the app launched there), and the age of its last commit. Then comes at most one verb:
 **Clean up** for a finished worktree, **Unlock** for a lock an ended session left, or, on an
@@ -136,7 +137,8 @@ Each linked worktree gets a stage, which places its row (**Rows**, above):
 
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
-  nothing. It has no uncommitted changes, every commit it has is on GitHub (on a
+  nothing. It has no uncommitted changes but [files missing from its
+  folder](#files-missing-from-the-folder), every commit it has is on GitHub (on a
   remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is
   deleted, in the commit the app made the worktree at, which it had just fetched from
   GitHub, so a pull request that moves on after the launch still counts, or as an identical
@@ -148,6 +150,25 @@ Each linked worktree gets a stage, which places its row (**Rows**, above):
 GitHub decides when a worktree is finished, and git alone decides whether removing it is safe,
 so a name or branch that only looks like an item's can never cost work. If GitHub can't be
 reached, the view says so and lists the worktrees without their items.
+
+## Files missing from the folder
+
+A removal that stops partway, as when the Mac shuts down or its terminal closes while `git worktree
+remove` deletes the folder, leaves the worktree registered with half its folder gone. git counts
+every tracked file that's gone as an uncommitted change (` D` in `git status`), but each is still in
+the worktree's last commit as it was, so removing the worktree loses none of them. When those are a
+worktree's only changes, the app treats it as clean: its row notes, muted, how many are missing (**17
+missing**) instead of uncommitted files, it is never at risk, and it is ready to clean up once its
+item is done, with every commit on GitHub, so **Clean up**, **Remove…**, and the automatic cleanup
+take it. Its drawer says the missing files are in its last commit, and `is:missing` finds such
+worktrees. One file changed, staged, or added beside them, and the worktree holds uncommitted work
+again, which only **Force remove…** discards.
+
+git itself refuses such a worktree without `--force`, so the app runs `git worktree remove` without
+it first. Only when git refuses the worktree for its changes alone, after its own checks of the lock
+and of any submodules (a worktree with a submodule is never forced), does the app read its status
+again; if every change is still a missing file and no process works in the folder, with the running
+processes listed, it runs `git worktree remove --force`.
 
 ## Actions
 
@@ -173,12 +194,15 @@ until you dismiss it, click **Check again**, or make the next change.
   running session. A lock you set yourself with `git worktree lock` is never released: the
   drawer shows the `git worktree unlock` command to copy and run instead.
 - **Remove…** checks the worktree again and runs `git worktree remove` without `--force`. The app
-  refuses a locked worktree before git runs, and git refuses a dirty one; the row says why. This
+  refuses a locked worktree before git runs, and git refuses a dirty one; the row says why. One
+  whose only changes are [files missing from its folder](#files-missing-from-the-folder) is
+  removed anyway, since that loses nothing. This
   works for an item still open, such as a session that only answered a question; a branch kept with
   commits that aren't on GitHub is picked up again by the item's next launch. **Remove N clean
   worktrees…** removes every clean, unlocked worktree no session runs in, listed in its dialog the
   same way as **Clean up N finished**.
-- **Force remove…** is offered only on dirty, unlocked worktrees no session runs in, and only
+- **Force remove…** is offered only on dirty, unlocked worktrees no session runs in (never one
+  whose only changes are missing files, which **Remove…** takes), and only
   while the running processes can be listed. It runs `git worktree remove --force` after a
   confirmation that lists the uncommitted files it discards (as the drawer lists them, read
   from local git once per listing, at most 200) and the commits not on GitHub (at most 200

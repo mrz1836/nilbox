@@ -12,8 +12,10 @@ import {
   itemRef,
   lockInfo,
   madeBy,
+  onlyMissing,
   stateTones,
   stateWords,
+  uncommitted,
   type AgentLine,
   type ItemFacts,
 } from '../../lib/worktreeParts'
@@ -193,17 +195,32 @@ function LockLine({ worktree, claude }: { worktree: Worktree; claude: string }) 
   )
 }
 
+// branchStays says why a removal offers no branch to delete with a worktree: it has none;
+// it's on its pull request's branch, which goes only with a worktree made for that pull
+// request (this one was linked to it by the branch, or by its commits' copies), so once the
+// pull request merged, Clean up merged branches… takes it after the worktree is gone; or it's
+// neither the worktree's own branch nor its pull request's.
+function branchStays(wt: Worktree): string {
+  if (wt.detached || wt.branch === '') {
+    return 'It has no branch to delete.'
+  }
+
+  const { item } = wt
+
+  if (item?.kind === 'pr' && item.headRef === wt.branch) {
+    const later = item.state === 'merged' ? '; Clean up merged branches… can delete it once the worktree is gone' : ''
+
+    return `Its branch stays: it’s ${itemRef(item)}’s, which goes only with a worktree made for that pull request${later}.`
+  }
+
+  return 'Its branch stays: it’s neither the branch made for it nor its pull request’s.'
+}
+
 // RemovalLine says which branches a removal would offer to delete with the worktree, and
 // why one that stays does.
 function RemovalLine({ worktree }: { worktree: Worktree }) {
   if (worktree.branches.length === 0) {
-    return (
-      <span className={muted}>
-        {worktree.detached || worktree.branch === ''
-          ? 'It has no branch to delete.'
-          : 'Its branch stays: it’s neither the branch made for it nor its pull request’s.'}
-      </span>
-    )
+    return <span className={muted}>{branchStays(worktree)}</span>
   }
 
   return worktree.branches.map((b) => (
@@ -376,8 +393,9 @@ export interface DrawerProps extends WorktreeRowActions {
 // changes, its commits not on GitHub with its branch, and what's known about it, side by
 // side, or one above another when narrow; then what of its details couldn't be read; and
 // its actions in words: Open in Terminal, Reveal in Finder, and Copy path (or Prune, for a
-// folder that's gone), then Clean up or Unlock, and Remove… for a clean one or Force
-// remove… for one with uncommitted files, each saying why when it can't run. Which removal
+// folder that's gone), then Clean up or Unlock, and Remove… for a clean one, or one whose
+// only changes are files missing from its folder, or Force remove… for one with uncommitted
+// files, each saying why when it can't run. Which removal
 // it offers, and why one can't run, are counted as the sentence over them is, so they never
 // contradict it; whether one may run at all stays the backend's (its can* flags), which
 // checks again as it removes, so a read can only hold a removal back, never allow one the
@@ -407,14 +425,16 @@ export function Drawer({
   const fresh = asReadNow(worktree, read)
   const verb = verbOf(fresh, false)
   const errors = errorsOf(read)
-  const force = fresh.dirtyCount > 0
+  const force = uncommitted(fresh) > 0
   const removeReason = removeWhy(fresh, force, agentName)
   const removeTitle =
     removeReason !== ''
       ? removeReason
       : force
         ? `Discards ${counted(fresh.dirtyCount, 'uncommitted file', 'uncommitted files')}; lists them and asks first`
-        : 'Removes the folder; asks which branches go with it'
+        : onlyMissing(fresh)
+          ? 'Removes the folder, whose missing files are all in its last commit; asks which branches go with it'
+          : 'Removes the folder; asks which branches go with it'
 
   return (
     <li id={id} aria-label={`About ${nameOf(worktree)}`} className={drawerClass}>

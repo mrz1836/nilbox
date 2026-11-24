@@ -12,7 +12,11 @@ checkout out and keeps a row showing an error) counts what the page shows, and `
 orders a clone's rows by lane, then the newest commit. `stateOf`, `workNotes`, and `agentLine` word
 a row's cells, `verbOf` its one verb, `removeWhy` why Remove… or Force remove… can't run, and
 `safety` what removing it would cost, as `Words` data the drawer's band, the confirmations, and the
-bulk confirmations' `SafetyLine` render. `cloneSummary` is a clone's heading (its main checkout as a
+bulk confirmations' `SafetyLine` render. A worktree whose only changes are files missing from its
+folder (`onlyMissing`, from the backend's `missingCount`) has nothing to discard (`uncommitted` is
+0): it is never at risk, its row notes the files muted (**17 missing**) with a muted ghost for its
+state, its drawer offers Remove…, never Force remove…, and `safety` says its last commit has them.
+`cloneSummary` is a clone's heading (its main checkout as a
 `MainNote`, its lanes counted), `facetsOf` and `facetQuery` the head's chips, and `itemFacts` and
 `liveSessions` join what the window already has, the inbox's items by `itemKey` and the followed
 sessions by their folder, which add words and move no row to another lane.
@@ -26,7 +30,8 @@ confirmation as it mounts and whenever a listing drops what it read while it's o
 the page's one instance, and `readable` keeps the main checkout, a folder that's gone, and one git
 couldn't read from asking at all.
 
-`asReadNow` counts a worktree's files and commits as its details last did, and the drawer's band and
+`asReadNow` counts a worktree's files (those missing from its folder among them) and commits as its
+details last did, and the drawer's band and
 removal, the ⋯ menu's removals, and the confirmations all go by it, so a read can hold a removal
 back but never allow one the `can*` flags refused. Details doesn't say whether HEAD is the pull
 request's head (on GitHub for a fork's, though no remote-tracking branch has it), so a count of

@@ -47,6 +47,20 @@ export function byHand(wt: Worktree): boolean {
   return wt.locked && !wt.agentLock
 }
 
+// onlyMissing reports a worktree whose only uncommitted changes are files missing from its
+// folder that its last commit has as they were (git's " D"), as a removal that stopped
+// partway leaves them: removing it loses none of them, so it counts as clean, and Remove…,
+// Clean up, and the automatic cleanup take it (the backend's canRemove and stage say so).
+export function onlyMissing(wt: Worktree): boolean {
+  return wt.dirtyCount > 0 && wt.missingCount === wt.dirtyCount
+}
+
+// uncommitted is how many of a worktree's files removing it would discard: its uncommitted
+// files, counting untracked ones, but none when they're only missing from its folder.
+export function uncommitted(wt: Worktree): number {
+  return onlyMissing(wt) ? 0 : wt.dirtyCount
+}
+
 // unpushedKnown is how many commits on a worktree aren't on GitHub, or 0 when every one is
 // (by its commit ID, at its pull request's head, or as an identical copy: onGitHub), or
 // when they couldn't be counted.
@@ -567,7 +581,7 @@ const facets: readonly {
     key: 'dirty',
     label: 'uncommitted',
     tone: 'warning',
-    test: (wt) => wt.dirtyCount > 0,
+    test: (wt) => uncommitted(wt) > 0,
     what: ['has uncommitted files', 'have uncommitted files'],
   },
   {

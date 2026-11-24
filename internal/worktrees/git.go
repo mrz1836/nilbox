@@ -710,15 +710,16 @@ func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 func (g git) dirtyCount(ctx context.Context, dir string) (int, []byte, error) {
 	count, _, stderr, err := g.firstChanged(ctx, dir, 0)
 
-	return count, stderr, err
+	return count.all, stderr, err
 }
 
-// firstChanged counts the changed and untracked files in the worktree at dir and returns
-// the first n of them by path, never nil, from one status (see readStatus).
-func (g git) firstChanged(ctx context.Context, dir string, n int) (int, []FileEntry, []byte, error) {
+// firstChanged counts the changed and untracked files in the worktree at dir, and those of
+// them missing from its folder, and returns the first n of them by path, never nil, from
+// one status (see readStatus).
+func (g git) firstChanged(ctx context.Context, dir string, n int) (changeCount, []FileEntry, []byte, error) {
 	stdout, stderr, err := g.do(ctx, dir, statusArgs()...)
 	if err != nil {
-		return 0, nil, stderr, err
+		return changeCount{}, nil, stderr, err
 	}
 
 	count, files := readStatus(stdout, n)
@@ -947,14 +948,31 @@ func compareEntries(a, b statusEntry) int {
 	return cmp.Or(bytes.Compare(a.path, b.path), bytes.Compare(a.code, b.code))
 }
 
-// readStatus reads `git status --porcelain=v1 -z` output: how many files it names, and the
-// first n of them by path, never nil. Each entry is its two status letters, a space, and
-// its path, which -z leaves unquoted; a rename or copy entry is followed by its source
-// path, which is no file of its own. Only the first n are kept as it reads, in order, each
-// file past them only counted, so a status naming tens of thousands of files costs little
-// more than counting them.
-func readStatus(out []byte, n int) (int, []FileEntry) {
-	count := 0
+// changeCount is how many files a status names, and how many of those are missing from the
+// folder: git's " D", a tracked file the index has just as HEAD has it, gone from the
+// worktree, as a removal that stopped partway leaves them.
+type changeCount struct {
+	all, missing int
+}
+
+// missingCode is the status of a file missing from the folder that the index has as HEAD
+// has it.
+const missingCode = " D"
+
+// onlyMissing reports a status whose every file is missing from the folder: HEAD has each
+// one as it was, so removing the worktree loses none of them.
+func (c changeCount) onlyMissing() bool { return c.all > 0 && c.missing == c.all }
+
+// readStatus reads `git status --porcelain=v1 -z` output: how many files it names, and
+// how many of them are missing from the folder (missingCode), and the first n of them by
+// path, never nil. Each entry is its two status letters, a space, and its path, which -z
+// leaves unquoted; a rename or copy entry is followed by its source path, which is no file
+// of its own. Only the first n are kept as it reads, in order, each file past them only
+// counted, so a status naming tens of thousands of files costs little more than counting
+// them.
+func readStatus(out []byte, n int) (changeCount, []FileEntry) {
+	var count changeCount
+
 	first := firstEntries{n: n, kept: make([]statusEntry, 0, n)}
 	skip := false
 
@@ -965,8 +983,12 @@ func readStatus(out []byte, n int) (int, []FileEntry) {
 		case len(field) < len("XY "):
 			continue
 		default:
-			count++
+			count.all++
 			skip = field[0] == 'R' || field[0] == 'C' || field[1] == 'R' || field[1] == 'C'
+
+			if string(field[:2]) == missingCode {
+				count.missing++
+			}
 
 			first.offer(statusEntry{code: field[:2], path: field[3:]})
 		}

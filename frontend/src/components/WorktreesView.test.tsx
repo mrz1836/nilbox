@@ -1210,7 +1210,7 @@ describe('WorktreesView bulk cleanups', () => {
     await choose(await cleanupMenu(), 'Remove 2 clean worktrees…')
 
     const dialog = screen.getByRole('dialog', { name: 'Remove clean worktrees?' })
-    expect(dialog).toHaveTextContent('Each of these has no uncommitted changes and is unlocked.')
+    expect(dialog).toHaveTextContent('Each of these is unlocked and holds nothing uncommitted to lose.')
     expect(within(dialog).getAllByRole('checkbox', { checked: true })).toHaveLength(4)
 
     await userEvent.keyboard('{Escape}')

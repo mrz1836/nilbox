@@ -97,6 +97,13 @@ describe('rowMenuItems', () => {
     expect(pick(items, 'Remove…').title).toBe('It has uncommitted files: Force remove… discards them')
   })
 
+  it('offers Remove…, and no Force remove…, for one whose files are only missing from its folder', () => {
+    const items = rowMenuItems(options(worktree({ item: open, dirty: true, dirtyCount: 3, missingCount: 3 })))
+
+    expect(shown(items).at(-1)).toBe('Remove…')
+    expect(shown(items)).not.toContain('Force remove…')
+  })
+
   it('counts the removals as the details read them, holding back what the listing allowed', () => {
     const read = { state: 'read', details: worktreeDetails({ files: worktreeFiles(3), fileCount: 3 }) } as const
     const items = rowMenuItems(options(worktree(), { read }))
@@ -292,7 +299,7 @@ describe('cleanupMenuItems', () => {
 
     expect(shown(items)).toEqual(['Remove 3 clean worktrees…', 'Clean up merged branches…'])
     expect(pick(items, 'Remove 3 clean worktrees…').note).toBe(
-      'Each has no uncommitted changes and is unlocked; you choose which, and their branches',
+      'Each is unlocked and holds nothing uncommitted to lose; you choose which, and their branches',
     )
     expect(pick(items, 'Clean up merged branches…').note).toBe(
       'The local branches whose pull requests merged, in every clone',

@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent } from 'react'
 import { counted, formatCount } from '../../lib/format'
 import { asReadNow, changesOf, notOnGitHub, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
-import { copiedOf, linkWords, unpushedKnown, unpushedUnknown } from '../../lib/worktreeParts'
+import { copiedOf, linkWords, onlyMissing, uncommitted, unpushedKnown, unpushedUnknown } from '../../lib/worktreeParts'
 import { safety, type Safety } from '../../lib/worktrees'
 import type {
   AgentID,
@@ -70,22 +70,29 @@ const singleWords: Readonly<Record<Single['kind'], { title: string; label: strin
 // folderText says what removing or cleaning up a worktree does to its folder, with fresh,
 // the worktree counted as its details last counted it (asReadNow), as the sentence over it
 // is. Clean up checks the worktree again first, and leaves one whose work isn't finished
-// any more, as when its copies on GitHub are gone.
+// any more, as when its copies on GitHub are gone. Files missing from the folder, when
+// they're its only changes, are no loss: its last commit has them.
 function folderText(kind: Exclude<Single['kind'], 'force'>, fresh: Worktree): string {
   const path = fresh.displayPath
+  const missing = onlyMissing(fresh)
+  const holds = missing
+    ? `its only changes are ${counted(fresh.dirtyCount, 'file', 'files')} missing from it, which its last commit has`
+    : 'it has no uncommitted changes'
 
   if (kind === 'remove') {
-    return `This deletes the folder ${path}, which has no uncommitted changes.`
+    return missing
+      ? `This deletes the folder ${path}, whose only changes are ${counted(fresh.dirtyCount, 'file', 'files')} missing from it, which its last commit has.`
+      : `This deletes the folder ${path}, which has no uncommitted changes.`
   }
 
-  if (fresh.dirtyCount > 0 || unpushedKnown(fresh) > 0 || unpushedUnknown(fresh)) {
+  if (uncommitted(fresh) > 0 || unpushedKnown(fresh) > 0 || unpushedUnknown(fresh)) {
     return `Clean up checks it again first, and deletes the folder ${path} only if its work is still finished, which, as last read, it isn’t.`
   }
 
   const every =
     copiedOf(fresh) === null ? 'every commit on it is on GitHub' : 'the change of every commit on it is on GitHub'
 
-  return `This deletes the folder ${path}, whose work is finished: it has no uncommitted changes, and ${every}.`
+  return `This deletes the folder ${path}, whose work is finished: ${holds}, and ${every}.`
 }
 
 // listBoxClass frames each list Force remove shows, and listHeadingClass heads it, in
@@ -248,14 +255,14 @@ const bulkWords: Readonly<
   all: {
     title: 'Remove clean worktrees?',
     intro:
-      'Each of these has no uncommitted changes and is unlocked. Choose the worktrees to remove, and the branches to delete with each.',
+      'Each of these is unlocked and holds nothing uncommitted to lose. Choose the worktrees to remove, and the branches to delete with each.',
     verb: 'Remove',
     tone: 'danger',
   },
   finished: {
     title: 'Clean up finished worktrees?',
     intro:
-      'The pull request or issue of each of these is finished, and each has no uncommitted changes, and every commit on it, or its change, is on GitHub. Choose the worktrees to clean up, and the branches to delete with each. Each is checked again first.',
+      'The pull request or issue of each of these is finished, each holds nothing uncommitted to lose, and every commit on it, or its change, is on GitHub. Choose the worktrees to clean up, and the branches to delete with each. Each is checked again first.',
     verb: 'Clean up',
     tone: 'primary',
   },

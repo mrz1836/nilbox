@@ -16,11 +16,12 @@ import * as $models from "./models.js";
 
 /**
  * CleanUp removes one finished worktree: its pull request merged or its issue closed, it
- * has no uncommitted changes, every commit it has is on GitHub, and no session runs in it,
- * by its lock or as a running process.
+ * has no uncommitted changes but files missing from its folder, every commit it has is on
+ * GitHub, and no session runs in it, by its lock or as a running process.
  * The worktree is assessed again first, GitHub included. It releases the lock of an agent
- * session that has ended, removes the worktree without --force, and deletes the branches
- * named, of those it offers, as Remove does.
+ * session that has ended, removes the worktree as Remove does (without --force, unless its
+ * only changes are files missing from its folder), and deletes the branches named, of
+ * those it offers, as Remove does.
  */
 export function CleanUp(repoPath: string, path: string, branches: string[] | null): $CancellablePromise<$models.RemoveResult> {
     return $Call.ByID(3658666180, repoPath, path, branches);
@@ -157,8 +158,10 @@ export function RecentCleanups(): $CancellablePromise<$models.Cleanup[] | null> 
  * The repository must be a clone in the repository locations and path one of its linked
  * worktrees, which is assessed again first. The main worktree, a locked one, and one a
  * session works in are refused before git runs, and git itself refuses one with
- * uncommitted changes, which comes back as a RefusedError. The result names the branches
- * deleted, and says why any other one named was kept.
+ * uncommitted changes, which comes back as a RefusedError. One whose only changes are
+ * files missing from its folder loses nothing, so it is removed all the same
+ * (removeLossless). The result names the branches deleted, and says why any other one
+ * named was kept.
  */
 export function Remove(repoPath: string, path: string, branches: string[] | null): $CancellablePromise<$models.RemoveResult> {
     return $Call.ByID(3855744896, repoPath, path, branches);

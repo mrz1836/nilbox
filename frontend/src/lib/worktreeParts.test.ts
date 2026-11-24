@@ -704,6 +704,20 @@ describe('the chips', () => {
     ])
   })
 
+  it('counts as uncommitted no worktree whose files are only missing from its folder', () => {
+    const half = [
+      worktreeRepo({
+        worktrees: [
+          mainWorktree(),
+          row({ dirty: true, dirtyCount: 3, missingCount: 3 }),
+          row({ dirty: true, dirtyCount: 2, missingCount: 1 }),
+        ],
+      }),
+    ]
+
+    expect(facetsOf(half, '').map((c) => [c.key, c.n])).toEqual([['dirty', 1]])
+  })
+
   it('marks the chip the filter is alone, which a click clears', () => {
     const chips = facetsOf(repos, ' is:dirty ')
 

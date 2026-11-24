@@ -189,6 +189,51 @@ describe('Drawer safety', () => {
     )
   })
 
+  it('offers Clean up and Remove…, never Force remove…, for one whose files are only missing from its folder', async () => {
+    const user = userEvent.setup()
+    const halfRemoved = row({
+      item: linkedItem(),
+      stage: 'finished',
+      canCleanUp: true,
+      dirty: true,
+      dirtyCount: 3,
+      missingCount: 3,
+      files: worktreeFiles(3).map((f) => ({ ...f, code: ' D' })),
+    })
+    const { li, onRemove, onForceRemove } = renderDrawer(halfRemoved)
+
+    const band = li.querySelector('[data-tone]')
+    expect(band).toHaveAttribute('data-tone', 'success')
+    expect(band).toHaveTextContent(
+      'Safe to remove: the 3 files missing from its folder are in its last commit, and every commit is on GitHub (it’s at PR #7’s head).',
+    )
+    expect(column('Changes').getByText(/^Each is missing from the folder/)).toHaveTextContent(
+      'Each is missing from the folder, and its last commit has it, so removing the worktree loses none.',
+    )
+    expect(screen.getByRole('button', { name: 'Clean up' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Force remove…' })).not.toBeInTheDocument()
+
+    const remove = screen.getByRole('button', { name: 'Remove…' })
+    expect(remove).toHaveAttribute(
+      'title',
+      'Removes the folder, whose missing files are all in its last commit; asks which branches go with it',
+    )
+
+    await user.click(remove)
+    expect(onRemove).toHaveBeenCalledWith(er, halfRemoved)
+    expect(onForceRemove).not.toHaveBeenCalled()
+  })
+
+  it('offers Force remove… once its details find a change beside the missing files', () => {
+    renderDrawer(row({ dirty: true, dirtyCount: 3, missingCount: 3, files: worktreeFiles(3) }), {
+      read: read({ files: worktreeFiles(4), fileCount: 4, missingCount: 3 }),
+    })
+
+    expect(column('Changes').queryByText(/^Each is missing from the folder/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Force remove…' })).toBeInTheDocument()
+  })
+
   it('holds Remove… back for one that reads clean now but listed with files, until it’s checked again', () => {
     renderDrawer(row({ dirty: true, dirtyCount: 3, files: worktreeFiles(3), canRemove: false, canForceRemove: true }), {
       read: read(),
@@ -1057,6 +1102,26 @@ describe('Drawer about', () => {
       'another’s branch stays',
       row({ branch: 'hotfix/login-loop', branches: [] }),
       'Its branch stays: it’s neither the branch made for it nor its pull request’s.',
+    ],
+    [
+      'the branch of a merged pull request it was linked to by that branch stays, for the merged branches’ cleanup',
+      row({
+        branch: 'test/verify-under-load',
+        linkedBy: 'branch',
+        branches: [],
+        item: linkedItem({ number: 163, headRef: 'test/verify-under-load' }),
+      }),
+      'Its branch stays: it’s PR #163’s, which goes only with a worktree made for that pull request; Clean up merged branches… can delete it once the worktree is gone.',
+    ],
+    [
+      'the branch of an open pull request it was linked to by that branch stays',
+      row({
+        branch: 'feat/widget',
+        linkedBy: 'branch',
+        branches: [],
+        item: linkedItem({ state: 'open', closedAt: '', headRef: 'feat/widget' }),
+      }),
+      'Its branch stays: it’s PR #7’s, which goes only with a worktree made for that pull request.',
     ],
   ])('says %s', (_label, wt, words) => {
     renderDrawer(wt)

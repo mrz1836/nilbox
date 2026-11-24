@@ -118,6 +118,26 @@ describe('ConfirmationDialog for one worktree', () => {
     expect(dialog.getByText('Made for pull request #7, merged.')).toBeInTheDocument()
   })
 
+  it.each([
+    [
+      'cleanUp',
+      'Clean up this worktree?',
+      'This deletes the folder ~/projects/example-repo/.claude/worktrees/pr-7, whose work is finished: its only changes are 17 files missing from it, which its last commit has, and every commit on it is on GitHub.',
+    ],
+    [
+      'remove',
+      'Remove this worktree?',
+      'This deletes the folder ~/projects/example-repo/.claude/worktrees/pr-7, whose only changes are 17 files missing from it, which its last commit has.',
+    ],
+  ] as const)('says a %s of one whose files are only missing from its folder loses nothing', (kind, title, words) => {
+    const dialog = single(kind, finishedWorktree({ dirty: true, dirtyCount: 17, missingCount: 17 }))
+
+    expect(dialog.getByText(/^Safe to remove/).closest('[data-tone]')).toHaveTextContent(
+      'Safe to remove: the 17 files missing from its folder are in its last commit, and every commit is on GitHub',
+    )
+    expect(screen.getByRole('dialog', { name: title })).toHaveTextContent(words)
+  })
+
   it('says a clean up of one whose commits went into a merged pull request as copies loses nothing', () => {
     const dialog = single('cleanUp', recordedWorktree())
 
@@ -570,7 +590,7 @@ describe('ConfirmationDialog in bulk', () => {
       'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
     )
     expect(screen.getByRole('dialog', { name: 'Clean up finished worktrees?' })).toHaveTextContent(
-      'each has no uncommitted changes, and every commit on it, or its change, is on GitHub.',
+      'each holds nothing uncommitted to lose, and every commit on it, or its change, is on GitHub.',
     )
     expect(screen.getByText('Its commits were copied onto pull request #42, merged')).toBeInTheDocument()
   })

@@ -2610,6 +2610,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     prunableReason: '',
     dirty: false,
     dirtyCount: 0,
+    missingCount: 0,
     files: [],
     lastCommitUnix: 0,
     head: 'fc1c3975011e66491785ace891c893e4fc716587',
@@ -2817,6 +2818,7 @@ export function worktreeDetails(overrides: Partial<WorktreeDetails> = {}): Workt
   return {
     files: [],
     fileCount: 0,
+    missingCount: 0,
     commits: [],
     unpushed: 0,
     copies: { compared: false, ref: '', branch: '', identical: 0, edited: 0, note: '' },

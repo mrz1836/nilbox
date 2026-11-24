@@ -361,7 +361,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	dirty(t, changed)
 	testutil.RunGit(t, alpha, argv("worktree add -q --detach", filepath.Join(wt, "alpha-detached"))...)
 	claude := addWorktree(t, alpha, filepath.Join(alpha, ".claude", "worktrees", "pr-7"), "worktree-pr-7")
-	lock(t, alpha, claude, "claude session pr-7 (pid 1 start Wed Nov 5 09:00:00 2026)")
+	lock(t, alpha, claude, "claude session pr-7 (pid 1)")
 	stale := addWorktree(t, alpha, filepath.Join(wt, "alpha-stale"), "stale-session")
 	lock(t, alpha, stale, "claude session stale (pid "+strconv.Itoa(deadPID(t))+" start earlier)")
 
@@ -430,7 +430,7 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 	row = mustRow(t, snap, claude)
 	assert.True(t, row.Managed)
 	assert.True(t, row.Locked)
-	assert.Equal(t, "claude session pr-7 (pid 1 start Wed Nov 5 09:00:00 2026)", row.LockReason)
+	assert.Equal(t, "claude session pr-7 (pid 1)", row.LockReason)
 	assert.False(t, row.StaleLock, "PID 1 is always running")
 	assert.False(t, row.CanRemove)
 	assert.False(t, row.CanForceRemove)

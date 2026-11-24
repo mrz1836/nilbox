@@ -94,12 +94,22 @@ listing's forgetting of a record skip the clone until next time.
 
 A listing reads each worktree's status once (`status --porcelain=v1 -z
 --untracked-files=all`, read by `readStatus`): every file it names counts toward the row's
-`DirtyCount`, and the first 12 by path are its `Files`, each with git's two status letters
+`DirtyCount`, each one ` D` (a tracked file gone from the folder that the index has as HEAD
+has it, as a removal that stopped partway leaves it) toward its `MissingCount` too, and the
+first 12 by path are its `Files`, each with git's two status letters
 and its path (a rename or a copy by its new one, its source skipped), which the view shows
 before it reads the rest. Only those 12 are kept as the status is read, each file past them
 only counted, so a worktree with tens of thousands of untracked files costs little more
 than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
-read. Keeping them runs no git of its own.
+read. Keeping them runs no git of its own. `Details` counts its `MissingCount` from its own
+status the same way.
+
+A worktree whose every change is a missing file (`onlyMissing`: `MissingCount` equals a
+`DirtyCount` over 0) loses nothing with its folder, since HEAD has each file as it was, so it
+counts as clean: `assess` makes it `CanRemove` (while the processes are listed, as its removal
+needs `--force`) and never `CanForceRemove`, and `stageOf` lets it be `StageFinished`, so
+`CleanUp`, `CleanUpFinished`, and the sweep take it as they take a clean one. A missing file
+beside any other change (staged, modified, added, untracked) leaves the worktree dirty.
 
 ## The launch records (`internal/worklog`, `reconcile.go`)
 
@@ -438,7 +448,13 @@ again and refuses a locked one (`ErrLocked`), one whose HEAD moved since (`ErrCh
 its folder is gone, one a process works in, and `git worktree remove <path>` runs without `--force`
 (`allowedRemove` takes a path and at most one `--force`); git's refusal is a `RefusedError`
 (`ErrRemovalRefused`), its `Reason` `has uncommitted changes`, `is locked`, git's line, or `git
-exited with an error`; a failure git didn't refuse (`gitRefused`) is a plain error. `ForceRemove`
+exited with an error`; a failure git didn't refuse (`gitRefused`) is a plain error. A plain
+removal runs through `removeLossless`: when git refuses the worktree with `has uncommitted
+changes` alone, which it says only after its own checks of the lock and the submodules (a
+worktree with a submodule is refused for that first, and never forced), it reads the status
+again, and when every change is still a missing file (`changeCount.onlyMissing`) and no process
+works there, checked `strict`, it runs the removal again with `--force`; otherwise git's refusal
+stands. `Remove` words `ErrSessionsUnknown` from that check for the window. `ForceRemove`
 adds `--force` and `strict`, and `discardable` refuses a folder that's gone (`ErrPrunable`) or
 nothing to discard (`ErrNotDirty`). `RemoveAllClean(picks)` takes one fresh listing and removes each
 `Pick` still `CanRemove` as `Remove` does. `Prune` runs `git worktree prune` under the same locks.
@@ -452,7 +468,8 @@ the main worktree (`ErrMainWorktree`), and any other with `ErrGitHubUnavailable`
 and `notFinishedReason`, and wraps a later refused step, a busy clone aside, in `ErrCleanUpFailed`.
 Each step checks git again (`cleanUpRow`, `removeFinished`): a locked worktree has its ended agent
 lock released (above), then `removable` runs with the commit assessed, and `git worktree remove`
-without `--force`. Last it records the cleanup (`recordCleanup`), which no other removal does.
+without `--force`, through `removeLossless`, as `Remove` runs it. Last it records the cleanup
+(`recordCleanup`), which no other removal does.
 `CleanUpFinished(picks)` takes one fresh listing, fails whole when that couldn't ask GitHub, and
 cleans up each pick still `CanCleanUp`. The sweep runs `cleanUpRow` with `automatic`, which makes
 its process checks `strict`.

@@ -265,22 +265,38 @@ func linkedItem(t linkTarget, ref item.Ref, state ItemState) *LinkedItem {
 // assess works out a linked worktree's stage and whether it may be removed. GitHub
 // decides when the work is done; whether removing the worktree is safe rests on git and
 // the running processes alone: no uncommitted changes, every commit on GitHub, no lock,
-// and no session running in it. A worktree whose status couldn't be read (Error), as one
-// whose clone's or own config gitread's guards refuse, is never offered a removal, which
-// runs a status of its own there. sessionsKnown reports that the running processes could
-// be listed: without them a force removal, which discards changes, is not offered.
+// and no session running in it. Files missing from its folder that HEAD has as they were
+// are no loss (onlyMissing), so a worktree whose only changes they are counts as clean,
+// but its removal needs --force (removeLossless), so only once the processes are listed.
+// A worktree whose status couldn't be read (Error), as one whose clone's or own config
+// gitread's guards refuse, is never offered a removal, which runs a status of its own
+// there. sessionsKnown reports that the running processes could be listed: without them a
+// force removal, which discards changes, is not offered.
 func assess(wt *Worktree, sessionsKnown bool) {
 	if wt.Main {
 		return
 	}
 
 	free := !wt.Locked && !wt.Prunable && len(wt.InUse) == 0
-	wt.CanRemove = free && !wt.Dirty && wt.Error == ""
-	wt.CanForceRemove = free && wt.Dirty && sessionsKnown
+	wt.CanRemove = free && wt.Error == "" && plainRemovable(wt, sessionsKnown)
+	wt.CanForceRemove = free && forceRemovable(wt, sessionsKnown)
 
 	wt.OnGitHub = onGitHubByID(wt) || wt.copies.onGitHub
 	wt.Stage = stageOf(wt)
 	wt.CanCleanUp = wt.Stage == StageFinished
+}
+
+// plainRemovable reports a worktree Remove takes, as far as its files go: a clean one, or
+// one whose only changes are files missing from its folder, whose removal needs --force,
+// so only while the processes are listed.
+func plainRemovable(wt *Worktree, sessionsKnown bool) bool {
+	return !wt.Dirty || (wt.onlyMissing() && sessionsKnown)
+}
+
+// forceRemovable reports a worktree with changes ForceRemove would discard, any but files
+// missing from its folder alone, while the processes are listed.
+func forceRemovable(wt *Worktree, sessionsKnown bool) bool {
+	return !wt.nothingUncommitted() && sessionsKnown
 }
 
 // headIsItemHead reports a worktree whose HEAD is its pull request's head commit.
@@ -290,7 +306,8 @@ func headIsItemHead(wt *Worktree) bool {
 
 // stageOf is a linked worktree's stage. A worktree a running process works in is in use;
 // Prune clears a worktree whose directory is gone, and one with no item, or locked by
-// hand, has no stage.
+// hand, has no stage. Files missing from its folder alone keep no done worktree from being
+// finished: removing it loses none of them.
 func stageOf(wt *Worktree) Stage {
 	switch {
 	case len(wt.InUse) > 0 && !wt.Prunable:
@@ -301,7 +318,7 @@ func stageOf(wt *Worktree) Stage {
 		return StageNone
 	case !wt.Item.done():
 		return StageActive
-	case !wt.Dirty && wt.Error == "" && wt.OnGitHub:
+	case wt.nothingUncommitted() && wt.Error == "" && wt.OnGitHub:
 		return StageFinished
 	default:
 		return StageNeedsReview

@@ -16,7 +16,10 @@
 // is deliberately narrow:
 //
 //   - Remove runs `git worktree remove` without --force, so git itself refuses a worktree
-//     with uncommitted changes or a lock;
+//     with uncommitted changes or a lock; when it refuses one only for its changes, and
+//     they are all files missing from its folder that HEAD has as they were, as a removal
+//     that stopped partway leaves them, Remove reads the status again and runs it with
+//     --force, which loses nothing (see removeLossless);
 //   - ForceRemove passes a single --force and only for an unlocked worktree with
 //     uncommitted changes, so a locked worktree (usually a live agent session) is never
 //     removed;
@@ -30,8 +33,9 @@
 // branch to the pull request that branch heads (see branchlink.go); GitHub says whether it
 // is done. GitHub decides when a worktree is finished; git alone decides
 // whether removing it is safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a
-// worktree only when its item is merged or closed, it has no uncommitted changes, every
-// commit it has is on GitHub, and no session runs in it. Then they also delete its own
+// worktree only when its item is merged or closed, it has no uncommitted changes but files
+// missing from its folder, every commit it has is on GitHub, and no session runs in it.
+// Then they also delete its own
 // worktree-<name> branch, and only while it still points at the commit checked. No other
 // branch is ever deleted, and nothing on GitHub is touched. A commit is on GitHub by its
 // commit ID, or by an identical copy of its change on a pushed branch (see copies.go); the
@@ -283,6 +287,12 @@ type Worktree struct {
 	// DirtyCount is the number of changed and untracked files.
 	DirtyCount int `json:"dirtyCount"`
 
+	// MissingCount is how many of those are files missing from the folder that HEAD has as
+	// they were (git's " D"), as a removal that stopped partway leaves them. When they are
+	// all of them, removing the worktree loses none of its files: such a worktree counts as
+	// clean for Remove, CleanUp, and the sweep (see onlyMissing).
+	MissingCount int `json:"missingCount"`
+
 	// Files are the first 12 of those files by path, from the same status (rowFiles), which
 	// the view shows before it reads the rest (Details). A clean worktree has none, and so
 	// has one whose status couldn't be read.
@@ -345,11 +355,13 @@ type Worktree struct {
 	// InUse lists the running processes that work in the worktree.
 	InUse []Session `json:"inUse"`
 
-	// CanRemove reports a clean, unlocked linked worktree that Remove accepts.
+	// CanRemove reports an unlocked linked worktree that Remove accepts: a clean one, or one
+	// whose only changes are files missing from its folder, while the processes are listed.
 	CanRemove bool `json:"canRemove"`
 
 	// CanForceRemove reports an unlocked linked worktree with uncommitted changes that
-	// ForceRemove accepts after the user confirms.
+	// ForceRemove accepts after the user confirms, other than files missing from its
+	// folder alone, which Remove takes.
 	CanForceRemove bool `json:"canForceRemove"`
 
 	// CanCleanUp reports a finished worktree that CleanUp removes, with its own branch.
@@ -371,6 +383,18 @@ type Worktree struct {
 	// copies is what the listing found of the copies of its commits not on GitHub, which
 	// Copies shows (see copyjudge.go). The window never sees it.
 	copies copyState
+}
+
+// onlyMissing reports a worktree whose only uncommitted changes are files missing from its
+// folder: HEAD has each one as it was, so removing it loses none of them.
+func (wt *Worktree) onlyMissing() bool {
+	return changeCount{all: wt.DirtyCount, missing: wt.MissingCount}.onlyMissing()
+}
+
+// nothingUncommitted reports a worktree whose folder holds nothing uncommitted a removal
+// would lose: it is clean, or its only changes are files missing from it (onlyMissing).
+func (wt *Worktree) nothingUncommitted() bool {
+	return !wt.Dirty || wt.onlyMissing()
 }
 
 // rowFiles is how many of a worktree's changed files its row lists (Worktree.Files).

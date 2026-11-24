@@ -504,8 +504,10 @@ func NewService(cfg Config) *Service {
 // The repository must be a clone in the repository locations and path one of its linked
 // worktrees, which is assessed again first. The main worktree, a locked one, and one a
 // session works in are refused before git runs, and git itself refuses one with
-// uncommitted changes, which comes back as a RefusedError. The result names the branches
-// deleted, and says why any other one named was kept.
+// uncommitted changes, which comes back as a RefusedError. One whose only changes are
+// files missing from its folder loses nothing, so it is removed all the same
+// (removeLossless). The result names the branches deleted, and says why any other one
+// named was kept.
 func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
@@ -519,7 +521,13 @@ func (s *Service) Remove(ctx context.Context, repoPath, path string, branches []
 		return RemoveResult{}, err
 	}
 
-	return s.removeRow(ctx, g, repoPath, wt, false, branches)
+	res, err := s.removeRow(ctx, g, repoPath, wt, false, branches)
+	if errors.Is(err, ErrSessionsUnknown) {
+		return res, uierr.New("This system can't list the running processes, so it can't tell whether a session is "+
+			"working in the worktree, and won't remove it while files are missing from its folder.", err)
+	}
+
+	return res, err
 }
 
 // ForceRemove removes one unlocked linked worktree that has uncommitted changes,
@@ -680,7 +688,13 @@ func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Work
 	// Where the folder is, worked out while it is there (see forgetRecord).
 	resolved := paths.Resolved(wt.Path)
 
-	if err = s.removeEntry(ctx, g, repoPath, e, force); err != nil {
+	if force {
+		err = s.removeEntry(ctx, g, repoPath, e, true)
+	} else {
+		err = s.removeLossless(ctx, g, repoPath, e)
+	}
+
+	if err != nil {
 		return res, err
 	}
 
@@ -844,6 +858,36 @@ func (s *Service) removable(ctx context.Context, repoPath, path, head string, st
 	}
 
 	return e, nil
+}
+
+// removeLossless removes a checked entry as a plain removal does, without --force, unless
+// git refuses it for its changes alone and every one of them is a file missing from its
+// folder that HEAD has as it was (changeCount.onlyMissing), as a removal that stopped
+// partway leaves it. Then it removes it with --force, which loses nothing:
+//
+//   - git refused only after its own checks, the lock and the submodules among them, and
+//     only for the changes (reasonDirty);
+//   - a status read again now still finds only files missing from the folder;
+//   - no process works there, the processes listed (strict), as for any force removal.
+//
+// Any other refusal is git's, as before.
+func (s *Service) removeLossless(ctx context.Context, g git, repoPath string, e Entry) error {
+	err := s.removeEntry(ctx, g, repoPath, e, false)
+
+	if refused, ok := errors.AsType[*RefusedError](err); !ok || refused.Reason != reasonDirty {
+		return err
+	}
+
+	count, _, _, statusErr := g.firstChanged(ctx, e.Path, 0)
+	if statusErr != nil || !count.onlyMissing() {
+		return err
+	}
+
+	if sessionsErr := s.checkSessions(ctx, e.Path, true); sessionsErr != nil {
+		return sessionsErr
+	}
+
+	return s.removeEntry(ctx, g, repoPath, e, true)
 }
 
 // removeEntry runs `git worktree remove` for a checked entry and turns a refusal into a

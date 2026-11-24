@@ -155,9 +155,10 @@ function FileList({ worktree, read }: ColumnProps) {
 }
 
 // Changes is the drawer's first column: what a worktree holds that isn't committed, with
-// Copy list, which waits while the rest of the list is read.
+// Copy list, which waits while the rest of the list is read. When every one is a file
+// missing from its folder, it says so first: its last commit has each one.
 export function Changes({ worktree, read }: ColumnProps) {
-  const { files, count, current } = changesOf(worktree, read)
+  const { files, count, missing, current } = changesOf(worktree, read)
   const reading = !current && count > files.length && waiting(worktree, read)
   const listed = !worktree.prunable && worktree.error === '' && count > 0
   let body
@@ -179,7 +180,18 @@ export function Changes({ worktree, read }: ColumnProps) {
       </p>
     )
   } else {
-    body = <FileList worktree={worktree} read={read} />
+    body = (
+      <>
+        {missing === count && (
+          <p className="mb-1 text-xs text-muted">
+            {count === 1
+              ? 'It’s missing from the folder, and its last commit has it, so removing the worktree loses nothing.'
+              : 'Each is missing from the folder, and its last commit has it, so removing the worktree loses none.'}
+          </p>
+        )}
+        <FileList worktree={worktree} read={read} />
+      </>
+    )
   }
 
   return (

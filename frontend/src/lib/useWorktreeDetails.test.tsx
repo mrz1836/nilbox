@@ -193,6 +193,7 @@ describe('useWorktreeDetails', () => {
     expect(changesOf(dirty, result.current.of(dirty.path))).toEqual({
       files: worktreeFiles(12),
       count: 30,
+      missing: 0,
       current: false,
     })
     // Nothing asks again on its own.
@@ -271,24 +272,37 @@ describe('readable', () => {
 
 describe('changesOf', () => {
   it.each<[string, DetailsRead | undefined, ReturnType<typeof changesOf>]>([
-    ['nothing read yet', undefined, { files: worktreeFiles(12), count: 30, current: false }],
-    ['a read under way', { state: 'reading' }, { files: worktreeFiles(12), count: 30, current: false }],
-    ['a read that failed', { state: 'failed', error: 'no' }, { files: worktreeFiles(12), count: 30, current: false }],
+    ['nothing read yet', undefined, { files: worktreeFiles(12), count: 30, missing: 0, current: false }],
+    ['a read under way', { state: 'reading' }, { files: worktreeFiles(12), count: 30, missing: 0, current: false }],
+    [
+      'a read that failed',
+      { state: 'failed', error: 'no' },
+      { files: worktreeFiles(12), count: 30, missing: 0, current: false },
+    ],
     [
       'Details that couldn’t read the files',
       { state: 'read', details: worktreeDetails({ fileCount: -1, errors: ['Couldn’t read the changed files.'] }) },
-      { files: worktreeFiles(12), count: 30, current: false },
+      { files: worktreeFiles(12), count: 30, missing: 0, current: false },
     ],
-    ['Details, every file', { state: 'read', details: all30 }, { files: worktreeFiles(30), count: 30, current: true }],
+    [
+      'Details, every file',
+      { state: 'read', details: all30 },
+      { files: worktreeFiles(30), count: 30, missing: 0, current: true },
+    ],
     [
       'Details, past 200',
       { state: 'read', details: worktreeDetails({ files: worktreeFiles(200), fileCount: 1204 }) },
-      { files: worktreeFiles(200), count: 1204, current: true },
+      { files: worktreeFiles(200), count: 1204, missing: 0, current: true },
     ],
     [
       'Details, clean since the listing',
       { state: 'read', details: worktreeDetails() },
-      { files: [], count: 0, current: true },
+      { files: [], count: 0, missing: 0, current: true },
+    ],
+    [
+      'Details, files missing from its folder among them',
+      { state: 'read', details: worktreeDetails({ files: worktreeFiles(3), fileCount: 3, missingCount: 2 }) },
+      { files: worktreeFiles(3), count: 3, missing: 2, current: true },
     ],
   ])('lists the files from %s', (_, read, want) => {
     expect(changesOf(dirty, read)).toEqual(want)
@@ -330,6 +344,12 @@ describe('asReadNow', () => {
       { dirty: true, dirtyCount: 3, unpushed: 5, onGitHub: false, copies: worktreeCopies({ count: 5 }) },
     ],
     ['everything on GitHub now, and clean', dirty, read(), { dirty: false, dirtyCount: 0 }],
+    [
+      'only files missing from its folder now',
+      dirty,
+      read({ files: worktreeFiles(3), fileCount: 3, missingCount: 3 }),
+      { dirty: true, dirtyCount: 3, missingCount: 3 },
+    ],
     ['neither counted', ahead, read({ fileCount: -1, unpushed: -1 }), {}],
     [
       'the same count, not at its pull request’s head',

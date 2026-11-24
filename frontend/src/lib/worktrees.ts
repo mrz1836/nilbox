@@ -18,9 +18,11 @@ import {
   clockOf,
   copiedOf,
   itemRef,
+  onlyMissing,
   prOfCopies,
   running,
   runsIn,
+  uncommitted,
   unpushedKnown,
   unpushedUnknown,
   type Copied,
@@ -67,7 +69,7 @@ export function laneOf(wt: Worktree): Lane {
     return 'ready'
   }
 
-  return wt.dirtyCount > 0 || unpushedKnown(wt) > 0 || unpushedUnknown(wt) ? 'risk' : 'open'
+  return uncommitted(wt) > 0 || unpushedKnown(wt) > 0 || unpushedUnknown(wt) ? 'risk' : 'open'
 }
 
 // edgeTitle is the tooltip of a row's edge, which says why it stands in its lane; '' for
@@ -112,8 +114,9 @@ export interface RowState {
 
 // stateOf is a row's state, the first that holds: git couldn't read it, its folder is
 // gone, something runs in it, it's locked by hand or by an ended session, it has
-// uncommitted files, commits not on GitHub, or commits it couldn't check; else it's clean,
-// its commits on GitHub by their commit IDs or as copies (copiedOf).
+// uncommitted files, commits not on GitHub, or commits it couldn't check, or files missing
+// from its folder alone, which lose nothing (onlyMissing); else it's clean, its commits on
+// GitHub by their commit IDs or as copies (copiedOf).
 export function stateOf(wt: Worktree): RowState {
   if (wt.error !== '') {
     return { glyph: 'alert', tone: 'danger', words: 'git couldn’t read it' }
@@ -135,7 +138,7 @@ export function stateOf(wt: Worktree): RowState {
     return { glyph: 'lock', tone: 'muted', words: 'locked by a session that has ended' }
   }
 
-  if (wt.dirtyCount > 0) {
+  if (uncommitted(wt) > 0) {
     return { glyph: 'dot', tone: 'warning', words: 'uncommitted changes' }
   }
 
@@ -145,6 +148,10 @@ export function stateOf(wt: Worktree): RowState {
 
   if (unpushedUnknown(wt)) {
     return { glyph: 'ring', tone: 'muted', words: 'couldn’t tell whether every commit is on GitHub' }
+  }
+
+  if (onlyMissing(wt)) {
+    return { glyph: 'ghost', tone: 'muted', words: missingTitle(wt.dirtyCount) }
   }
 
   const copied = copiedOf(wt)
@@ -159,15 +166,22 @@ export function stateOf(wt: Worktree): RowState {
   }
 }
 
-// WorkNote is one note of the work column: uncommitted files, commits not on GitHub (↑),
-// commits it couldn't count (↑?), or commits on GitHub only as copies (⧉); its text, the
-// words a screen reader hears before it, and its tooltip.
+// WorkNote is one note of the work column: uncommitted files, files missing from its
+// folder alone, commits not on GitHub (↑), commits it couldn't count (↑?), or commits on
+// GitHub only as copies (⧉); its text, the words a screen reader hears before it, and its
+// tooltip.
 export interface WorkNote {
-  kind: 'dirty' | 'up' | 'unknown' | 'copied'
+  kind: 'dirty' | 'missing' | 'up' | 'unknown' | 'copied'
   tone: Tone
   text: string
   sr: string
   title: string
+}
+
+// missingTitle says n files are missing from a worktree's folder, whose only changes they
+// are, and that removing it loses none of them, as its state and work note's tooltips say it.
+function missingTitle(n: number): string {
+  return `${counted(n, 'file is', 'files are')} missing from its folder, as a removal that stopped partway leaves them, but its last commit has ${n === 1 ? 'it' : 'each'}, so removing the worktree loses nothing`
 }
 
 // copiedText is the work column's note on commits on GitHub only as copies, after ⧉: how
@@ -204,13 +218,22 @@ function upTitle(wt: Worktree, n: number): string {
 
 // workNotes are the work column's notes, none for a clean worktree with every commit on
 // GitHub by its commit ID: the state's ✓ says that already. Commits on GitHub only as
-// copies get a muted note, which says where.
+// copies get a muted note, which says where, and so do files missing from its folder when
+// they're its only changes, which removing it loses none of.
 export function workNotes(wt: Worktree): WorkNote[] {
   const out: WorkNote[] = []
   const commits = unpushedKnown(wt)
   const copied = copiedOf(wt)
 
-  if (wt.dirtyCount > 0) {
+  if (onlyMissing(wt)) {
+    out.push({
+      kind: 'missing',
+      tone: 'muted',
+      text: `${formatCount(wt.dirtyCount)} missing`,
+      sr: 'files: ',
+      title: missingTitle(wt.dirtyCount),
+    })
+  } else if (wt.dirtyCount > 0) {
     out.push({
       kind: 'dirty',
       tone: 'warning',
@@ -297,7 +320,8 @@ export function verbOf(wt: Worktree, listed: boolean): Verb | null {
 
 // removeWhy says why Remove… (or, with force, Force remove…) can't run on a worktree, or
 // '' when it can. The backend decides (canRemove, canForceRemove); this words it, so it is
-// '' only when the backend allows it.
+// '' only when the backend allows it. Files missing from its folder alone are nothing to
+// discard: Remove… takes such a worktree.
 export function removeWhy(wt: Worktree, force: boolean, agentName: (id: AgentID) => string): string {
   if (wt.prunable) {
     return 'Its folder is gone: Prune clears the entry'
@@ -320,15 +344,16 @@ export function removeWhy(wt: Worktree, force: boolean, agentName: (id: AgentID)
   }
 
   if (!force) {
-    if (wt.dirtyCount > 0) {
+    if (uncommitted(wt) > 0) {
       return 'It has uncommitted files: Force remove… discards them'
     }
 
-    // The backend refuses it for a reason the listing doesn't show.
+    // The backend refuses it for a reason the listing doesn't show, as one with files
+    // missing from its folder while it can't list the running processes.
     return wt.canRemove ? '' : 'It can’t be removed right now: Check again'
   }
 
-  if (wt.dirtyCount === 0) {
+  if (uncommitted(wt) === 0) {
     return 'Nothing to discard: Remove… takes it'
   }
 
@@ -460,11 +485,35 @@ function originals(wt: Worktree): Words {
   return ['Removing it keeps its branch, ', { code: wt.branch }, ', with the original commits.']
 }
 
-// uncountedWords say the commits not on GitHub couldn't be counted, and cleanButUncounted
-// says so of a worktree with nothing uncommitted, after a lead such as "Once it ends,".
+// uncountedWords say the commits not on GitHub couldn't be counted, and uncountedAfter says
+// so after a lead such as "Once it ends,", cleanButUncounted of a worktree with nothing
+// uncommitted.
 const uncountedWords = 'Couldn’t count the commits that aren’t on GitHub, so removing it might lose some.'
-const cleanButUncounted =
-  'its folder is clean, but the commits that aren’t on GitHub couldn’t be counted, so removing it might lose some.'
+const uncountedAfter = 'the commits that aren’t on GitHub couldn’t be counted, so removing it might lose some.'
+const cleanButUncounted = `its folder is clean, but ${uncountedAfter}`
+
+// missingWords say a worktree's n files missing from its folder, its only changes, lose
+// nothing with it: its last commit has each one.
+function missingWords(n: number): Words {
+  return n === 0
+    ? []
+    : [
+        `${counted(n, 'file is', 'files are')} missing from its folder, but its last commit has ${n === 1 ? 'it' : 'each one'}, so removing the worktree loses ${n === 1 ? 'nothing' : 'none of them'}.`,
+      ]
+}
+
+// missingLead starts the sentence that says a worktree's n files missing from its folder
+// are in its last commit: "the file missing from its folder is", or "the 17 files missing
+// from its folder are".
+function missingLead(n: number): string {
+  return n === 1 ? 'the file missing from its folder is' : `the ${formatCount(n)} files missing from its folder are`
+}
+
+// missingCause says why git counts a missing file as uncommitted, and what leaves a folder
+// with only those.
+const missingCause: Words = [
+  'git counts a file missing from the folder as an uncommitted change; a removal that stopped partway leaves a folder like this.',
+]
 
 // SafetyIcon is the mark of what removing a worktree would cost.
 export type SafetyIcon = 'alert' | 'ghost' | 'info' | 'lock' | 'up' | 'ring' | 'shield'
@@ -481,11 +530,13 @@ export interface Safety {
 
 // safety says what removing a worktree of repo would cost, now, as the drawer and the
 // confirmations show it, with session, the session the app follows there, and agentName.
-// An uncommitted file goes with the folder. A commit that isn't on GitHub stays on its
-// branch, which a removal keeps (Branch.deletable is false while it holds one); only a
-// detached worktree's commits, which no branch holds, go too. Commits on GitHub only as
-// identical copies (copiedOf) lose nothing but their own commit IDs; an edited copy doesn't
-// count, and is only said of the commits that aren't on GitHub (copySentences).
+// An uncommitted file goes with the folder, but a file missing from it, when those are its
+// only changes (onlyMissing), loses nothing: its last commit has it. A commit that isn't
+// on GitHub stays on its branch, which a removal keeps (Branch.deletable is false while it
+// holds one); only a detached worktree's commits, which no branch holds, go too. Commits on
+// GitHub only as identical copies (copiedOf) lose nothing but their own commit IDs; an
+// edited copy doesn't count, and is only said of the commits that aren't on GitHub
+// (copySentences).
 export function safety(
   wt: Worktree,
   repo: WorktreeRepo | null,
@@ -493,7 +544,15 @@ export function safety(
   session: AgentSession | undefined,
   agentName: (id: AgentID) => string,
 ): Safety {
-  const files = wt.dirtyCount
+  const files = uncommitted(wt)
+  // missing counts the files missing from its folder when they're its only changes, and
+  // missingSaid says they lose nothing; cleanFolder says its folder holds nothing a removal
+  // would lose, and butUncounted, after lead, that only commits it couldn't count might be.
+  const missing = onlyMissing(wt) ? wt.dirtyCount : 0
+  const missingSaid = missingWords(missing)
+  const cleanFolder: Words = missing > 0 ? missingSaid : ['Its folder is clean.']
+  const butUncounted = (lead: string): Words =>
+    missing > 0 ? joined([`${lead} ${uncountedAfter}`], missingSaid) : [`${lead} ${cleanButUncounted}`]
   const commits = unpushedKnown(wt)
   const copied = copiedOf(wt)
   // everyCommit says every commit is on GitHub, by its change when it is there as a copy.
@@ -569,10 +628,10 @@ export function safety(
             originalsGo,
           )
         : commits > 0
-          ? joined(['Once it ends,'], kept('its'), lost, copies)
+          ? joined(['Once it ends,'], kept('its'), lost, copies, missingSaid)
           : unknown
-            ? [`Once it ends, ${cleanButUncounted}`]
-            : joined([`Once it ends, nothing in it would be lost: ${everyCommit}.`], originalsGo)
+            ? butUncounted('Once it ends,')
+            : joined([`Once it ends, nothing in it would be lost: ${everyCommit}.`], missingSaid, originalsGo)
 
     return result(
       'info',
@@ -587,10 +646,10 @@ export function safety(
       files > 0
         ? joined([`Then removing it would discard ${ftext}.`], kept('Its'), lost, copies, uncounted, originalsGo)
         : commits > 0
-          ? joined(['Then'], kept('its'), lost, copies)
+          ? joined(['Then'], kept('its'), lost, copies, missingSaid)
           : unknown
-            ? [`After that, ${cleanButUncounted}`]
-            : joined([`After that, nothing in it would be lost: ${everyCommit}.`], originalsGo)
+            ? butUncounted('After that,')
+            : joined([`After that, nothing in it would be lost: ${everyCommit}.`], missingSaid, originalsGo)
 
     return {
       ...result('danger', 'lock', ['Locked by hand, so it can’t be removed here. Unlock it first:'], then),
@@ -608,24 +667,32 @@ export function safety(
   }
 
   if (lost.length > 0) {
-    return result('warning', 'alert', lost, joined(copies, ['Its folder is clean.']))
+    return result('warning', 'alert', lost, joined(copies, cleanFolder))
   }
 
   if (commits > 0) {
     const one = commits === 1
+    const isnt = ` ${one ? 'isn’t' : 'aren’t'} on GitHub.`
 
     return result(
       'warning',
       'up',
-      [`Its folder is clean, but ${ctext} on `, { code: wt.branch }, ` ${one ? 'isn’t' : 'aren’t'} on GitHub.`],
-      joined(copies, doneWithout, [
-        `Removing the worktree keeps that branch, so ${one ? 'it stays' : 'they stay'} in the clone; the app won’t delete it while ${one ? 'it’s' : 'they’re'} only here.`,
-      ]),
+      missing > 0
+        ? [`${capitalize(ctext)} on `, { code: wt.branch }, isnt]
+        : [`Its folder is clean, but ${ctext} on `, { code: wt.branch }, isnt],
+      joined(
+        copies,
+        doneWithout,
+        [
+          `Removing the worktree keeps that branch, so ${one ? 'it stays' : 'they stay'} in the clone; the app won’t delete it while ${one ? 'it’s' : 'they’re'} only here.`,
+        ],
+        missingSaid,
+      ),
     )
   }
 
   if (unknown) {
-    return result('warning', 'ring', [uncountedWords], ['Its folder is clean.'])
+    return result('warning', 'ring', [uncountedWords], cleanFolder)
   }
 
   const stale: Words = wt.staleLock
@@ -644,8 +711,8 @@ export function safety(
     return result(
       'success',
       'shield',
-      ['Safe to remove: no uncommitted files, and every commit’s change ', ...copiedWords(copied), ...where, '.'],
-      joined(originals(wt), stale),
+      [`Safe to remove: ${folderSafe(missing)}, and every commit’s change `, ...copiedWords(copied), ...where, '.'],
+      joined(originals(wt), missing > 0 ? missingCause : [], stale),
     )
   }
 
@@ -656,9 +723,15 @@ export function safety(
   return result(
     'success',
     'shield',
-    [`Safe to remove: no uncommitted files, and every commit is on GitHub${head}.`],
-    stale,
+    [`Safe to remove: ${folderSafe(missing)}, and every commit is on GitHub${head}.`],
+    joined(missing > 0 ? missingCause : [], stale),
   )
+}
+
+// folderSafe says, after "Safe to remove:", why a worktree's folder holds nothing to lose:
+// nothing uncommitted, or only its missing files, which its last commit has.
+function folderSafe(missing: number): string {
+  return missing > 0 ? `${missingLead(missing)} in its last commit` : 'no uncommitted files'
 }
 
 // MainNote is the clone heading's note on its main checkout: the branch it's on, whether

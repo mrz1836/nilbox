@@ -1311,3 +1311,117 @@ describe('cloneSummary', () => {
     expect(cloneSummary(worktreeRepo({ worktrees: [openClean] })).note).toBeNull()
   })
 })
+
+describe('a worktree whose only changes are files missing from its folder', () => {
+  const clone = worktreeRepo({ name: 'example-repo', displayPath: '~/projects/example-repo' })
+
+  // halfRemoved is pull request #7's worktree, merged, at its head, with 17 files missing
+  // from its folder, as a removal that stopped partway leaves it: finished, as the backend
+  // stages it, and Remove… takes it.
+  const halfRemoved = row({
+    item: linkedItem(),
+    stage: 'finished',
+    canCleanUp: true,
+    dirty: true,
+    dirtyCount: 17,
+    missingCount: 17,
+  })
+
+  const cause =
+    'git counts a file missing from the folder as an uncommitted change; a removal that stopped partway leaves a folder like this.'
+
+  // said is what the drawer says of wt in the example clone, with no session there.
+  function said(wt: Worktree) {
+    const s = safety(wt, clone, now, undefined, agentName)
+
+    return { tone: s.tone, icon: s.icon, text: wordsText(s.text), also: wordsText(s.also) }
+  }
+
+  it('stands ready to clean up, or open, never at risk, its files a muted note', () => {
+    const title =
+      '17 files are missing from its folder, as a removal that stopped partway leaves them, but its last commit has each, so removing the worktree loses nothing'
+
+    expect(laneOf(halfRemoved)).toBe('ready')
+    expect(laneOf(row({ dirty: true, dirtyCount: 2, missingCount: 2 }))).toBe('open')
+    expect(stateOf(halfRemoved)).toEqual({ glyph: 'ghost', tone: 'muted', words: title })
+    expect(workNotes(halfRemoved)).toEqual([
+      { kind: 'missing', tone: 'muted', text: '17 missing', sr: 'files: ', title },
+    ])
+    expect(workNotes(row({ dirty: true, dirtyCount: 1, missingCount: 1 }))[0]?.title).toBe(
+      '1 file is missing from its folder, as a removal that stopped partway leaves them, but its last commit has it, so removing the worktree loses nothing',
+    )
+  })
+
+  it('takes Remove…, with nothing for Force remove… to discard', () => {
+    expect(removeWhy(halfRemoved, false, agentName)).toBe('')
+    expect(removeWhy(halfRemoved, true, agentName)).toBe('Nothing to discard: Remove… takes it')
+    expect(removeWhy({ ...halfRemoved, canRemove: false }, false, agentName)).toBe(
+      'It can’t be removed right now: Check again',
+    )
+  })
+
+  it.each([
+    [
+      'at its pull request’s head',
+      halfRemoved,
+      {
+        tone: 'success',
+        icon: 'shield',
+        text: 'Safe to remove: the 17 files missing from its folder are in its last commit, and every commit is on GitHub (it’s at PR #7’s head).',
+        also: cause,
+      },
+    ],
+    [
+      'with one file missing',
+      row({ dirty: true, dirtyCount: 1, missingCount: 1, item: linkedItem({ headOid: 'elsewhere' }) }),
+      {
+        tone: 'success',
+        icon: 'shield',
+        text: 'Safe to remove: the file missing from its folder is in its last commit, and every commit is on GitHub.',
+        also: cause,
+      },
+    ],
+    [
+      'beside commits not on GitHub',
+      row({ dirty: true, dirtyCount: 2, missingCount: 2, branch: 'feat/retry', unpushed: 2, onGitHub: false }),
+      {
+        tone: 'warning',
+        icon: 'up',
+        text: '2 commits on feat/retry aren’t on GitHub.',
+        also: 'Removing the worktree keeps that branch, so they stay in the clone; the app won’t delete it while they’re only here. 2 files are missing from its folder, but its last commit has each one, so removing the worktree loses none of them.',
+      },
+    ],
+    [
+      'whose commits couldn’t be counted',
+      row({ dirty: true, dirtyCount: 2, missingCount: 2, unpushed: -1, onGitHub: false }),
+      {
+        tone: 'warning',
+        icon: 'ring',
+        text: 'Couldn’t count the commits that aren’t on GitHub, so removing it might lose some.',
+        also: '2 files are missing from its folder, but its last commit has each one, so removing the worktree loses none of them.',
+      },
+    ],
+    [
+      'while Codex runs in it',
+      row({ dirty: true, dirtyCount: 2, missingCount: 2, inUse: [codexHere], stage: 'in-use' }),
+      {
+        tone: 'info',
+        icon: 'info',
+        text: 'Can’t be removed while Codex runs in it (pid 60311).',
+        also: 'Once it ends, nothing in it would be lost: every commit is on GitHub. 2 files are missing from its folder, but its last commit has each one, so removing the worktree loses none of them.',
+      },
+    ],
+  ])('says removing one %s loses none of them', (_, wt, want) => {
+    expect(said(wt)).toEqual(want)
+  })
+
+  it('counts a missing file beside a change of its own as uncommitted work, as before', () => {
+    const mixed = row({ dirty: true, dirtyCount: 3, missingCount: 2, canRemove: false, canForceRemove: true })
+
+    expect(laneOf(mixed)).toBe('risk')
+    expect(stateOf(mixed).words).toBe('uncommitted changes')
+    expect(workNotes(mixed)[0]?.kind).toBe('dirty')
+    expect(removeWhy(mixed, false, agentName)).toBe('It has uncommitted files: Force remove… discards them')
+    expect(said(mixed).text).toBe('Removing it would discard 3 uncommitted files, counting untracked ones.')
+  })
+})

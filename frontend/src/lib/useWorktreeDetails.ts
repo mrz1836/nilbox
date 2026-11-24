@@ -36,11 +36,13 @@ export function readable(wt: Worktree): boolean {
 }
 
 // Changes are a worktree's uncommitted files as a drawer lists them: Details' once read,
-// which are the current truth (at most 200, and how many there are now), else the
-// listing's first 12 and its count. current reports Details'.
+// which are the current truth (at most 200, how many there are now, and how many of them
+// are missing from its folder), else the listing's first 12 and its counts. current reports
+// Details'.
 export interface Changes {
   files: readonly WorktreeFile[]
   count: number
+  missing: number
   current: boolean
 }
 
@@ -48,17 +50,23 @@ export interface Changes {
 // Details that couldn't read the files leave the listing's.
 export function changesOf(wt: Worktree, read: DetailsRead | undefined): Changes {
   if (read?.state === 'read' && read.details.fileCount >= 0) {
-    return { files: read.details.files, count: read.details.fileCount, current: true }
+    return {
+      files: read.details.files,
+      count: read.details.fileCount,
+      missing: read.details.missingCount,
+      current: true,
+    }
   }
 
-  return { files: wt.files, count: wt.dirtyCount, current: false }
+  return { files: wt.files, count: wt.dirtyCount, missing: wt.missingCount, current: false }
 }
 
 // asReadNow is wt as its details last read it, for saying what removing it would cost, so
 // the drawer's sentence and the confirmations agree with the files and commits listed under
-// them: its uncommitted files and its commits not on GitHub counted as Details counted them,
-// each once it could. Everything else is the listing's, the backend's decisions (its can*
-// flags) included, since the backend checks again as it removes.
+// them: its uncommitted files, those missing from its folder among them, and its commits not
+// on GitHub counted as Details counted them, each once it could. Everything else is the
+// listing's, the backend's decisions (its can* flags) included, since the backend checks
+// again as it removes.
 //
 // The backend rules commits that no remote-tracking branch holds on GitHub anyway when HEAD
 // is its pull request's head commit, as a fork's pull request's head is, or when each has an
@@ -80,8 +88,8 @@ export function asReadNow(wt: Worktree, read: DetailsRead | undefined): Worktree
     return wt
   }
 
-  const { fileCount } = read.details
-  const files = fileCount >= 0 ? { dirty: fileCount > 0, dirtyCount: fileCount } : {}
+  const { fileCount, missingCount } = read.details
+  const files = fileCount >= 0 ? { dirty: fileCount > 0, dirtyCount: fileCount, missingCount } : {}
 
   return { ...wt, ...files, ...commitsNow(wt, read.details) }
 }

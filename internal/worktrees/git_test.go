@@ -620,10 +620,10 @@ func TestGitOutputParsing(t *testing.T) {
 	t.Run("the first changed files", func(t *testing.T) {
 		t.Parallel()
 
-		run := &testutil.Runner{Stdout: "?? z\x00 M f\x00R  new\x00old\x00"}
+		run := &testutil.Runner{Stdout: "?? z\x00 M f\x00R  new\x00old\x00 D y\x00"}
 		count, files, _, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 2)
 		require.NoError(t, err)
-		assert.Equal(t, 3, count)
+		assert.Equal(t, changeCount{all: 4, missing: 1}, count)
 		assert.Equal(t, []FileEntry{{Code: " M", Path: "f"}, {Code: "R ", Path: "new"}}, files, "by path")
 		assert.Equal(t, [][]string{gitArgv(treePath, "status --porcelain=v1 -z --untracked-files=all")}, run.Calls(),
 			"the one status the count reads")
@@ -635,7 +635,7 @@ func TestGitOutputParsing(t *testing.T) {
 		run := &testutil.Runner{Stderr: "fatal: unreadable index", Err: exitError{code: 128}}
 		count, files, stderr, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 12)
 		require.Error(t, err)
-		assert.Zero(t, count)
+		assert.Zero(t, count.all)
 		assert.Nil(t, files)
 		assert.Equal(t, "fatal: unreadable index", string(stderr))
 	})
@@ -780,13 +780,22 @@ func TestReadStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		out   string
-		n     int
-		count int
-		want  []FileEntry
+		name    string
+		out     string
+		n       int
+		count   int
+		missing int
+		want    []FileEntry
 	}{
 		{name: "clean", out: "", n: 12, want: []FileEntry{}},
+		{
+			name: "missing from the folder, as HEAD has them", out: " D b\x00 D a\x00", n: 12, count: 2, missing: 2,
+			want: []FileEntry{{Code: " D", Path: "a"}, {Code: " D", Path: "b"}},
+		},
+		{
+			name: "deleted from the index, or changed first, is no file merely missing", out: "D  a\x00MD b\x00AD c\x00", n: 12,
+			count: 3, want: []FileEntry{{Code: "D ", Path: "a"}, {Code: "MD", Path: "b"}, {Code: "AD", Path: "c"}},
+		},
 		{name: "modified in the worktree", out: " M f\x00", n: 12, count: 1, want: []FileEntry{{Code: " M", Path: "f"}}},
 		{name: "staged, then modified again", out: "MM f\x00", n: 12, count: 1, want: []FileEntry{{Code: "MM", Path: "f"}}},
 		{name: "untracked", out: "?? g\x00", n: 12, count: 1, want: []FileEntry{{Code: "??", Path: "g"}}},
@@ -803,7 +812,7 @@ func TestReadStatus(t *testing.T) {
 			want: []FileEntry{{Code: "RM", Path: "new"}},
 		},
 		{
-			name: "staged, deleted, and conflicted", out: "UU c\x00 D b\x00A  a\x00", n: 12, count: 3,
+			name: "staged, deleted, and conflicted", out: "UU c\x00 D b\x00A  a\x00", n: 12, count: 3, missing: 1,
 			want: []FileEntry{{Code: "A ", Path: "a"}, {Code: " D", Path: "b"}, {Code: "UU", Path: "c"}},
 		},
 		{
@@ -818,7 +827,7 @@ func TestReadStatus(t *testing.T) {
 			name: "only the first n are kept, every one counted", out: "?? d\x00?? b\x00?? e\x00?? a\x00?? c\x00", n: 2,
 			count: 5, want: []FileEntry{{Code: "??", Path: "a"}, {Code: "??", Path: "b"}},
 		},
-		{name: "a count alone keeps none", out: " M f\x00?? g\x00", count: 2, want: []FileEntry{}},
+		{name: "a count alone keeps none", out: " M f\x00 D g\x00", count: 2, missing: 1, want: []FileEntry{}},
 	}
 
 	for _, tt := range tests {
@@ -826,7 +835,8 @@ func TestReadStatus(t *testing.T) {
 			t.Parallel()
 
 			count, files := readStatus([]byte(tt.out), tt.n)
-			assert.Equal(t, tt.count, count)
+			assert.Equal(t, changeCount{all: tt.count, missing: tt.missing}, count)
+			assert.Equal(t, tt.count > 0 && tt.missing == tt.count, count.onlyMissing())
 			assert.Equal(t, tt.want, files, "never nil, so the window gets []")
 		})
 	}
@@ -863,7 +873,7 @@ func TestReadStatusKeepsTheFirstOfManyUnsortedFiles(t *testing.T) {
 
 	for _, n := range []int{1, 12, 200} {
 		count, files := readStatus(out, n)
-		assert.Equal(t, total, count, "every file counted, a rename once")
+		assert.Equal(t, changeCount{all: total}, count, "every file counted, a rename once")
 		assert.Equal(t, want[:n], files, "the first %d by path", n)
 	}
 }

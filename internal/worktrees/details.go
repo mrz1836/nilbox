@@ -30,6 +30,10 @@ type Details struct {
 	// couldn't be read.
 	FileCount int `json:"fileCount"`
 
+	// MissingCount is how many of those are files missing from the folder that HEAD has as
+	// they were, as Worktree.MissingCount counts them; 0 when they couldn't be read.
+	MissingCount int `json:"missingCount"`
+
 	// Commits are the commits on HEAD that aren't on GitHub, as Worktree.Unpushed counts
 	// them, newest first, at most 200; none when every one is, or when they couldn't be
 	// read.
@@ -160,7 +164,7 @@ func (s *Service) Details(ctx context.Context, repoPath, path string) (Details, 
 		filesFailed, commitsFailed, baseFailed string
 	)
 
-	wg.Go(func() { d.Files, d.FileCount, filesFailed = detailFiles(ctx, g, e.Path) })
+	wg.Go(func() { d.Files, d.FileCount, d.MissingCount, filesFailed = detailFiles(ctx, g, e.Path) })
 	wg.Go(func() { d.Commits, d.Unpushed, d.Copies, commitsFailed = s.detailCommits(ctx, g, repoPath, e, fetched) })
 	wg.Go(func() { d.Base, d.Behind, baseFailed = s.detailBase(ctx, repoPath, e.HEAD) })
 	wg.Wait()
@@ -200,14 +204,15 @@ func (s *Service) linkedEntry(ctx context.Context, repoPath, path string) (git, 
 }
 
 // detailFiles reads the changed files of the worktree at dir as they are now: the first by
-// path, at most detailLimit, and how many there are; or why they couldn't be read, with -1.
-func detailFiles(ctx context.Context, g git, dir string) ([]FileEntry, int, string) {
+// path, at most detailLimit, how many there are, and how many of them are missing from its
+// folder; or why they couldn't be read, with -1 and 0.
+func detailFiles(ctx context.Context, g git, dir string) ([]FileEntry, int, int, string) {
 	count, files, stderr, err := g.firstChanged(ctx, dir, detailLimit)
 	if err != nil {
-		return []FileEntry{}, -1, readFailure("the changed files", err, stderr)
+		return []FileEntry{}, -1, 0, readFailure("the changed files", err, stderr)
 	}
 
-	return files, count, ""
+	return files, count.all, count.missing, ""
 }
 
 // detailCommits counts the commits on HEAD in the worktree e of the clone at dir that aren't

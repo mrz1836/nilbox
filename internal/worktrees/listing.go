@@ -555,7 +555,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[
 
 	switch {
 	case err == nil:
-		wt.Dirty, wt.DirtyCount, wt.Files = count > 0, count, files
+		wt.Dirty, wt.DirtyCount, wt.MissingCount, wt.Files = count.all > 0, count.all, count.missing, files
 	case guarded(err):
 		// The clone's own config refuses a status: the worktree says why, and nothing that
 		// needs its status, as a sweep's removal, touches it.

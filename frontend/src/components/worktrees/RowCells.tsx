@@ -258,10 +258,11 @@ export function ItemCell({ worktree, facts }: ItemCellProps) {
 }
 
 // NoteMark is a work note's mark: ⧉ for commits on GitHub only as copies, ↑ for commits
-// that aren't, or couldn't be counted; none for uncommitted files.
+// that aren't, or couldn't be counted; none for uncommitted files, or missing ones.
 function NoteMark({ kind }: { kind: WorkNote['kind'] }) {
   switch (kind) {
     case 'dirty':
+    case 'missing':
       return null
     case 'copied':
       return <CopyIcon className="size-2.75" />
@@ -272,8 +273,9 @@ function NoteMark({ kind }: { kind: WorkNote['kind'] }) {
 
 // WorkCell is the work a worktree holds that isn't on GitHub: its uncommitted files, in
 // amber, and its commits not on GitHub, ↑2, or ↑? when they couldn't be counted; or,
-// muted, its commits on GitHub only as copies, ⧉ 10 on #42. It is empty when there is
-// none: the state's ✓ says so already.
+// muted, its commits on GitHub only as copies, ⧉ 10 on #42, and files missing from its
+// folder alone, 17 missing, which lose nothing. It is empty when there is none: the
+// state's ✓ says so already.
 export function WorkCell({ worktree }: { worktree: Worktree }) {
   return (
     <span className={workCellClass}>

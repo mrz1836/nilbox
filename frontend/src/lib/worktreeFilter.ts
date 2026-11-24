@@ -19,7 +19,7 @@ import {
   type Suggestions,
 } from './query'
 import type { WorktreeErrors } from './useWorktrees'
-import { unpushedKnown } from './worktreeParts'
+import { onlyMissing, uncommitted, unpushedKnown } from './worktreeParts'
 
 // worktreeSpec is what the Worktrees view's filter understands: the clone, the branch,
 // the agent that worked there, and the states below. A worktree can be in several states
@@ -30,12 +30,15 @@ export const worktreeSpec: QuerySpec = { keys: ['repo', 'branch', 'agent', 'is']
 export const worktreeHint = 'Matches branches, paths, repos, #numbers, titles · -word excludes'
 
 // states are the is: values, each with whether a worktree is in it: the worktree's own
-// state, then its pull request or issue's kind and state. unpushed is a worktree with
-// commits that aren't on GitHub, as the not on GitHub chip counts them (unpushedKnown):
-// never one whose commits couldn't be counted, nor one whose commits are on GitHub as
-// identical copies, or at its pull request's head (onGitHub).
+// state, then its pull request or issue's kind and state. dirty is a worktree with files
+// removing it would discard, as the uncommitted chip counts them (uncommitted), and missing
+// one whose only changes are files missing from its folder, which it wouldn't (onlyMissing).
+// unpushed is a worktree with commits that aren't on GitHub, as the not on GitHub chip
+// counts them (unpushedKnown): never one whose commits couldn't be counted, nor one whose
+// commits are on GitHub as identical copies, or at its pull request's head (onGitHub).
 const states: readonly (readonly [string, (wt: Worktree) => boolean])[] = [
-  ['dirty', (wt) => wt.dirty],
+  ['dirty', (wt) => uncommitted(wt) > 0],
+  ['missing', onlyMissing],
   ['unpushed', (wt) => unpushedKnown(wt) > 0],
   ['locked', (wt) => wt.locked],
   ['in-use', (wt) => wt.inUse.length > 0 || wt.stage === 'in-use'],
@@ -55,6 +58,7 @@ const knownStates: ReadonlySet<string> = new Set(states.map(([name]) => name))
 // and the agents, show only while some worktree is.
 const facets: readonly Facet[] = [
   { label: 'Dirty', key: 'is', value: 'dirty' },
+  { label: 'Missing files', key: 'is', value: 'missing', optional: true },
   { label: 'Not on GitHub', key: 'is', value: 'unpushed', optional: true },
   { label: 'Locked', key: 'is', value: 'locked', optional: true },
   { label: 'In use', key: 'is', value: 'in-use', optional: true },

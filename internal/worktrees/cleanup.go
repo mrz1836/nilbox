@@ -33,11 +33,12 @@ func (s *Service) Unlock(ctx context.Context, repoPath, path string) error {
 }
 
 // CleanUp removes one finished worktree: its pull request merged or its issue closed, it
-// has no uncommitted changes, every commit it has is on GitHub, and no session runs in it,
-// by its lock or as a running process.
+// has no uncommitted changes but files missing from its folder, every commit it has is on
+// GitHub, and no session runs in it, by its lock or as a running process.
 // The worktree is assessed again first, GitHub included. It releases the lock of an agent
-// session that has ended, removes the worktree without --force, and deletes the branches
-// named, of those it offers, as Remove does.
+// session that has ended, removes the worktree as Remove does (without --force, unless its
+// only changes are files missing from its folder), and deletes the branches named, of
+// those it offers, as Remove does.
 func (s *Service) CleanUp(ctx context.Context, repoPath, path string, branches []string) (RemoveResult, error) {
 	s.act.Lock()
 	defer s.act.Unlock()
@@ -205,7 +206,8 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 
 // removeFinished releases a finished worktree's stale lock, if it has one, and removes it
 // without --force while it still has the commit assessed checked out and no running
-// process works in it. automatic also leaves it when the processes cannot be listed.
+// process works in it, or with it when its only changes are files missing from its folder
+// (removeLossless). automatic also leaves it when the processes cannot be listed.
 func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt Worktree, automatic bool) error {
 	if wt.Locked {
 		// Checked before the lock is released, too, so a worktree in use keeps its lock.
@@ -223,7 +225,7 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 		return err
 	}
 
-	return s.removeEntry(ctx, g, repoPath, e, false)
+	return s.removeLossless(ctx, g, repoPath, e)
 }
 
 // forgetRecord removes the record of a removed worktree, at path, and its copy record.
@@ -268,7 +270,7 @@ func notFinishedReason(wt Worktree) string {
 		return "it is not linked to a pull request or issue"
 	case !wt.Item.done():
 		return "its pull request or issue is still open"
-	case wt.Dirty:
+	case !wt.nothingUncommitted():
 		return "it has uncommitted changes"
 	case wt.Error != "":
 		return wt.Error

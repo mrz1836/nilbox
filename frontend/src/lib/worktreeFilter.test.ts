@@ -165,6 +165,15 @@ describe('filterWorktrees', () => {
     expect(shown(filterWorktrees(repos, query, { agentName }))).toEqual({ repos: want, matches })
   })
 
+  it('keeps as dirty what its chip counts, never a worktree whose files are only missing, which is:missing finds', () => {
+    const half = worktree({ displayPath: '~/wt/half', dirty: true, dirtyCount: 3, missingCount: 3 })
+    const mixed = worktree({ displayPath: '~/wt/mixed', dirty: true, dirtyCount: 3, missingCount: 2 })
+    const both = [worktreeRepo({ worktrees: [mainWorktree(), half, mixed] })]
+
+    expect(shown(filterWorktrees(both, 'is:dirty'))).toEqual({ repos: { 'example-repo': ['mixed'] }, matches: 1 })
+    expect(shown(filterWorktrees(both, 'is:missing'))).toEqual({ repos: { 'example-repo': ['half'] }, matches: 1 })
+  })
+
   it('keeps as not on GitHub what its chip counts: a commit with only an edited copy, never commits on GitHub as copies', () => {
     const copies = [
       worktreeRepo({ worktrees: [mainWorktree(), copiedWorktree(), recordedWorktree(), partlyCopiedWorktree()] }),

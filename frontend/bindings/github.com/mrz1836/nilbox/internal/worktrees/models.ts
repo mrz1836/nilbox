@@ -304,6 +304,12 @@ export interface Details {
     "fileCount": number;
 
     /**
+     * MissingCount is how many of those are files missing from the folder that HEAD has as
+     * they were, as Worktree.MissingCount counts them; 0 when they couldn't be read.
+     */
+    "missingCount": number;
+
+    /**
      * Commits are the commits on HEAD that aren't on GitHub, as Worktree.Unpushed counts
      * them, newest first, at most 200; none when every one is, or when they couldn't be
      * read.
@@ -886,6 +892,14 @@ export interface Worktree {
     "dirtyCount": number;
 
     /**
+     * MissingCount is how many of those are files missing from the folder that HEAD has as
+     * they were (git's " D"), as a removal that stopped partway leaves them. When they are
+     * all of them, removing the worktree loses none of its files: such a worktree counts as
+     * clean for Remove, CleanUp, and the sweep (see onlyMissing).
+     */
+    "missingCount": number;
+
+    /**
      * Files are the first 12 of those files by path, from the same status (rowFiles), which
      * the view shows before it reads the rest (Details). A clean worktree has none, and so
      * has one whose status couldn't be read.
@@ -980,13 +994,15 @@ export interface Worktree {
     "inUse": Session[] | null;
 
     /**
-     * CanRemove reports a clean, unlocked linked worktree that Remove accepts.
+     * CanRemove reports an unlocked linked worktree that Remove accepts: a clean one, or one
+     * whose only changes are files missing from its folder, while the processes are listed.
      */
     "canRemove": boolean;
 
     /**
      * CanForceRemove reports an unlocked linked worktree with uncommitted changes that
-     * ForceRemove accepts after the user confirms.
+     * ForceRemove accepts after the user confirms, other than files missing from its
+     * folder alone, which Remove takes.
      */
     "canForceRemove": boolean;
 

@@ -1,7 +1,7 @@
 import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { asReadNow, type DetailsRead } from '../../lib/useWorktreeDetails'
-import { itemRef } from '../../lib/worktreeParts'
+import { itemRef, uncommitted } from '../../lib/worktreeParts'
 import { removeWhy } from '../../lib/worktrees'
 import { copyText, openExternal, type AgentID, type Worktree, type WorktreeRepo } from '../../platform'
 import {
@@ -181,7 +181,7 @@ export function rowMenuItems(o: RowMenuOptions): MenuItem[] {
     },
   )
 
-  if (fresh.dirtyCount > 0) {
+  if (uncommitted(fresh) > 0) {
     const forceReason = removeWhy(fresh, true, o.agentName)
 
     items.push({
@@ -231,7 +231,7 @@ export function cleanupMenuItems(o: CleanupMenuOptions): MenuItem[] {
           label: `Remove ${counted(o.cleanCount, 'clean worktree', 'clean worktrees')}…`,
           icon: <TrashIcon className={icon} />,
           disabled: o.disabled,
-          note: 'Each has no uncommitted changes and is unlocked; you choose which, and their branches',
+          note: 'Each is unlocked and holds nothing uncommitted to lose; you choose which, and their branches',
           onSelect: o.onRemoveAllClean,
         }
       : {
