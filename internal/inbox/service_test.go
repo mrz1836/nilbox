@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/github/githubtest"
@@ -966,6 +967,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
 		Branch: "branch-12", Authored: true, ReviewRequest: ReviewRequestYou, ReviewTeams: []string{},
+		ReviewRequestedAt: clock.Format(h.clock.Now().UTC()),
 	}, fromFork)
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.

@@ -678,7 +678,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
-    i.viewer_review_at, i.nudged_at,
+    i.viewer_review_at, i.nudged_at, i.review_requested_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
@@ -725,6 +725,7 @@ type ListItemsRow struct {
 	SeenActivityAt         *time.Time
 	ViewerReviewAt         *time.Time
 	NudgedAt               *time.Time
+	ReviewRequestedAt      *time.Time
 	DetailsItemID          *int64
 	Labels                 *string
 	Projects               *string
@@ -815,6 +816,7 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.SeenActivityAt,
 			&i.ViewerReviewAt,
 			&i.NudgedAt,
+			&i.ReviewRequestedAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -882,7 +884,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
-    i.viewer_review_at, i.nudged_at,
+    i.viewer_review_at, i.nudged_at, i.review_requested_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
@@ -933,6 +935,7 @@ type ListItemsByIDRow struct {
 	SeenActivityAt         *time.Time
 	ViewerReviewAt         *time.Time
 	NudgedAt               *time.Time
+	ReviewRequestedAt      *time.Time
 	DetailsItemID          *int64
 	Labels                 *string
 	Projects               *string
@@ -1032,6 +1035,7 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.SeenActivityAt,
 			&i.ViewerReviewAt,
 			&i.NudgedAt,
+			&i.ReviewRequestedAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,

@@ -196,6 +196,14 @@ type Item struct {
 	// (RemoveReviewRequest).
 	ReviewRequest ReviewRequest `json:"reviewRequest"`
 
+	// ReviewRequestedAt is when the inbox first saw a pull request in Review requested for
+	// a request of the user's review, while it is there, as RFC 3339, or "" otherwise (one
+	// listed only because its author pushed since the user's review included). It is
+	// stamped again each time a request arrives anew, the user's own Re-request my review
+	// included, so the card can tell an agent session that ended before the request came
+	// back from one that answers it.
+	ReviewRequestedAt string `json:"reviewRequestedAt"`
+
 	// ReviewTeams are the slugs of the teams a pull request asks to review, in GitHub's
 	// order. It is empty for an issue, and until a refresh has read them.
 	ReviewTeams []string `json:"reviewTeams"`
@@ -315,6 +323,11 @@ type Details struct {
 
 	// FetchedAt is when the details were read, as RFC 3339.
 	FetchedAt string `json:"fetchedAt"`
+
+	// HeadOID is a pull request's head commit as the details last read it, "" for an
+	// issue. The card compares it with the commit an agent session's review was left on,
+	// so findings about a commit the pull request has moved past don't show as its latest.
+	HeadOID string `json:"headOid"`
 
 	// PushedSinceReview reports a pull request whose author pushed since the user requested
 	// changes: the user's standing verdict requests changes at a commit other than its head,
@@ -757,6 +770,10 @@ type itemRow struct {
 	ViewerReviewAt *time.Time
 	NudgedAt       *time.Time
 
+	// ReviewRequestedAt is when the inbox first saw the item in Review requested, while it
+	// is there, nil otherwise (see Item.ReviewRequestedAt).
+	ReviewRequestedAt *time.Time
+
 	// HasDetails reports whether a refresh has read the item's details.
 	HasDetails             bool
 	Labels                 []storedLabel
@@ -878,6 +895,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned, ReasonPushed: r.ReasonPushed,
 		ViewerReviewState: r.ViewerReviewState, ViewerReviewCommit: r.ViewerReviewCommit, ReviewLeftAt: r.ReviewLeftAt,
 		SeenActivityAt: r.SeenActivityAt, ViewerReviewAt: r.ViewerReviewAt, NudgedAt: r.NudgedAt,
+		ReviewRequestedAt: r.ReviewRequestedAt,
 
 		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
 		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
@@ -946,6 +964,7 @@ func (r *itemRow) item(scope fileScope, viewer string, cards cardRules) Item {
 		Authored:          r.opened(viewer),
 		Assigned:          r.ReasonAssigned,
 		ReviewRequest:     r.reviewRequest(viewer),
+		ReviewRequestedAt: formatOptionalTime(r.ReviewRequestedAt),
 		ReviewTeams:       textutil.NonNil(r.ReviewTeams),
 	}
 }
@@ -1154,6 +1173,7 @@ func (r *itemRow) details(policy trust.Policy, viewer string, cards cardRules) *
 		AutoMerge:    r.AutoMerge,
 		MergeBot:     cards.mergeBots.Match(r.ApprovingBots),
 		FetchedAt:    formatOptionalTime(r.DetailsFetchedAt),
+		HeadOID:      r.HeadOID,
 
 		PushedSinceReview:    pushed,
 		ReviewRequestedAgain: pushed && github.ReviewRequests{Users: r.ReviewUsers}.Asks(viewer),

@@ -68,8 +68,13 @@ export function runningSession(sessions: readonly AgentSession[] | undefined): A
 }
 
 // cardSession picks the session an item's card shows: the newest still running, else the
-// newest that ended in the last day, else none.
-export function cardSession(sessions: readonly AgentSession[] | undefined, now: Date): AgentSession | null {
+// newest that ended in the last day, unless the item, when given, has moved past it
+// (superseded), else none.
+export function cardSession(
+  sessions: readonly AgentSession[] | undefined,
+  now: Date,
+  item?: InboxItem,
+): AgentSession | null {
   if (sessions === undefined) {
     return null
   }
@@ -80,11 +85,36 @@ export function cardSession(sessions: readonly AgentSession[] | undefined, now: 
   }
 
   const ended = sessions.find((s) => s.endedAt !== '')
-  if (ended === undefined || now.getTime() - Date.parse(ended.endedAt) > endedShownMs) {
+  if (
+    ended === undefined ||
+    now.getTime() - Date.parse(ended.endedAt) > endedShownMs ||
+    (item !== undefined && superseded(ended, item))
+  ) {
     return null
   }
 
   return ended
+}
+
+// superseded reports an ended session whose findings a pull request has moved past, so
+// its card offers a fresh launch rather than them: the review the session left was on a
+// commit other than the head the details last read, or a request of the user's review
+// arrived after the session ended, as one does when the author asks again after a push, or
+// the user re-requests their own review. An older session ended earlier still, so it is
+// past too.
+export function superseded(session: AgentSession, item: InboxItem): boolean {
+  const reviewed = session.githubEventCommit.toLowerCase()
+  const head = (item.details?.headOid ?? '').toLowerCase()
+
+  if (reviewed !== '' && head !== '' && reviewed !== head) {
+    return true
+  }
+
+  return (
+    item.reviewRequestedAt !== '' &&
+    session.endedAt !== '' &&
+    Date.parse(item.reviewRequestedAt) > Date.parse(session.endedAt)
+  )
 }
 
 // stateLabels are how each state reads after the agent's name: "Claude · needs approval".

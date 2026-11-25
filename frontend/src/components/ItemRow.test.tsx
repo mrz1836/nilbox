@@ -1064,6 +1064,54 @@ describe('ItemRow agent', () => {
 
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
   })
+
+  it('offers a fresh launch, not the last findings, once the author pushes and asks again', () => {
+    const reviewed = 'abc1234def5678abc1234def5678abc1234def56'
+    const session = agentSession({
+      state: 'ended',
+      endedAt: '2026-06-14T15:00:00Z',
+      canFocus: false,
+      githubEvent: 'changes_requested',
+      githubEventCommit: reviewed,
+      githubEventAt: '2026-06-14T14:50:00Z',
+    })
+    const resolution = itemResolution({
+      situations: situationChoices({ rereview: { id: 6, nickname: 'Re-review', inheritedId: 6 } }),
+    })
+
+    renderAt(
+      <ul>
+        {/* Before the push, what the session found is the card's latest. */}
+        <ItemRow
+          item={asked({ details: details({ headOid: reviewed }) })}
+          launch={launch}
+          resolution={resolution}
+          sessions={[session]}
+        />
+        <ItemRow
+          item={asked({
+            id: 2,
+            reviewRequestedAt: '2026-06-15T11:00:00Z',
+            details: details({
+              headOid: 'fed4321cba8765fed4321cba8765fed4321cba87',
+              pushedSinceReview: true,
+              reviewRequestedAgain: true,
+            }),
+          })}
+          launch={launch}
+          resolution={resolution}
+          sessions={[session]}
+        />
+      </ul>,
+    )
+
+    const [before, after] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+    expect(within(before).getByRole('button', { name: 'Findings · 21h' })).toBeInTheDocument()
+
+    expect(after).toHaveAttribute('data-rule', 'rereview')
+    expect(within(after).queryByRole('button', { name: /^Findings/ })).not.toBeInTheDocument()
+    expect(within(after).getByRole('button', { name: 'Open in Claude: Re-review' })).toBeInTheDocument()
+  })
 })
 
 describe('ItemRow peek', () => {

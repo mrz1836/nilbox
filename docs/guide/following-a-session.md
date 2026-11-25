@@ -16,7 +16,10 @@ launch, preferring the one whose first message is the prompt the launch sent.
 ## On the card
 
 The agent's button beside the card's next step follows the newest running session, or one that ended
-in the last day: while it starts or works, a pill with a slowly moving border, such as **Claude
+in the last day, unless the pull request has moved past it since: the review it left was on an older
+commit, or your review was requested again after it ended, as when the author pushes and asks again,
+or you re-request your own review. Then the button offers a fresh launch instead. While it starts or
+works, a pill with a slowly moving border, such as **Claude
 working 2m**, that opens the item's sessions, with **Show in terminal** (or **Watch**, for a
 routine's run in the background) beside it; waiting on you, the card's story says so (**Claude needs
 approval · Bash: go test**) and its next step is **Show terminal**, breathing, or **Watch**; its

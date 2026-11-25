@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { FIXED_NOW } from '../test/clock'
-import { agentSession, item, sessionsSnapshot } from '../test/fixtures'
+import { agentSession, details, item, sessionsSnapshot } from '../test/fixtures'
 import {
   cardSession,
   compactCount,
@@ -17,6 +17,7 @@ import {
   stateLabel,
   stateText,
   stateTint,
+  superseded,
   usageWords,
 } from './sessions'
 
@@ -77,6 +78,39 @@ describe('sessions', () => {
     expect(cardSession([endedLongAgo], FIXED_NOW)).toBeNull()
     expect(cardSession(undefined, FIXED_NOW)).toBeNull()
     expect(cardSession([], FIXED_NOW)).toBeNull()
+  })
+
+  it('drops an ended session from the card once its pull request moves past it', () => {
+    const reviewed = 'abc1234def5678abc1234def5678abc1234def56'
+    const pushed = 'fed4321cba8765fed4321cba8765fed4321cba87'
+    const ended = agentSession({
+      id: 'ended',
+      state: 'ended',
+      endedAt: '2026-06-15T09:00:00Z',
+      githubEvent: 'changes_requested',
+      githubEventCommit: reviewed,
+      githubEventAt: '2026-06-15T08:50:00Z',
+    })
+    const quiet = agentSession({ id: 'quiet', state: 'ended', endedAt: '2026-06-15T09:00:00Z' })
+    const running = agentSession({ id: 'running', state: 'working', githubEventCommit: reviewed })
+    const at = (headOid: string, reviewRequestedAt = '') => item({ reviewRequestedAt, details: details({ headOid }) })
+
+    // Its review is on the head, asked for before it ran: what it found is the latest.
+    expect(cardSession([ended], FIXED_NOW, at(reviewed, '2026-06-15T08:00:00Z'))?.id).toBe('ended')
+    expect(cardSession([ended], FIXED_NOW, at(reviewed.toUpperCase()))?.id).toBe('ended')
+    // The author pushed since its review, asked again or not.
+    expect(cardSession([ended], FIXED_NOW, at(pushed))).toBeNull()
+    expect(cardSession([ended], FIXED_NOW, at(pushed, '2026-06-15T11:00:00Z'))).toBeNull()
+    expect(superseded(ended, at(pushed))).toBe(true)
+    // A session that left no review is past once a request arrives after it ended.
+    expect(cardSession([quiet], FIXED_NOW, at(pushed, '2026-06-15T11:00:00Z'))).toBeNull()
+    expect(cardSession([quiet], FIXED_NOW, at(pushed, '2026-06-15T08:00:00Z'))?.id).toBe('quiet')
+    expect(cardSession([quiet], FIXED_NOW, at(pushed))?.id).toBe('quiet')
+    // Nothing to compare before the details are read, or without the item.
+    expect(cardSession([ended], FIXED_NOW, item())?.id).toBe('ended')
+    expect(cardSession([ended], FIXED_NOW)?.id).toBe('ended')
+    // A running session stays, whatever moved.
+    expect(cardSession([running, ended], FIXED_NOW, at(pushed, '2026-06-15T11:00:00Z'))?.id).toBe('running')
   })
 
   it('words and colors every state', () => {

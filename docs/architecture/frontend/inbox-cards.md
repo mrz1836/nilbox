@@ -38,7 +38,12 @@ The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, 
 `card/IssueState`, without tooltips (the numbers are in the peek and the screen-reader sentence),
 and `card/RiskChip` is the one chip for trust and sensitive files. `card/CardActions` renders the
 primary and frames `LaunchControls`' `card` variant, which follows the card's session
-(`cardSession`) and keeps its hold, take-over, and clone dialogs mounted. The action column is two
+(`cardSession`) and keeps its hold, take-over, and clone dialogs mounted. The card's session is the
+newest running, else the newest that ended in the last day unless the item has moved past it
+(`superseded`): its review was left on a commit other than `Details.headOid`, or
+`Item.reviewRequestedAt` is later than its end, as when the author pushes and asks again or the user
+re-requests their own review. Then the slot offers a fresh launch, the situation's, in place of its
+Findings. The action column is two
 slots, so the controls line up down the list: the primary's, as wide as the longest common primary
 (`--card-primary`, 5.625rem for Re-review; a longer one, Show terminal or What happened, comes only
 beside the agent's ▾ and widens it, `minmax(var(--card-primary), max-content)`; the primary's own
