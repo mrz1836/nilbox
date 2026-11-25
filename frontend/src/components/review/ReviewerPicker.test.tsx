@@ -172,7 +172,7 @@ describe('the reviewers list', () => {
     renderAt(<ReviewSummary review={review({ canEditReviewers: true })} item={undefined} reviewers={editing(edit)} />)
 
     const reviewers = screen.getByRole('region', { name: 'Reviewers' })
-    expect(reviewers).toHaveTextContent('No one is asked to review yet.')
+    expect(within(reviewers).getByText('No one is asked to review yet.')).toHaveClass('text-warning')
 
     const chips = within(screen.getByRole('group', { name: 'Suggested reviewers' }))
     expect(

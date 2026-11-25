@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { PicturesContext, usePictures } from '../lib/pictures'
+import { toneText } from '../lib/tone'
 import { PersonAvatar } from './Avatar'
 import { chipClass, quietButtonClass } from './controls'
 
@@ -25,6 +26,20 @@ export function personLabel(login: string, name: string, mine = false) {
         </>
       )}
     </span>
+  )
+}
+
+// NobodyLine says a list of people is empty, as an item no one is assigned to, or a pull
+// request no one is asked to review, is: an empty place where a picture would be, dashed,
+// and the words in the warning tone, lined up with a person's line, so it reads as
+// something missing rather than as a caption. size is the words' size: the summary's
+// small text unless set.
+export function NobodyLine({ size = '', children }: { size?: string; children: ReactNode }) {
+  return (
+    <p className={`flex items-center gap-1.5 px-1 py-0.5 font-medium ${toneText.warning} ${size}`}>
+      <span aria-hidden="true" className="size-5 shrink-0 rounded-full border border-dashed border-current" />
+      {children}
+    </p>
   )
 }
 

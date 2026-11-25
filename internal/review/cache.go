@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -508,6 +509,41 @@ func (c *cacheStore) save(ctx context.Context, id int64, pc pullContext, diff *g
 // request the sheet holds no cache of is an error (sql.ErrNoRows), for the caller to expire
 // instead.
 func (c *cacheStore) setAssignees(ctx context.Context, id int64, logins []string, now time.Time) error {
+	return c.rewriteAssignees(ctx, id, now, func(*contextPeople) (*contextPeople, bool) {
+		return &contextPeople{Logins: textutil.NonNil(slices.Clone(logins)), Total: len(logins)}, true
+	})
+}
+
+// takeOffAssignee takes login off who the cached pull request with id is assigned to, at
+// now, as setAssignees rewrites them: when the cache lists its assignees and names login
+// among them. A pull request the sheet holds no cache of is left as it is, with no error.
+func (c *cacheStore) takeOffAssignee(ctx context.Context, id int64, login string, now time.Time) error {
+	err := c.rewriteAssignees(ctx, id, now, func(old *contextPeople) (*contextPeople, bool) {
+		if old == nil {
+			return nil, false
+		}
+
+		kept := slices.DeleteFunc(slices.Clone(old.Logins), func(l string) bool { return strings.EqualFold(l, login) })
+		if len(kept) == len(old.Logins) {
+			return nil, false
+		}
+
+		return &contextPeople{Logins: textutil.NonNil(kept), Total: max(old.Total-(len(old.Logins)-len(kept)), len(kept))}, true
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+
+	return err
+}
+
+// rewriteAssignees rewrites who the cached pull request with id is assigned to, as change
+// says from what the cache holds (nil when it says nothing of them), at now, in one
+// transaction: the rest of its context stays as read, and so does when it was read. A change
+// that answers false writes nothing.
+func (c *cacheStore) rewriteAssignees(
+	ctx context.Context, id int64, now time.Time, change func(old *contextPeople) (*contextPeople, bool),
+) error {
 	err := store.InTx(ctx, c.db, func(tx *sql.Tx) error {
 		q := c.q.WithTx(tx)
 
@@ -521,7 +557,12 @@ func (c *cacheStore) setAssignees(ctx context.Context, id int64, logins []string
 			return err
 		}
 
-		pc.Assignees = &contextPeople{Logins: textutil.NonNil(slices.Clone(logins)), Total: len(logins)}
+		people, ok := change(pc.Assignees)
+		if !ok {
+			return nil
+		}
+
+		pc.Assignees = people
 
 		encoded, err := fitContext(pc)
 		if err != nil {

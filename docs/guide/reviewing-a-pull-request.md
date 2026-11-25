@@ -318,8 +318,9 @@ second request fails, and the picker stays open and says why, as it does when Gi
 request (for someone without access to the repository, say). In the summary, hover a request for
 **×** to take it off, or someone who reviewed and isn't asked now for **↻** to ask them again
 (never you, the author, a bot, or a team); while no one has reviewed it or is asked to, it says
-**No one is asked to review yet.** and offers up to three of the picker's people, each asked in one
-click, and **More…** for the picker. Your own request stays checked in the picker: ask for your
+**No one is asked to review yet.** in amber, beside an empty place for a picture, and offers up to
+three of the picker's people, each asked in one click, and **More…** for the picker. Your own
+request stays checked in the picker: ask for your
 review again with [Re-request my review](#re-request-my-review), and take yourself off with
 [Remove me as reviewer](#remove-me-as-reviewer). The people you ask rank higher among those who
 work on the repository from then on ([People](#people)).
@@ -340,9 +341,11 @@ The picker reads who can be assigned in the repository once a week at most, as i
 (named for what it does, as in **Assign 2 · Unassign 1**) takes everyone off in one request, then
 assigns everyone added in one more, so a swap works at GitHub's cap of ten, and the sheet shows
 GitHub's answer at once, without reading the pull request again. Hover a line for **×** to unassign
-that person; with no one assigned, the summary offers **Assign yourself**, the author, and one more
-in one click, and **More…** for the picker. You take yourself off with **Unassign me**, in the
-card's menu, never here; your own row in the picker stays checked. A pull request read by an older
+that person; with no one assigned, the summary says **No one is assigned.** in amber, beside an
+empty place for a picture, and offers **Assign yourself**, the author, and one more in one click,
+and **More…** for the picker. You take yourself off with **Unassign me**, in the card's menu,
+never here; the sheet shows it at once, even opened a moment after. Your own row in the picker
+stays checked. A pull request read by an older
 Nilbox shows its assignees once it is read again. Once GitHub takes it, the card shows at
 once that you assigned yourself.
 

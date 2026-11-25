@@ -305,6 +305,15 @@ expired instead (`settle`), so the next refresh reads it. The inbox's card is no
 edit assigns the user: GitHub's answer then tells the inbox (`Acted.SelfAssigned`), and the card
 reads as assigned to them at once. Each person assigned is recorded as assigned in the repository. A
 read already under way when an edit lands can overwrite the rewritten list with the one it read; the
-next read puts it right. `PeopleSummary` and `ForgetPeople` (`people.go`) count and empty the People
+next read puts it right. The other way round, the inbox's own Unassign me reaches the cache too:
+`InboxEdits` (`NewInboxEdits`, apart from the bound `Service`, since only core calls it) has
+`Unassigned` take the user off the cached assignees (`cacheStore.takeOffAssignee`, through the same
+`rewriteAssignees` as `setAssignees`, with the row's own `context_at`), which core's
+`sheetOutcomes`, the last sink of the inbox's `outcomesFanOut`, calls for each
+`inbox.OutcomeUnassigned` of a pull request (`Outcome.ItemID`). A sheet opened in the next moments,
+whose read under 20 seconds old is served again (`recent`), shows the user gone at once, and the
+next read, which may still name them in the moment after the edit, comes no sooner. A pull request
+with no cache, or one whose cache says nothing of its assignees or doesn't name the user, is left
+as it is. `PeopleSummary` and `ForgetPeople` (`people.go`) count and empty the People
 directory for Settings › Reviewing › People; forgetting answers with what is left, so the row needs
 no second read.

@@ -662,12 +662,14 @@ func (w *engineWaker) Wake() {
 // told first: it records that at once, never waiting on the mirror, whose record can wait
 // on a clear on its way to GitHub.
 //
-// The agent sessions hear last what came of their items on GitHub (sessionOutcomes), which
-// only the sessions panel reads.
+// The agent sessions hear what came of their items on GitHub (sessionOutcomes), which only
+// the sessions panel reads, and the sheets last what the inbox's own edits changed of the
+// items they keep (sheetOutcomes).
 type outcomesFanOut struct {
 	threads  inbox.OutcomeSink
 	engine   engineOutcomes
 	sessions inbox.OutcomeSink
+	sheets   inbox.OutcomeSink
 }
 
 // engineOutcomes is how the fan-out tells Autopilot's engine; *engineWaker is it.
@@ -675,7 +677,7 @@ type engineOutcomes interface {
 	Outcomes(ctx context.Context, outcomes []autopilot.Outcome)
 }
 
-// Settle tells the engine, then the mirror, then the sessions.
+// Settle tells the engine, then the mirror, then the sessions, then the sheets.
 func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 	if o.engine != nil {
 		o.engine.Outcomes(ctx, toEngineOutcomes(outcomes))
@@ -687,6 +689,10 @@ func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 
 	if o.sessions != nil {
 		o.sessions.Settle(ctx, outcomes)
+	}
+
+	if o.sheets != nil {
+		o.sheets.Settle(ctx, outcomes)
 	}
 }
 

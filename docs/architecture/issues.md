@@ -39,7 +39,11 @@ marked out of date. It owns `issue_views`, a bounded cache (1 MiB per issue, who
 cut to 16 KiB, then 4 KiB, then emptied, each cut marked, by `timeline.Cut`; 200 issues, 32 MiB, and
 14 days unused in all), pruned in the same transaction that writes.
 
-Unassign me is the inbox's own `Unassign`. `Replies` and `FillReply` offer and fill in the prompt
+Unassign me is the inbox's own `Unassign`, which marks the cache out of date as an action does:
+`InboxEdits` (`NewInboxEdits`, apart from the bound `Service`, since only core calls it) has
+`Unassigned` expire the issue's view, which core's `sheetOutcomes` calls for each
+`inbox.OutcomeUnassigned` of an issue, so a sheet opened just after reads the issue again, however
+recently it read it. `Replies` and `FillReply` offer and fill in the prompt
 library's comment replies for issues (a comment reply may apply to issues; a default reply, which
 only the review sheet starts from, must apply to pull requests), through the reply filler core
 shares with the review sheet, which refuses a reply for another kind of item.

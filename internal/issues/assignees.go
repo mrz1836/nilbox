@@ -90,3 +90,24 @@ func (s *Service) readAssignable(id int64) assignees.Read {
 		return out, nil
 	}
 }
+
+// InboxEdits follows, in the sheet's cache, what the inbox's own edits change of an issue:
+// Unassign me takes the user off its assignees on GitHub, and the sheet that opens next
+// reads it again. It is apart from the Service, which the window binds, since only core
+// calls it.
+type InboxEdits struct {
+	cache *cacheStore
+}
+
+// NewInboxEdits returns the InboxEdits of the sheet s.
+func NewInboxEdits(s *Service) InboxEdits {
+	return InboxEdits{cache: s.cache}
+}
+
+// Unassigned marks the cached view of the issue with id out of date, as the inbox's
+// Unassign me changed its assignees on GitHub, so the sheet's next refresh reads it, as
+// after the sheet's own edits, however recently it was read. An issue the sheet holds no
+// cache of is left as it is.
+func (e InboxEdits) Unassigned(ctx context.Context, id int64) error {
+	return e.cache.expire(ctx, id)
+}
