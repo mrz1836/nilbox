@@ -420,6 +420,17 @@ export interface Item {
      * order. It is empty for an issue, and until a refresh has read them.
      */
     "reviewTeams": string[] | null;
+
+    /**
+     * Closing reports an open issue that one of its closing pull requests, as its details
+     * were last read, merged in moments ago: GitHub closes it a second or two after the
+     * merge, and the inbox reads it again shortly to see it closed (see closes.go), so the
+     * card shows it closing until then rather than as though nothing happened. It is the
+     * Service's own state, as Snapshot.Refreshing is, never kept with a snapshot, and it
+     * ends with that follow: an issue GitHub keeps open, as one whose pull request merged
+     * into a branch other than the default, shows as it was again.
+     */
+    "closing": boolean;
 }
 
 /**

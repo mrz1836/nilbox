@@ -122,6 +122,27 @@ func yoursNumbers(t *testing.T, h *harness) []int {
 	return out
 }
 
+// closingNumbers are the numbers of the items in Yours a snapshot read now shows closing,
+// in order.
+func closingNumbers(t *testing.T, h *harness) []int {
+	t.Helper()
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+
+	var out []int
+
+	for _, it := range snap.Yours.Items {
+		if it.Closing {
+			out = append(out, it.Number)
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
 // closesOwed reports whether a follow of a merge's issues is owed now.
 func (f *MergeFollower) closesOwed() bool {
 	_, ok := f.closes.next(f.now())
@@ -199,6 +220,131 @@ func TestAMergeGivesUpOnAnIssueGitHubKeepsOpen(t *testing.T) {
 	h.clock.Advance(time.Hour)
 	f.pass(t.Context())
 	assert.Len(t, issueReads(h), closeRounds, "nor does the merge's own follow read an issue")
+}
+
+func TestAMergeShowsTheIssuesItClosesClosingAtOnce(t *testing.T) {
+	t.Parallel()
+
+	h, f, ids := closeHarness(t)
+	assert.Empty(t, closingNumbers(t, h), "nothing merged yet")
+
+	snap, err := NewActor(h.svc).Act(t.Context(), ids[1], acting(Acted{Merged: true}))
+	require.NoError(t, err)
+
+	var closing []int
+
+	for _, it := range snap.Yours.Items {
+		if it.Closing {
+			closing = append(closing, it.Number)
+		}
+	}
+
+	assert.ElementsMatch(t, []int{6, 8}, closing,
+		"the snapshot the merge answers with shows the issues that name it closing, in any repository")
+	assert.Empty(t, h.client.itemsIDs, "it asks GitHub nothing")
+
+	h.clock.Advance(closeSettle)
+	h.answerIssues(map[int]string{6: github.StateClosed, 8: github.StateClosed})
+	calls := h.events.Count()
+
+	f.pass(t.Context())
+
+	assert.Equal(t, calls+1, h.events.Count(), "the round's own update takes them out, and nothing more is told")
+	assert.Equal(t, []int{7, 9}, yoursNumbers(t, h))
+	assert.Empty(t, closingNumbers(t, h))
+}
+
+func TestAnIssueGitHubKeepsOpenStopsShowingClosingWhenItsFollowEnds(t *testing.T) {
+	t.Parallel()
+
+	h, f, ids := closeHarness(t)
+	mergeFirst(t, h, ids)
+	h.answerIssues(map[int]string{6: github.StateOpen, 8: github.StateOpen})
+	h.clock.Advance(closeSettle)
+
+	for range closeRounds - 1 {
+		f.pass(t.Context())
+		assert.Equal(t, []int{6, 8}, closingNumbers(t, h), "closing while the follow reads them again")
+		h.clock.Advance(closeRetry)
+	}
+
+	updates := inboxUpdates(h.events)
+
+	f.pass(t.Context())
+
+	assert.False(t, f.closesOwed())
+	assert.Equal(t, updates+2, inboxUpdates(h.events), "the round's own update, then the follow's end")
+	assert.Empty(t, closingNumbers(t, h), "an issue GitHub keeps open shows as it is")
+	assert.Equal(t, []int{6, 7, 8, 9}, yoursNumbers(t, h))
+}
+
+func TestAFailedLastRoundStopsShowingTheIssuesClosing(t *testing.T) {
+	t.Parallel()
+
+	h, f, ids := closeHarness(t)
+	mergeFirst(t, h, ids)
+	h.client.itemErr = errFakeNetwork
+	h.clock.Advance(closeSettle)
+
+	for range closeRounds - 1 {
+		f.pass(t.Context())
+		h.clock.Advance(closeRetry)
+	}
+
+	updates := inboxUpdates(h.events)
+
+	f.pass(t.Context())
+
+	assert.False(t, f.closesOwed())
+	assert.Equal(t, updates+1, inboxUpdates(h.events), "the window is told once the follow gives up, though it stored nothing")
+	assert.Empty(t, closingNumbers(t, h))
+}
+
+func TestShowingIssuesClosingLeavesTheKeptSnapshotAlone(t *testing.T) {
+	t.Parallel()
+
+	h, f, _ := closeHarness(t)
+
+	// A merge noted with no write, as a read that sees it merged again could, shows its
+	// issues closing over the snapshot kept since the refresh.
+	pull := item.Ref{Repo: repo.Name{Owner: acmeOrg, Repo: exampleRepo}, Number: 1}
+	h.svc.noteMerged(nodeID(1), 1, pull, "main")
+	assert.Equal(t, []int{6, 8}, closingNumbers(t, h))
+
+	kept := h.svc.snapshots.load()
+	require.NotNil(t, kept.snap, "read from the kept snapshot")
+
+	for _, it := range kept.snap.Yours.Items {
+		assert.False(t, it.Closing, "#%d is closing only in the copy returned", it.Number)
+	}
+
+	h.answerIssues(map[int]string{6: github.StateOpen, 8: github.StateOpen})
+	h.clock.Advance(closeSettle)
+
+	for range closeRounds {
+		f.pass(t.Context())
+		h.clock.Advance(closeRetry)
+	}
+
+	assert.Empty(t, closingNumbers(t, h))
+}
+
+func TestAMergeOfAnotherAccountShowsNothingClosing(t *testing.T) {
+	t.Parallel()
+
+	h, f, _ := closeHarness(t)
+	pull := item.Ref{Repo: repo.Name{Owner: acmeOrg, Repo: exampleRepo}, Number: 1}
+	h.svc.noteMerged(nodeID(1), 2, pull, "main")
+
+	assert.Empty(t, closingNumbers(t, h), "the issues are another account's")
+
+	updates := inboxUpdates(h.events)
+
+	h.clock.Advance(closeSettle)
+	f.pass(t.Context())
+
+	assert.False(t, f.closesOwed())
+	assert.Equal(t, updates, inboxUpdates(h.events), "a follow that showed nothing closing tells nothing")
 }
 
 func TestAMergeNoListedIssueNamesAsksGitHubNothing(t *testing.T) {

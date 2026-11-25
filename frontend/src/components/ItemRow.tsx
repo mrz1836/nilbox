@@ -7,7 +7,7 @@ import { HiddenLabelsContext } from '../lib/labels'
 import { agentName, type LaunchOptions } from '../lib/launch'
 import { autopilotState, nextStep } from '../lib/nextStep'
 import { nudgeDue, nudgeWords } from '../lib/nudge'
-import { leaving, useRowWork, workWords } from '../lib/rowWork'
+import { leavingWords, useRowWork } from '../lib/rowWork'
 import { cardSession, endedShownMs, sinceWhen } from '../lib/sessions'
 import { formatAge, formatAgo } from '../lib/time'
 import { isBackFromSnooze, isPinned, type TriageTab } from '../lib/triage'
@@ -317,6 +317,8 @@ function Byline({
 // and its menu share (useRowWork). While an edit that will likely take it out of the list
 // runs, the card fades and blurs under a note saying what GitHub is doing, and takes no
 // clicks, so the wait shows however slow the network is; it comes back if the item stays.
+// An issue GitHub is closing because its fix just merged (item.closing) does the same,
+// under Fix merged · closing on GitHub…, until the inbox reads it closed (leavingWords).
 // Long titles are cut short with an ellipsis, so every card keeps the same shape, and the
 // card narrows with its list (@container on the list). A card always renders, on screen
 // or off (item-row in index.css says why). With Settings → Cards' Density compact
@@ -347,7 +349,7 @@ export const ItemRow = memo(function ItemRow({
 }: ItemRowProps) {
   const opens = onOpen !== undefined
   const [work, start] = useRowWork()
-  const going = leaving(work)
+  const going = leavingWords(work, item)
   const peekId = useId()
   const [peeking, setPeeking] = useState(false)
   const sessionId = useNowAs((now) => cardSession(sessions, now)?.id ?? null)
@@ -499,7 +501,7 @@ export const ItemRow = memo(function ItemRow({
       data-item-id={item.id}
       data-highlighted={highlighted || undefined}
       data-rule={step.rule}
-      aria-busy={going || undefined}
+      aria-busy={going !== '' || undefined}
       className="item-row group relative grid grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-state)_var(--card-actions)] items-center gap-x-3.5 border-b border-border py-3 pr-4 transition-colors [--card-actions:20.75rem] [--card-primary:5.625rem] [--card-state:8.25rem] last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10 @max-5xl:[--card-actions:16.875rem] @max-4xl:[--card-state:4.75rem] @max-3xl:[--card-actions:10.75rem] @max-3xl:[--card-primary:auto] @max-xl:grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-actions)]"
     >
       <span
@@ -618,14 +620,14 @@ export const ItemRow = memo(function ItemRow({
         )}
       </div>
       {slot(actions, cardOutcomeClass)}
-      {going && (
+      {going !== '' && (
         <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p
             role="status"
             className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-float motion-safe:animate-pop-in"
           >
             <Spinner className="size-3.5" />
-            {workWords[work]}
+            {going}
           </p>
         </div>
       )}

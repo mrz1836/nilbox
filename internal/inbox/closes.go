@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
@@ -25,6 +26,14 @@ import (
 // GitHub closed leaves the lists, as any read that finds an item closed takes it out. The
 // inbox's own store says which issues name it, so a merge none names asks GitHub nothing,
 // and one some name costs about a point a round.
+//
+// While a merge's follow is owed, every snapshot marks the listed issues that name the
+// merged pull request Closing (closeQueue.mark), so their cards say GitHub is closing them
+// from the moment the merge is noted, rather than staying as they were for the seconds
+// until a round reads them closed. The mark is run state, never stored: a round that finds
+// an issue closed takes it out of the lists, and a follow that ends with one still open,
+// once it showed one closing, tells the window again (MergeFollower.ended), so the card
+// shows the issue as it is.
 const (
 	// closeSettle is how long after a merge is noted its issues are first read: long
 	// enough for GitHub to have closed them, which it does a second or two after the merge.
@@ -60,12 +69,14 @@ func (f closeFollow) key() closeKey {
 	return closeKey{accountID: f.accountID, pull: f.pull.Key()}
 }
 
-// closeNote is the follow a merge's issues are owed: when its next round is due, and how
-// many rounds it read.
+// closeNote is the follow a merge's issues are owed: when its next round is due, how many
+// rounds it read, and whether the last snapshot read showed one of its issues closing (see
+// mark).
 type closeNote struct {
 	follow closeFollow
 	due    time.Time
 	rounds int
+	shown  bool
 }
 
 // closeQueue holds the follows the merges' issues are owed, which noteMerged adds to and the
@@ -125,14 +136,17 @@ func compareCloseKeys(a, b closeKey) int {
 }
 
 // done records that a round of the follow f ended at now: another round is due closeRetry
-// later when again says so and the follow has rounds left, else the follow is over.
-func (q *closeQueue) done(f closeFollow, again bool, now time.Time) {
+// later when again says so and the follow has rounds left, else the follow is over. It
+// reports whether the follow is over while the last snapshot read showed one of its issues
+// closing, when the window is to be told, so the card shows the issue as it is. A follow
+// whose issues all closed tells nothing more: the round's own update took them out.
+func (q *closeQueue) done(f closeFollow, again bool, now time.Time) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	n := q.notes[f.key()]
 	if n == nil {
-		return
+		return false
 	}
 
 	n.rounds++
@@ -140,10 +154,80 @@ func (q *closeQueue) done(f closeFollow, again bool, now time.Time) {
 	if again && n.rounds < closeRounds {
 		n.due = now.Add(closeRetry)
 
-		return
+		return false
 	}
 
 	delete(q.notes, f.key())
+
+	return n.shown
+}
+
+// mark sets Closing on each issue of lists, a snapshot's of the account with accountID,
+// whose closing pull requests, as its details were last read, name a merge a follow is
+// still owed for, and records which of the account's follows it showed (see done). It
+// holds the queue's lock throughout, so no follow ends between finding it owed and
+// recording it shown. A list's items are the kept snapshot's, so one it marks an item of
+// is copied first. With no follow owed, as almost always, it costs only the lock.
+func (q *closeQueue) mark(accountID int64, lists ...*List) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.notes) == 0 || accountID == 0 {
+		return
+	}
+
+	for _, n := range q.notes {
+		if n.follow.accountID == accountID {
+			n.shown = false
+		}
+	}
+
+	for _, l := range lists {
+		q.markList(accountID, l)
+	}
+}
+
+// markList is mark for one list, copying its items before it marks the first. The caller
+// holds q.mu.
+func (q *closeQueue) markList(accountID int64, l *List) {
+	copied := false
+
+	for i, it := range l.Items {
+		if !q.closes(accountID, it) {
+			continue
+		}
+
+		if !copied {
+			l.Items, copied = slices.Clone(l.Items), true
+		}
+
+		l.Items[i].Closing = true
+	}
+}
+
+// closes reports whether it is an issue one of whose closing pull requests is the merged
+// pull request of a follow still owed for the account with accountID, its repository
+// compared ignoring case, and records each such follow as shown. The caller holds q.mu.
+func (q *closeQueue) closes(accountID int64, it Item) bool {
+	if it.Kind != item.KindIssue || it.Details == nil {
+		return false
+	}
+
+	found := false
+
+	for _, p := range it.Details.ClosingPulls {
+		name, err := repo.Parse(p.Repo)
+		if err != nil {
+			continue
+		}
+
+		pull := item.Ref{Repo: name, Number: p.Number}
+		if n := q.notes[closeKey{accountID: accountID, pull: pull.Key()}]; n != nil {
+			n.shown, found = true, true
+		}
+	}
+
+	return found
 }
 
 // next says how long after now the next follow comes due, and false when none is owed.

@@ -63,11 +63,13 @@ type snapshotCache struct {
 	current atomic.Pointer[cachedSnapshot]
 }
 
-// cachedSnapshot is a kept snapshot and the settings it was built under. A nil snap is a
+// cachedSnapshot is a kept snapshot, the settings it was built under, and the ID of the
+// account it is (0 for none), whose merges the snapshot's run state reads. A nil snap is a
 // cache a write emptied.
 type cachedSnapshot struct {
-	snap     *Snapshot
-	settings settingsKey
+	snap      *Snapshot
+	settings  settingsKey
+	accountID int64
 }
 
 // load returns the cache as it is now, which a later keep compares against.
@@ -75,9 +77,10 @@ func (c *snapshotCache) load() *cachedSnapshot {
 	return c.current.Load()
 }
 
-// keep keeps snap, read after load returned seen, unless the cache changed since.
-func (c *snapshotCache) keep(seen *cachedSnapshot, snap Snapshot, settings settingsKey) {
-	c.current.CompareAndSwap(seen, &cachedSnapshot{snap: &snap, settings: settings})
+// keep keeps snap, of the account with accountID, read after load returned seen, unless
+// the cache changed since.
+func (c *snapshotCache) keep(seen *cachedSnapshot, snap Snapshot, settings settingsKey, accountID int64) {
+	c.current.CompareAndSwap(seen, &cachedSnapshot{snap: &snap, settings: settings, accountID: accountID})
 }
 
 // empty drops the kept snapshot once a write has committed, and with it any snapshot

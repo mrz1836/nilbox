@@ -303,6 +303,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     assigned: false,
     reviewRequest: 'none',
     reviewTeams: [],
+    closing: false,
     ...overrides,
   }
 }

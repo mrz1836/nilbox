@@ -20,6 +20,22 @@ export function leaving(work: RowWork): work is 'unassign' | 'review' {
   return work === 'unassign' || work === 'review'
 }
 
+// closingWords say what an issue's card shows while GitHub closes it: a pull request that
+// closes it merged moments ago (InboxItem.closing).
+export const closingWords = 'Fix merged · closing on GitHub…'
+
+// leavingWords say why a row is about to leave its list, or '' when it isn't: its own work
+// that takes the user off the item (leaving), or GitHub closing an issue whose fix just
+// merged, which the inbox reads again in a moment (item.closing). Either way the row
+// fades under the words until it leaves, and comes back as it was if the item stays.
+export function leavingWords(work: RowWork, item: { closing: boolean }): string {
+  if (leaving(work)) {
+    return workWords[work]
+  }
+
+  return item.closing ? closingWords : ''
+}
+
 // StartWork begins work on a row, unless some is under way: it marks the row busy with
 // what, and clears the mark once call settles. call reports its own failures, so it
 // never rejects.

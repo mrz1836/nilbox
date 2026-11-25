@@ -531,11 +531,11 @@ func TestASnapshotReadAcrossAWriteIsNotKept(t *testing.T) {
 
 	seen := c.load()
 	c.empty()
-	c.keep(seen, Snapshot{LastError: "read before the write"}, settingsKey{})
+	c.keep(seen, Snapshot{LastError: "read before the write"}, settingsKey{}, 0)
 	assert.Nil(t, c.load().snap, "a snapshot read across a write is not kept")
 
 	seen = c.load()
-	c.keep(seen, Snapshot{LastError: "read after the write"}, settingsKey{})
+	c.keep(seen, Snapshot{LastError: "read after the write"}, settingsKey{}, 0)
 	require.NotNil(t, c.load().snap)
 	assert.Equal(t, "read after the write", c.load().snap.LastError)
 }

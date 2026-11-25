@@ -650,4 +650,14 @@ describe('CompactRow', () => {
 
     expect(row).not.toHaveAttribute('aria-busy')
   })
+
+  it('fades an issue GitHub is closing under a note, its fix just merged', () => {
+    const row = mountCompact(item({ kind: 'issue', closing: true, details: details() }), {
+      triage: triageActionsOf(),
+      edits: editActionsOf(),
+    })
+
+    expect(row).toHaveAttribute('aria-busy', 'true')
+    expect(within(row).getByRole('status')).toHaveTextContent('Fix merged · closing on GitHub…')
+  })
 })

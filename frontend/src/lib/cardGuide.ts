@@ -152,6 +152,7 @@ export function guideItem(now: Date): InboxItem {
     assigned: false,
     reviewRequest: 'you',
     reviewTeams: [],
+    closing: false,
   }
 }
 

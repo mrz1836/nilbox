@@ -236,9 +236,10 @@
      closed, or whose dot had just stopped, could stay blank in plain view, its border and
      its height kept but nothing inside drawn, until the list was drawn again. */
 
-  /* A row an edit on GitHub is taking out of its list (aria-busy while the request runs)
-     fades and blurs behind the note that says so, and takes no clicks, so the wait shows
-     before the row leaves; it comes back as it was if the item stays. */
+  /* A row an edit on GitHub is taking out of its list (aria-busy while the request runs),
+     or an issue GitHub is closing after its fix merged (aria-busy until the inbox reads it
+     closed), fades and blurs behind the note that says so, and takes no clicks, so the
+     wait shows before the row leaves; it comes back as it was if the item stays. */
   .item-row > * {
     transition:
       opacity 200ms,

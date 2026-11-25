@@ -2,7 +2,7 @@ import { use, type ReactNode } from 'react'
 
 import { HiddenLabelsContext } from '../../lib/labels'
 import type { Step } from '../../lib/nextStep'
-import { leaving, workWords, type RowWork, type StartWork } from '../../lib/rowWork'
+import { leavingWords, type RowWork, type StartWork } from '../../lib/rowWork'
 import { formatAge } from '../../lib/time'
 import { isPinned, type TriageTab } from '../../lib/triage'
 import type { AgentInfo, AgentSession, InboxItem, Label } from '../../platform'
@@ -148,7 +148,7 @@ export function CompactRow({
   slot,
 }: CompactRowProps) {
   const opens = onOpen !== undefined
-  const going = leaving(work)
+  const going = leavingWords(work, item)
   const isPR = item.kind === 'pr'
 
   // hoverRow is the card's hover row, holding the agent's slot when there is one.
@@ -203,7 +203,7 @@ export function CompactRow({
       data-highlighted={highlighted || undefined}
       data-rule={step.rule}
       data-density="compact"
-      aria-busy={going || undefined}
+      aria-busy={going !== '' || undefined}
       className="item-row group relative grid grid-cols-[0.1875rem_1rem_9.375rem_minmax(0,1fr)_auto_1.125rem_3.125rem_1.625rem_2rem_7.25rem] grid-rows-[2.375rem] items-center gap-x-3 border-b border-border pr-3 transition-colors last:border-b-0 hover:bg-raised/40 has-[>section]:pb-3 data-highlighted:bg-accent/10 @max-4xl:grid-cols-[0.1875rem_1rem_minmax(0,1fr)_auto_1.125rem_3.125rem_2rem_7.25rem] @max-3xl:grid-cols-[0.1875rem_1rem_minmax(0,1fr)_1.125rem_3.125rem_7.25rem]"
     >
       <span
@@ -261,14 +261,14 @@ export function CompactRow({
         <RelativeTime iso={item.updatedAt} show={formatAge} />
       </span>
       {slot(column, compactOutcomeClass)}
-      {going && (
+      {going !== '' && (
         <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p
             role="status"
             className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-float motion-safe:animate-pop-in"
           >
             <Spinner className="size-3.5" />
-            {workWords[work]}
+            {going}
           </p>
         </div>
       )}

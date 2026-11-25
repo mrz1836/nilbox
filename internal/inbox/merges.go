@@ -368,6 +368,10 @@ type MergeFollower struct {
 	closeRound func(ctx context.Context, f closeFollow) (bool, error)
 	now        func() time.Time
 	logger     *slog.Logger
+
+	// ended tells the window that the follow of a merge whose issues a snapshot showed
+	// closing is over (closeQueue.done), so a card GitHub left open shows its issue as it is.
+	ended func()
 }
 
 // NewMergeFollower returns the MergeFollower of s, logging failures to logger; a nil
@@ -375,7 +379,7 @@ type MergeFollower struct {
 func NewMergeFollower(s *Service, logger *slog.Logger) *MergeFollower {
 	return &MergeFollower{
 		queue: s.merges, closes: s.closes, round: s.followMerge, closeRound: s.followClose,
-		now: func() time.Time { return s.clock.Now().UTC() }, logger: logging.Or(logger),
+		now: func() time.Time { return s.clock.Now().UTC() }, logger: logging.Or(logger), ended: s.notify,
 	}
 }
 
@@ -406,7 +410,8 @@ func (f *MergeFollower) next() (time.Duration, bool) {
 }
 
 // pass runs a round of each follow due now: the issues merges close first, which their
-// cards wait on, then the pull requests merges changed.
+// cards wait on, then the pull requests merges changed. A follow of a merge's issues that
+// ends once its issues showed closing tells the window (ended).
 func (f *MergeFollower) pass(ctx context.Context) {
 	for _, c := range f.closes.due(f.now()) {
 		if ctx.Err() != nil {
@@ -414,7 +419,9 @@ func (f *MergeFollower) pass(ctx context.Context) {
 		}
 
 		again := runRound(ctx, f.logger, closeJob, c, f.closeRound, "merged", c.pull.String())
-		f.closes.done(c, again, f.now())
+		if f.closes.done(c, again, f.now()) {
+			f.ended()
+		}
 	}
 
 	for _, m := range f.queue.due(f.now()) {

@@ -199,6 +199,15 @@ type Item struct {
 	// ReviewTeams are the slugs of the teams a pull request asks to review, in GitHub's
 	// order. It is empty for an issue, and until a refresh has read them.
 	ReviewTeams []string `json:"reviewTeams"`
+
+	// Closing reports an open issue that one of its closing pull requests, as its details
+	// were last read, merged in moments ago: GitHub closes it a second or two after the
+	// merge, and the inbox reads it again shortly to see it closed (see closes.go), so the
+	// card shows it closing until then rather than as though nothing happened. It is the
+	// Service's own state, as Snapshot.Refreshing is, never kept with a snapshot, and it
+	// ends with that follow: an issue GitHub keeps open, as one whose pull request merged
+	// into a branch other than the default, shows as it was again.
+	Closing bool `json:"closing"`
 }
 
 // ReviewRequest says how a pull request asks the signed-in user to review it.
@@ -535,36 +544,39 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 
 		if keyOf(stored) == seen.settings {
-			return s.withRunState(*seen.snap), nil
+			return s.withRunState(*seen.snap, seen.accountID), nil
 		}
 	}
 
-	snap, settings, err := s.buildSnapshot(ctx)
+	snap, settings, accountID, err := s.buildSnapshot(ctx)
 	if err != nil {
-		return s.withRunState(snap), err
+		return s.withRunState(snap, accountID), err
 	}
 
-	s.snapshots.keep(seen, snap, settings)
+	s.snapshots.keep(seen, snap, settings, accountID)
 
-	return s.withRunState(snap), nil
+	return s.withRunState(snap, accountID), nil
 }
 
-// withRunState returns snap, a copy, saying whether a whole refresh runs now, and when a
-// failed one is tried again. The snapshot kept is never changed, so a refresh's start or
-// end, or a try planned, needs no new one.
-func (s *Service) withRunState(snap Snapshot) Snapshot {
+// withRunState returns snap, a copy, saying whether a whole refresh runs now, when a
+// failed one is tried again, and which of its issues GitHub is closing after a merge of
+// the account with accountID (see closeQueue.mark). The snapshot kept is never changed,
+// so a refresh's start or end, a try planned, or a merge's follow needs no new one.
+func (s *Service) withRunState(snap Snapshot, accountID int64) Snapshot {
 	snap.Refreshing = s.refreshing.Load()
 	snap.Retry = s.retries.state()
+	s.closes.mark(accountID, &snap.ReviewRequested, &snap.Yours)
 
 	return snap
 }
 
 // buildSnapshot reads the stored inbox, and returns it with the settings it was built
-// under. When the account cannot be read, the snapshot returned holds the status alone.
-func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, error) {
+// under and the ID of the account it is, 0 when none is signed in. When the account
+// cannot be read, the snapshot returned holds the status alone.
+func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, int64, error) {
 	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
-		return Snapshot{}, settingsKey{}, err
+		return Snapshot{}, settingsKey{}, 0, err
 	}
 
 	settings := keyOf(status)
@@ -572,22 +584,22 @@ func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, err
 
 	accountID, err := lookupAccount(ctx, s.q, status[prefViewer])
 	if err != nil || accountID == 0 {
-		return snap, settings, err
+		return snap, settings, 0, err
 	}
 
 	rows, err := loadItems(ctx, s.q, accountID)
 	if err != nil {
-		return Snapshot{}, settingsKey{}, err
+		return Snapshot{}, settingsKey{}, 0, err
 	}
 
 	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status), cardRulesOf(status))
 	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
-		return Snapshot{}, settingsKey{}, err
+		return Snapshot{}, settingsKey{}, 0, err
 	}
 
-	return snap, settings, nil
+	return snap, settings, accountID, nil
 }
 
 // newSnapshot starts a snapshot with empty lists and the stored status.

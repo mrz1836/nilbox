@@ -1459,6 +1459,28 @@ describe('ItemRow triage', () => {
 
     expect(row).not.toHaveAttribute('aria-busy')
   })
+
+  it('fades an issue GitHub is closing under a note, its fix just merged', () => {
+    const row = mountCard(item({ kind: 'issue', closing: true, details: details() }), {
+      triage: triageActionsOf(),
+      edits: editActionsOf(),
+    })
+
+    expect(row).toHaveAttribute('aria-busy', 'true')
+    const note = within(row).getByRole('status')
+    expect(note).toHaveTextContent('Fix merged · closing on GitHub…')
+    expect(note.closest('[data-row-status]')).toHaveClass('z-30')
+  })
+
+  it('shows an issue no merge is closing as it is', () => {
+    const row = mountCard(item({ kind: 'issue', details: details() }), {
+      triage: triageActionsOf(),
+      edits: editActionsOf(),
+    })
+
+    expect(row).not.toHaveAttribute('aria-busy')
+    expect(within(row).queryByRole('status')).toBeNull()
+  })
 })
 
 describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) => {

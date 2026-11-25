@@ -113,9 +113,11 @@ Cards** can make every card one line instead (**Compact cards**, below).
   issue's details ask GitHub for it, at no extra point. Once the pull request merges, in
   Nilbox or anywhere a read sees it, the issues in your inbox it closes are read again five
   seconds later, and every five seconds while GitHub still has one open, three times at most,
-  so a closed issue leaves your inbox with its fix rather than at the next refresh. An issue
-  GitHub keeps open, as one whose fix merged into a branch other than the default, stays and
-  says **Fix merged**.
+  so a closed issue leaves your inbox with its fix rather than at the next refresh. From the
+  moment the merge is seen until then, each of those issues' cards fades under **Fix merged ·
+  closing on GitHub…** and takes no clicks, so you can tell it is on its way out. An issue
+  GitHub keeps open, as one whose fix merged into a branch other than the default, comes back
+  as it was once those reads end, and says **Fix merged**.
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy

@@ -346,6 +346,24 @@ than the default leaves open waits for the whole refresh. The inbox's own store 
 name the pull request, so a merge none names asks GitHub nothing, and one some name costs about a
 point a round.
 
+While a follow is owed, every snapshot marks `Item.Closing` on the listed issues whose closing
+pull requests, as their details were last read, name its merged pull request, so the window fades
+their cards under **Fix merged · closing on GitHub…** from the moment the merge is noted rather
+than leaving them as they were for the seconds until a round reads them closed. The mark is run
+state, as `Refreshing` and `Retry` are: `withRunState` asks `closeQueue.mark` for it over a copy of
+the kept snapshot, under the queue's lock, with the account the snapshot was built for
+(`cachedSnapshot.accountID`), so another account's merge marks nothing, and a list it marks an
+item of is copied before the write, never the kept one. Every place that notes a merge
+(`noteMerged`) stores and tells the window after it (the Actor's `changed`, a follower round's, an
+item's read, the whole refresh's ending update), so the snapshot that takes the merged pull request
+out already shows its issues closing, and noting asks nothing more. `mark` also records which of
+the account's follows the snapshot showed (`closeNote.shown`, set afresh by every snapshot read),
+and `done` reports a follow that ends while the last snapshot still showed one of its issues
+closing: an issue GitHub kept open, a last round that failed or panicked, or an answer a later
+refresh superseded. The `MergeFollower` then tells the window (`ended`, the Service's `notify`),
+so the card shows the issue as it is. A follow whose issues all closed tells nothing more, since
+its round's own update took them out, and one that showed nothing tells nothing.
+
 ## A bot author's picture
 
 The item fields every inbox read shares (`ItemFields`) ask a bot author for its picture's URL, at no
