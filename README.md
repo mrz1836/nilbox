@@ -243,7 +243,7 @@ when no release is newer yet, it says so and gives the command to build from sou
 To build Nilbox yourself, you need:
 
 - **macOS 13.3+** with the Xcode Command Line Tools (`xcode-select --install`)
-- **[Go](https://go.dev/dl/) 1.27+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.19.0`)
+- **[Go](https://go.dev/dl/) 1.27+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.23.0`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - The **GitHub CLI** and a coding agent, as above
 
@@ -1378,7 +1378,7 @@ Install the [MAGE-X](https://github.com/mrz1836/mage-x) build tool and the
 ```bash
 go install github.com/mrz1836/mage-x/cmd/magex@latest   # build tool
 go-pre-commit install                                   # git hooks, run from the repo root
-npm install -g pnpm@12.19.0                             # once, at the version frontend/package.json pins
+npm install -g pnpm@12.23.0                             # once, at the version frontend/package.json pins
 magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
 ```
 

@@ -12,7 +12,7 @@
   (`packageManager`). Node 26 no longer ships corepack, so install it with npm:
 
   ```bash
-  npm install -g pnpm@12.19.0
+  npm install -g pnpm@12.23.0
   ```
 
   When `pnpm` is missing, the frontend targets stop with this same command, read from
