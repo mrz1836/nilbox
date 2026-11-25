@@ -265,19 +265,10 @@ const maxDepth = 64
 // command run by a terminal or an editor, as a session is, has that as its parent, and
 // stays.
 func WithoutServices(list []Process, commands []string) []Process {
-	byPID := make(map[int]Process, len(list))
-	for _, p := range list {
-		byPID[p.PID] = p
-	}
+	byPID := ByPID(list)
 
 	isService := func(p Process) bool {
-		if !slices.Contains(commands, filepath.Base(p.Command)) {
-			return false
-		}
-
-		parent, ok := byPID[p.PPID]
-
-		return p.PPID == 1 || (ok && slices.Contains(managers, filepath.Base(parent.Command)))
+		return slices.Contains(commands, filepath.Base(p.Command)) && Adopted(p, byPID)
 	}
 
 	var out []Process

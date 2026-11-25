@@ -11,6 +11,7 @@ import {
   checksOf,
   clockOf,
   copiedTag,
+  detachedWords,
   folderOf,
   itemRef,
   kindOf,
@@ -331,8 +332,10 @@ function lineTitle(line: AgentLine, claude: string): string {
     case 'live': {
       const state = line.state === '' ? '' : `, ${stateWords[line.state]}`
       const since = line.since === '' ? '' : `, since ${clockOf(line.since)}`
+      const detached = line.detached ? `, ${detachedWords}` : ''
+      const args = line.args === '' ? '' : `\n${line.args}`
 
-      return `${programOf(line, claude)}, pid ${String(line.pid)}${state}${since}`
+      return `${programOf(line, claude)}, pid ${String(line.pid)}${state}${since}${detached}${args}`
     }
     case 'lock':
       return `No process is listed, but a live ${line.name} session holds it by its lock (pid ${String(line.pid)}${line.since === '' ? '' : `, since ${clockOf(line.since)}`})`
@@ -355,8 +358,8 @@ function AgentWords({ line }: { line: AgentLine }) {
         </>
       )
     case 'live': {
-      const tone = line.state === '' ? 'info' : stateTones[line.state]
-      const ping = line.state === '' || line.state === 'working' || line.state === 'starting'
+      const tone = line.detached ? 'caution' : line.state === '' ? 'info' : stateTones[line.state]
+      const ping = !line.detached && (line.state === '' || line.state === 'working' || line.state === 'starting')
 
       return (
         <>
@@ -368,6 +371,12 @@ function AgentWords({ line }: { line: AgentLine }) {
             <span className={toneText[tone]}>
               {line.state === '' ? `pid ${String(line.pid)}` : stateWords[line.state]}
             </span>
+            {line.detached && (
+              <>
+                {' · '}
+                <span className={toneText.caution}>detached</span>
+              </>
+            )}
             <Since iso={line.since} />
           </span>
         </>

@@ -190,3 +190,82 @@ func TestListMatchesEachWorktreeToTheSessionsInIt(t *testing.T) {
 	assert.NotNil(t, mustRow(t, snap, idle).InUse)
 	assert.Empty(t, mustRow(t, snap, repo).InUse, "the clone's own checkout is never marked")
 }
+
+// describer is a Config.Describe that answers from a map, counting the reads.
+type describer struct {
+	details map[int]procs.Detail
+	calls   atomic.Int32
+}
+
+func (d *describer) describe(pid int) (procs.Detail, bool) {
+	d.calls.Add(1)
+	got, ok := d.details[pid]
+
+	return got, ok
+}
+
+func TestListDescribesWhatWorksInAWorktree(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	repo := e.newRepo(t, "example-repo")
+	worktrees := filepath.Join(repo, ".claude", "worktrees")
+	left := addWorktree(t, repo, filepath.Join(worktrees, "wt-1"), ownBranchPrefix+"wt-1")
+	shell := addWorktree(t, repo, filepath.Join(worktrees, "wt-2"), ownBranchPrefix+"wt-2")
+	service := addWorktree(t, repo, filepath.Join(worktrees, "wt-3"), ownBranchPrefix+"wt-3")
+	unread := addWorktree(t, repo, filepath.Join(worktrees, "wt-4"), ownBranchPrefix+"wt-4")
+
+	loop := "/bin/sh -c while true; do sleep 0.05; done"
+	running := &testutil.Lister[procs.Process]{List: []procs.Process{
+		// A test's child its test binary left behind: launchd adopted it, and its sleeps.
+		{PID: 75083, PPID: 1, Command: "bash", Dir: left},
+		{PID: 75090, PPID: 75083, Command: "sleep", Dir: left},
+		// A shell in a terminal.
+		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
+		{PID: 4100, PPID: 4000, Command: "fish", Dir: shell},
+		// A daemon launchd runs with a terminal of its own, which isn't detached.
+		{PID: 950, PPID: 1, Command: "gradle", Dir: service},
+		// One whose detail can't be read.
+		{PID: 960, PPID: 1, Command: "node", Dir: unread},
+	}}
+	described := &describer{details: map[int]procs.Detail{
+		75083: {Args: loop},
+		4100:  {Args: "-fish", Terminal: true},
+		950:   {Args: "java -jar gradle-daemon.jar", Terminal: true},
+	}}
+
+	svc := e.linked(linkDeps{running: running})
+	svc.describe = described.describe
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, []Session{{PID: 75083, Command: "bash", Args: loop, Detached: true}}, mustRow(t, snap, left).InUse,
+		"no terminal, and what started it has exited")
+	assert.Equal(t, []Session{{PID: 4100, Command: "fish", Args: "-fish"}}, mustRow(t, snap, shell).InUse)
+	assert.Equal(t, []Session{{PID: 950, Command: "gradle", Args: "java -jar gradle-daemon.jar"}},
+		mustRow(t, snap, service).InUse, "adopted, but a terminal holds it")
+	assert.Equal(t, []Session{{PID: 960, Command: "node"}}, mustRow(t, snap, unread).InUse,
+		"by its program alone, and never called detached, when it can't be read")
+	assert.Equal(t, int32(4), described.calls.Load(), "each session's process once, and none of the folded helpers")
+}
+
+func TestDescribeSessionsReadsEachProcessOnceAndNoRun(t *testing.T) {
+	t.Parallel()
+
+	nested := Worktree{InUse: []Session{{PID: 7, Command: "node"}, {PID: 9, By: "⚡ Fix checks"}}}
+	outer := Worktree{InUse: []Session{{PID: 7, Command: "node"}, {PID: 8, Command: "gone"}}}
+	repos := []Repo{{Worktrees: []Worktree{nested, outer}}}
+	running := []procs.Process{{PID: 7, PPID: 1, Command: "node", Dir: "/srv"}, {PID: 9, PPID: 1, Command: "claude", Dir: "/srv"}}
+	described := &describer{details: map[int]procs.Detail{7: {Args: "node server.js"}, 9: {Args: "claude -p"}}}
+
+	describeSessions(repos, running, described.describe)
+
+	assert.Equal(t, []Session{{PID: 7, Command: "node", Args: "node server.js", Detached: true}, {PID: 9, By: "⚡ Fix checks"}},
+		repos[0].Worktrees[0].InUse, "the app's own run is never read")
+	assert.Equal(t, []Session{{PID: 7, Command: "node", Args: "node server.js", Detached: true}, {PID: 8, Command: "gone"}},
+		repos[0].Worktrees[1].InUse, "a process the listing doesn't hold is left as it is")
+	assert.Equal(t, int32(1), described.calls.Load(), "a process in two worktrees is read once")
+
+	describeSessions(repos, running, nil) // without Describe, nothing is read, and nothing fails
+}

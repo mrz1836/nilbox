@@ -118,7 +118,7 @@ describe('rowMenuItems', () => {
     const wt = worktree({
       dirty: true,
       dirtyCount: 3,
-      inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '' }],
+      inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '', args: '', detached: false }],
       stage: 'in-use',
       canRemove: false,
     })

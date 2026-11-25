@@ -111,6 +111,10 @@ named for its agent, as in **Claude 2.1.328 · pid 63296**, where the program's 
 Claude Code's version; while the app [follows](following-a-session.md) its session there, the row
 says how the session stands instead, as in **Claude 2.1.328 · needs approval · 5m**. A process a
 session started there, such as the `caffeinate` that keeps the Mac awake for it, is folded into it.
+Hover the row for the process's whole command line, which the drawer's **Session** shows too. One
+no terminal runs, whose starter has exited so launchd (or init or systemd) adopted it, is
+**detached**, as in **bash · pid 75083 · detached**: nothing you can see holds the worktree, as when
+a test run dies and leaves a child it started behind. Stop it, and the worktree can go.
 The app lists the running processes' working folders once per listing or sweep, with `lsof` on macOS
 and `/proc` on Linux, leaving out its own git commands, and a coding agent's background service: the
 agent's own program running under launchd (or init or systemd) rather than a terminal or an app,

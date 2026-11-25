@@ -43,7 +43,7 @@ const exampleRepo = worktreeRepo({
       displayPath: '~/w/done',
       branch: 'worktree-done',
       stage: 'finished',
-      inUse: [{ pid: 4242, command: 'claude', agent: 'claude', by: '' }],
+      inUse: [{ pid: 4242, command: 'claude', agent: 'claude', by: '', args: '', detached: false }],
       item: linkedItem({ number: 9, title: 'Fix the login' }),
     }),
     worktree({

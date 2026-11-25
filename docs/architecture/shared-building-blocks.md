@@ -30,7 +30,9 @@ Services share their building blocks rather than keep copies:
   (`TestOnlyTheAgentsHomesSpellTheirFlags` fails on an agent's flag or program name spelled anywhere
   else but its parsers and observers);
 - `internal/procs` lists the running processes' working directories (`lsof` on macOS, `/proc` on
-  Linux), which tell a worktree some session is in, reads a process's start time (`StartedAt`),
+  Linux), which tell a worktree some session is in, reads one process's whole command line and
+  whether it has a terminal (`DetailOf`, from the kernel's process table, never its environment),
+  tells a process the process manager adopted (`Adopted`), reads a process's start time (`StartedAt`),
   which tells a process from a stranger that reused its PID, and probes a PID as running, gone, or
   unknown (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's
   worktree lock naming one is kept);

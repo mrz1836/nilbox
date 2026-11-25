@@ -179,6 +179,60 @@ func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID
 	}
 }
 
+// describeSessions fills in, for each process working in a linked worktree, its whole
+// command line and whether it is detached: it has no terminal, and the system's process
+// manager adopted it from running, the listing's processes. It reads each process once,
+// and none of the app's own runs, which it starts itself. Without describe it does
+// nothing.
+func describeSessions(repos []Repo, running []procs.Process, describe func(int) (procs.Detail, bool)) {
+	if describe == nil {
+		return
+	}
+
+	byPID := procs.ByPID(running)
+	read := onceEach(describe)
+
+	for _, wt := range rows(repos) {
+		for i := range wt.InUse {
+			describeSession(&wt.InUse[i], byPID, read)
+		}
+	}
+}
+
+// describeSession fills in s from its process's detail, read with read, unless it is one
+// of the app's own runs or byPID, the listing's processes, doesn't hold its process.
+func describeSession(s *Session, byPID map[int]procs.Process, read func(int) (procs.Detail, bool)) {
+	p, listed := byPID[s.PID]
+	if s.By != "" || !listed {
+		return
+	}
+
+	if d, ok := read(s.PID); ok {
+		s.Args, s.Detached = d.Args, !d.Terminal && procs.Adopted(p, byPID)
+	}
+}
+
+// onceEach returns describe, asking it of each PID once and answering again from what it
+// said.
+func onceEach(describe func(int) (procs.Detail, bool)) func(int) (procs.Detail, bool) {
+	type answer struct {
+		detail procs.Detail
+		ok     bool
+	}
+
+	answers := make(map[int]answer)
+
+	return func(pid int) (procs.Detail, bool) {
+		a, seen := answers[pid]
+		if !seen {
+			a.detail, a.ok = describe(pid)
+			answers[pid] = a
+		}
+
+		return a.detail, a.ok
+	}
+}
+
 // sessionsOf returns processes as sessions, never nil, with agents naming the ones the app
 // follows. A process another in the list started is folded into the furthest of its
 // ancestors there: a session's own helpers are part of it. A followed agent folded into a

@@ -55,29 +55,11 @@ func startedAtIn(root string, pid int) time.Time {
 	return time.Unix(boot, 0).Add(time.Duration(ticks) * (time.Second / clockTicks))
 }
 
-// startTicks reads the start time from a /proc/<pid>/stat line. The command name, the
-// second field, is in parentheses and may hold spaces and parentheses itself, so the
-// fields are counted from the last closing parenthesis.
+// startTicks reads the start time from a /proc/<pid>/stat line (see statField).
 func startTicks(stat string) (int64, bool) {
-	_, rest, ok := strings.CutLast(stat, ")")
-	if !ok {
-		return 0, false
-	}
+	ticks, ok := statField(stat, startTimeField)
 
-	// The fields after the name start at the third.
-	fields := strings.Fields(rest)
-
-	const first = 3
-	if len(fields) < startTimeField-first+1 {
-		return 0, false
-	}
-
-	ticks, err := strconv.ParseInt(fields[startTimeField-first], 10, 64)
-	if err != nil || ticks < 0 {
-		return 0, false
-	}
-
-	return ticks, true
+	return ticks, ok && ticks >= 0
 }
 
 // bootTime reads the "btime" line of /proc/stat: when the system booted, in seconds since

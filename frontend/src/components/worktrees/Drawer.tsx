@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
-import { formatAgo } from '../../lib/time'
+import { capitalize, formatAgo } from '../../lib/time'
 import { toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import { asReadNow, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
@@ -9,6 +9,7 @@ import {
   agentLine,
   checksOf,
   clockOf,
+  detachedWords,
   itemRef,
   lockInfo,
   madeBy,
@@ -133,6 +134,8 @@ function SessionLine({ line, claude }: { line: Exclude<AgentLine, { kind: 'past'
     )
   }
 
+  const live = line.kind === 'live' ? line : null
+
   return (
     <>
       {line.version === '' ? line.name : programOf(line, claude)} <span className={muted}>{pid}</span>
@@ -142,10 +145,21 @@ function SessionLine({ line, claude }: { line: Exclude<AgentLine, { kind: 'past'
           <span className={toneText[stateTones[line.state]]}>{stateWords[line.state]}</span>
         </>
       )}
+      {live?.detached === true && (
+        <>
+          {' · '}
+          <span title={capitalize(detachedWords)} className={toneText.caution}>
+            detached
+          </span>
+        </>
+      )}
       <span className={muted}>
         <Started iso={line.since} />
         {line.kind === 'routine' && ` · for ⚡ ${line.by}, in the background`}
       </span>
+      {live !== null && live.args !== '' && (
+        <span className={`mt-0.5 block font-mono text-caption [overflow-wrap:anywhere] ${muted}`}>{live.args}</span>
+      )}
     </>
   )
 }

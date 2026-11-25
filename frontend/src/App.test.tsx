@@ -713,7 +713,7 @@ describe('App', () => {
                 path: `/home/user/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
                 displayPath: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
                 item: linkedItem({ state: 'open' }),
-                inUse: [{ pid: 4242, command: '2.1.319', agent: 'claude', by: '' }],
+                inUse: [{ pid: 4242, command: '2.1.319', agent: 'claude', by: '', args: '', detached: false }],
                 stage: 'in-use',
                 canRemove: false,
               }),
