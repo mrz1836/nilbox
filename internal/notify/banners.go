@@ -93,6 +93,7 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindReleaseFailed:    "Release workflow failed",
 	KindRunFailed:        "Run failed",
 	KindServiceStatus:    "Service status",
+	KindBudgetDraining:   "API budget draining fast",
 	KindUpdateReady:      "New version",
 
 	// An alert is headed by its routine's name (Notification.Heading); this is its title
@@ -116,6 +117,7 @@ var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReleaseFailed:     {"release workflow failed", "release workflows failed"},
 	KindRunFailed:         {"failed run", "failed runs"},
 	KindServiceStatus:     {"service status change", "service status changes"},
+	KindBudgetDraining:    {"API budget draining", "API budgets draining"},
 	KindUpdateReady:       {"new version", "new versions"},
 	KindAutopilotAlert:    {"Autopilot alert", "Autopilot alerts"},
 	KindAutopilotNeedsYou: {"routine needs you", "routines need you"},

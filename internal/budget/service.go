@@ -136,6 +136,10 @@ type Reading struct {
 
 	// Purposes splits Spent by what the app sent each request for; they add up to Spent.
 	Purposes Purposes `json:"purposes"`
+
+	// Drain says whether something else spends the budget fast enough to run it out before
+	// it refills, and how fast (see drain.go); the zero value while it doesn't.
+	Drain Drain `json:"drain"`
 }
 
 // Purposes is what the app spent from one budget since it last refilled, by what it sent
@@ -215,12 +219,18 @@ func (t *Tracker) readingLocked(resource string, now time.Time) Reading {
 
 	r := h.reading
 
-	return Reading{
+	out := Reading{
 		Known: true, Limit: r.Limit, Remaining: max(r.Remaining, 0), Used: max(r.Used, 0),
 		ResetAt: clock.Format(r.ResetAt), TakenAt: clock.Format(h.takenAt),
 		Spent: h.spent, Requests: h.requests, Complete: !h.countedFrom.After(windowStart(r)),
 		Purposes: purposesOf(h.purposes),
 	}
+
+	if d, ok := h.drain(now); ok {
+		out.Drain = gaugeDrain(d)
+	}
+
+	return out
 }
 
 // freshSince reports whether every budget the window shows was read at since or later, in

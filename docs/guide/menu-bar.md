@@ -61,6 +61,7 @@ check finds it:
 | Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
 | Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C, or closing its terminal window, included), and one a quit or a restart interrupted never notify |
 | Service status | A part you watch of [GitHub, Claude, or OpenAI](window.md) goes down (*Claude: Partial outage*, with the parts affected and the incident), or is back (*Claude: Operational again*). The first check after the app opens, or after you turn a service on, never notifies |
+| API budget draining fast | Something else signed in as you, such as `gh` or a coding agent, spends your [GitHub API budget](window.md#when-a-budget-drains-fast) fast enough to run it out before it refills (*Something signed in as you, not Nilbox, used 1,490 GraphQL points in 10 minutes.*, and when it runs out at that pace); you hear of each budget once an hour at most, and clicking it opens the API budget panel |
 | New version | A new version of Nilbox is downloaded and ready to restart into, or, with **Just tell me**, out to download; you hear of each version once |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
@@ -92,7 +93,7 @@ then.
 
 ## Banners
 
-Each kind can also show a native macOS banner. All nine are on by default, and each has its own
+Each kind can also show a native macOS banner. All ten are on by default, and each has its own
 switch in Settings → Notifications. Autopilot's five kinds have switches of their own there, under
 **Autopilot**, while Autopilot (beta) is on, all on by default too (see [Autopilot's
 notifications](autopilot/notifications-and-menu-bar.md)). Two more switches there show a banner when
@@ -107,7 +108,9 @@ repository (none for a folder that isn't one), what failed, and how it ended, an
 the run in Scripts → Runs. Failed runs that come within 2 seconds of the first show their banners
 together, and more than three as one, such as **5 new notifications: 5 failed runs**. A service
 status change is about no item too, and clicking its banner opens the incident, or the service's
-status page. Clicking a banner marks its entry read; a banner that sums several up marks none.
+status page; so is an API budget draining fast, and clicking its banner opens the API budget panel
+under the toolbar's gauge. Clicking a banner marks its entry read; a banner that sums several up
+marks none.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are

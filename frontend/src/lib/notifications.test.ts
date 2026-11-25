@@ -21,6 +21,7 @@ import {
   kindTitle,
   notificationKinds,
   opensAutopilot,
+  opensBudget,
   opensRun,
   opensUpdate,
   quickViewMax,
@@ -45,6 +46,7 @@ describe('notifications', () => {
       'release_failed',
       'run_failed',
       'service_status',
+      'budget_draining',
       'update_ready',
       'autopilot_alert',
       'autopilot_needs_you',
@@ -100,9 +102,11 @@ describe('notifications', () => {
           ? 'run'
           : isAutopilotKind(kind)
             ? 'autopilot'
-            : opensUpdate(notification({ kind }))
-              ? 'update'
-              : 'item',
+            : opensBudget(notification({ kind }))
+              ? 'budget'
+              : opensUpdate(notification({ kind }))
+                ? 'update'
+                : 'item',
       ]),
     )
   })
@@ -226,6 +230,7 @@ describe('the history’s lists', () => {
       'release',
       'run',
       'status',
+      'budget',
       'update',
       'autopilot',
     ])
@@ -237,6 +242,7 @@ describe('the history’s lists', () => {
       'Releases',
       'Runs',
       'Status',
+      'API budget',
       'Updates',
       'Autopilot',
     ])
@@ -324,6 +330,19 @@ describe('the history’s lists', () => {
     expect(bannerOpens(update, none, true)).toBe('update')
     expect(bannerOpens(notification(), { ...none, itemId: 1 }, true)).toBe('item')
     expect(bannerOpens(released, { ...none, url: page, runId: 9 }, true)).toBe('item')
+  })
+
+  it('opens the API budget’s panel from a budget draining’s banner, which names nothing but its entry', () => {
+    const none = { itemId: 0, url: '', runId: 0, autopilot: nothing }
+    const draining = notification({ kind: 'budget_draining', itemId: 0, itemKind: '', url: '', number: 0 })
+
+    expect(opensBudget(draining)).toBe(true)
+    expect(opensBudget(notification())).toBe(false)
+    expect(bannerEntry(draining, none)).toBe(true)
+    expect(bannerEntry(draining, { ...none, itemId: 1 })).toBe(false)
+    expect(bannerOpens(draining, none, true)).toBe('budget')
+    expect(appTypeOf(draining)).toBe('budget')
+    expect(filterEntries([draining, notification()], 'all', 'budget')).toEqual([draining])
   })
 
   it('opens what a clicked banner names when the log doesn’t hold its entry, or holds another', () => {

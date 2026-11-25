@@ -11,9 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/budget"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -87,4 +91,38 @@ func TestStoredRates(t *testing.T) {
 		ResetAt: time.Date(2026, 1, 10, 13, 0, 0, 0, time.UTC),
 	}, got[0].Reading)
 	assert.Equal(t, time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC), got[0].TakenAt)
+}
+
+func TestABudgetDrainingIsANotificationAboutNoItemToldOncePerWindow(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
+
+	require.NotNil(t, c.BudgetWarner, "the shell runs the warner with the other work")
+
+	alerts := budgetAlerts{dispatcher: notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})}
+	alert := budget.Alert{
+		Resource: github.ResourceGraphQL,
+		Title:    "Something signed in as you, not " + brand.Name + ", used 1,490 GraphQL points in 10 minutes.",
+		Body:     "At this pace it runs out around 12:51 PM, before it refills at 1:00 PM.",
+		Key:      "budget-draining-graphql-1768050000",
+	}
+
+	alerts.Drained(t.Context(), alert)
+	alerts.Drained(t.Context(), alert) // as after a restart, for the same window
+
+	log, err := c.Notifications.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1, "one window's drain is told once")
+
+	got := log.Items[0]
+	assert.Equal(t, notify.KindBudgetDraining, got.Kind)
+	assert.Equal(t, alert.Title, got.Title)
+	assert.Equal(t, alert.Body, got.Detail)
+	assert.Empty(t, got.URL, "a click opens the API budget's panel, not a page")
+	assert.Empty(t, got.ItemKind, "about no item")
+	assert.Contains(t, events.All(), event.Event(event.NotificationsUpdated{}))
 }

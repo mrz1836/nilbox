@@ -272,6 +272,11 @@ type Core struct {
 	// with the other work, which it stops before it closes the database.
 	BudgetSaver *budget.Saver
 
+	// BudgetWarner tells the user when something else signed in as them spends an API
+	// budget fast enough to run it out before it refills, once an hour at most for each,
+	// once Run is called. The desktop shell runs it with the other work.
+	BudgetWarner *budget.Warner
+
 	// Timing records the first paint.
 	Timing *timing.Recorder
 
@@ -992,6 +997,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		UpdateWorker:          updateWorker,
 		tokens:                tokens,
 		BudgetSaver:           budget.NewSaver(tracker, keeper, logger),
+		BudgetWarner:          budget.NewWarner(tracker, budgetAlerts{dispatcher: dispatcher}),
 		client:                client,
 		budget:                tracker,
 		budgetKeeper:          keeper,

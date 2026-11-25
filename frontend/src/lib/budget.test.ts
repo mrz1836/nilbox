@@ -4,6 +4,9 @@ import { FIXED_NOW } from '../test/clock'
 import { budgetGauge, reading, unreadBudget, writes } from '../test/fixtures'
 import {
   autopilotShareOf,
+  drainingLabels,
+  drainingText,
+  drainOf,
   levelFill,
   levelFor,
   levelText,
@@ -198,5 +201,26 @@ describe('writesHeld', () => {
     expect(writesHeld(writes({ heldUntil: '2026-06-15T12:01:00Z' }), FIXED_NOW)).toBe(true)
     expect(writesHeld(writes({ heldUntil: '2026-06-15T11:59:00Z' }), FIXED_NOW)).toBe(false)
     expect(writesHeld(writes({ heldUntil: 'not a time' }), FIXED_NOW)).toBe(false)
+  })
+})
+
+describe('drainOf, drainingLabels, and drainingText', () => {
+  const drain = { draining: true, others: 1800, mine: 12, minutes: 10, runsOutAt: '2026-06-15T12:12:00Z' }
+
+  it('finds a budget draining fast until it refills', () => {
+    expect(drainOf(reading({ drain }), FIXED_NOW)).toEqual(drain)
+    expect(drainOf(reading(), FIXED_NOW)).toBeNull()
+    expect(drainOf({ ...unreadBudget, drain }, FIXED_NOW)).toBeNull()
+    expect(drainOf(reading({ resetAt: '2026-06-15T11:59:00Z', drain }), FIXED_NOW)).toBeNull()
+  })
+
+  it('names the budgets draining, in display order', () => {
+    const gauge = budgetGauge({ graphql: reading(), core: reading({ drain }), search: reading({ drain }) })
+
+    expect(drainingLabels(gauge, FIXED_NOW)).toEqual(['REST', 'Search'])
+    expect(drainingLabels(null, FIXED_NOW)).toEqual([])
+    expect(drainingText(['GraphQL'])).toBe('GraphQL draining fast')
+    expect(drainingText(['GraphQL', 'REST'])).toBe('GraphQL and REST draining fast')
+    expect(drainingText([])).toBe('')
   })
 })

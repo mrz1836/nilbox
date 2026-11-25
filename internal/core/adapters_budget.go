@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/prefs"
 )
 
@@ -83,4 +84,19 @@ func storedRates(gauge inbox.RateGauge) []budget.Stored {
 	}
 
 	return out
+}
+
+// budgetAlerts tells the user that something else signed in as them spends an API budget
+// fast enough to run it out before it refills, with a notification about no item
+// (budget_draining), and its banner when that kind is on (budget.Notifier). A click on
+// either opens the API budget's panel.
+type budgetAlerts struct {
+	dispatcher *notify.Dispatcher
+}
+
+// Drained records alert as a notification, once for its window, and shows its banner.
+func (a budgetAlerts) Drained(ctx context.Context, alert budget.Alert) {
+	a.dispatcher.Notify(ctx, notify.Entry{
+		Kind: notify.KindBudgetDraining, Title: alert.Title, Body: alert.Body, Key: alert.Key,
+	})
 }

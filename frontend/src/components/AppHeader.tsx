@@ -42,6 +42,9 @@ export interface AppHeaderProps {
   gauge: BudgetGauge | null
   // onBudgetCheck reads every budget from GitHub now; the budget menu asks while it is open.
   onBudgetCheck?: () => void
+  // budgetOpenRequest opens the budget menu's panel each time it rises above 0, as a click
+  // on a budget's draining notification asks.
+  budgetOpenRequest?: number
   // serviceStatus is where the services the user watches stand (GitHub, Claude, OpenAI),
   // which shows a warning beside the budget gauge while a part watched has a problem, and
   // each provider watched in the account menu's Service status; without it there is
@@ -206,6 +209,7 @@ export function AppHeader(props: AppHeaderProps) {
     account,
     gauge,
     onBudgetCheck,
+    budgetOpenRequest,
     serviceStatus,
     onOpenSettings,
     notifications,
@@ -354,7 +358,7 @@ export function AppHeader(props: AppHeaderProps) {
         {serviceStatus !== undefined && (
           <ServiceStatusMenu service={serviceStatus} onChooseWatch={onServiceStatusSettings} />
         )}
-        <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} />
+        <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} openRequest={budgetOpenRequest} />
         <AccountMenu
           account={account}
           serviceStatus={serviceStatus?.status ?? null}

@@ -61,6 +61,11 @@ const (
 	// back (see the svcstatus package).
 	KindServiceStatus Kind = "service_status"
 
+	// KindBudgetDraining is something else signed in as the user spending one of the GitHub
+	// API budgets fast enough to run it out before it refills (see the budget package). It is
+	// told once an hour at most for each budget.
+	KindBudgetDraining Kind = "budget_draining"
+
 	// KindUpdateReady is a new version of the app, downloaded and ready to restart into, or
 	// only available with Just tell me (see the update package). It is told once per version.
 	KindUpdateReady Kind = "update_ready"
@@ -92,7 +97,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindUpdateReady,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindBudgetDraining, KindUpdateReady,
 		KindAutopilotAlert, KindAutopilotNeedsYou, KindAutopilotFinished, KindAutopilotChecks, KindAutopilotProblem,
 	}
 }

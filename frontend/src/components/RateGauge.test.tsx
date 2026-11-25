@@ -239,4 +239,34 @@ describe('RateGauge', () => {
 
     expect(screen.queryByText('Housekeeping on GitHub')).not.toBeInTheDocument()
   })
+
+  it('says under a budget that it drains fast, how fast, and when it runs out at that pace', () => {
+    renderGauge(
+      budgetGauge({
+        graphql: reading({
+          remaining: 539,
+          used: 4461,
+          drain: { draining: true, others: 1800, mine: 12, minutes: 10, runsOutAt: '2026-06-15T12:12:00Z' },
+        }),
+        core: reading(),
+      }),
+    )
+
+    const line = row('GraphQL').getByText('Draining fast.').closest('p')
+    expect(line).toHaveTextContent(
+      'Draining fast. Everything else used 1,800 in 10 minutes. At this pace it runs out in 12m.',
+    )
+    expect(line?.getAttribute('title')).toContain(` can't tell which; it spent 12 of it meanwhile.`)
+    expect(row('REST').queryByText('Draining fast.')).not.toBeInTheDocument()
+  })
+
+  it('says a draining budget runs out any minute now once its time is here, and drops it once it refilled', () => {
+    const drain = { draining: true, others: 900, mine: 0, minutes: 6, runsOutAt: '2026-06-15T11:59:00Z' }
+    const { unmount } = renderGauge(budgetGauge({ graphql: reading({ drain }) }))
+    expect(row('GraphQL').getByText(/runs out any minute now\./)).toBeInTheDocument()
+
+    unmount()
+    renderGauge(budgetGauge({ graphql: reading({ resetAt: '2026-06-15T11:59:30Z', drain }) }))
+    expect(screen.queryByText('Draining fast.')).not.toBeInTheDocument()
+  })
 })

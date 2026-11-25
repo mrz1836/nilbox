@@ -28,12 +28,13 @@ and nothing while no merge happened), the Release page's checks follower (`relea
 in [internal/release](release.md)), the sweeper (these four as often as Settings → Refreshing says,
 each through its own `periodic.Job`, which runs `periodic.RunEvery` and which core wakes on the
 Go-only `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
-notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher,
-the inbox's `Rereads` (one item at a time, one GraphQL point each: the item the sessions watcher
-hands it, as an agent session stops working or its agent finishes a command that changes GitHub, and
-a pull request whose branch a push on this Mac moved, from the push watch), the Release page's
-refresher, and the Hooks and Deps pages' scans (`hooks.Scans`, `manifests.Scans`) as tracked work,
-starts the deferred work (`core.Deferred`: the login-shell read first; the tool finder, the runs,
+notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver` and `Warner`, the
+sessions watcher, the inbox's `Rereads` (one item at a time, one GraphQL point each: the item the
+sessions watcher hands it, as an agent session stops working or its agent finishes a command that
+changes GitHub, and a pull request whose branch a push on this Mac moved, from the push watch), the
+Release page's refresher, and the Hooks and Deps pages' scans (`hooks.Scans`, `manifests.Scans`) as
+tracked work, starts the deferred work (`core.Deferred`: the login-shell read first; the tool
+finder, the runs,
 the release `Follower`, the service status `Checker`, the update worker (`update.Worker`, in
 [internal/update](update.md)), Autopilot's engine (`autopilot.Engine`), the
 [push watch](pushwatch.md), woken by `event.IntervalsChanged` too, and Describe it's worker

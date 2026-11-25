@@ -15,7 +15,7 @@ func TestKinds(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		"review_requested", "assigned", "woke", "session_needs_you", "session_finished", "release_done",
-		"release_published", "release_failed", "run_failed", "service_status", "update_ready",
+		"release_published", "release_failed", "run_failed", "service_status", "budget_draining", "update_ready",
 		"autopilot_alert", "autopilot_needs_you", "autopilot_finished", "autopilot_checks", "autopilot_problem",
 	}, notifyprefs.Kinds())
 
