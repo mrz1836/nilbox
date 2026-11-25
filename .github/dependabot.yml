@@ -21,6 +21,8 @@
 #   • Cooldown on version updates – new releases must age 3 days (gomod: patch 3 / minor 7 / major 14)
 #     before a PR opens; npm (/frontend) waits 7 days (patch 7 / minor 7 / major 14) to match
 #     pnpm's 7-day minimumReleaseAge. Trusted publishers are excluded. Security updates are never delayed.
+#   • npm (/frontend) ignores the major versions its toolchain can't take yet; each entry names its
+#     blocker and when to drop it.
 # ────────────────────────────────────────────────────────────────
 
 version: 2
@@ -127,6 +129,25 @@ updates:
       semver-patch-days: 7
     allow:
       - dependency-type: "direct"
+    # Each entry holds back a major version the rest of the toolchain can't take yet; minor
+    # and patch updates within the current major still arrive. Every entry names its blocker
+    # and when to drop it.
+    ignore:
+      # Babel 8 installs and builds, but babel-plugin-react-compiler 1.0 is a Babel 7 plugin
+      # and stops memoizing under it (the render check, test:renders, fails). Drop once the
+      # React Compiler supports Babel 8.
+      - dependency-name: "@babel/core"
+        update-types: ["version-update:semver-major"]
+      # ESLint 10 is outside the peer range of eslint-plugin-react (^9.7) and
+      # eslint-plugin-jsx-a11y (^9). Drop both once those plugins accept ESLint 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 is outside typescript-eslint's peer range (<6.1.0). Drop once
+      # typescript-eslint supports TypeScript 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-all:
         applies-to: version-updates
