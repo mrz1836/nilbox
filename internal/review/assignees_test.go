@@ -450,3 +450,44 @@ func TestParticipantsAreThePeopleWhoTookPart(t *testing.T) {
 	assert.Equal(t, []string{octoReviewer, "octo-commenter", octoReviewer}, got,
 		"rank lists each once; events say nothing of who took part")
 }
+
+func TestTheInboxsUnassignMeShowsInTheCacheAtOnceWithNoRead(t *testing.T) {
+	t.Parallel()
+
+	h := assignedTo(t, octoOther, "Octo-User")
+	readAt := contextAt(t, h.db)
+	edits := NewInboxEdits(h.svc)
+
+	require.NoError(t, edits.Unassigned(t.Context(), pullID, octoUser), "the login is matched ignoring case")
+
+	r, err := h.svc.Refresh(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{octoOther}, assigneeNames(r), "a sheet opened just after shows the user gone")
+	assert.Equal(t, 0, r.MoreAssignees)
+	assert.Equal(t, 1, h.github.called(callReview), "the read under 20 seconds old is served again, no read")
+	assert.Equal(t, readAt, contextAt(t, h.db), "when the sheet read it stands, so the next read comes no sooner")
+
+	require.NoError(t, edits.Unassigned(t.Context(), pullID, octoUser), "one not assigned is left as it is")
+	require.NoError(t, edits.Unassigned(t.Context(), pullID+1, octoUser), "a pull request with no cache is no error")
+	assert.Equal(t, []string{octoOther}, assigneeNames(h.rebuilt(t)))
+}
+
+func TestTheInboxsUnassignMeLeavesACacheThatSaysNothingOfTheAssignees(t *testing.T) {
+	t.Parallel()
+
+	h := assignedTo(t, octoUser)
+	testutil.Exec(t, h.db, "UPDATE review_diffs SET context = json_remove(context, '$.assignees')")
+
+	require.NoError(t, NewInboxEdits(h.svc).Unassigned(t.Context(), pullID, octoUser))
+	assert.False(t, h.rebuilt(t).CanEditAssignees, "it still says nothing of them, until the sheet reads it again")
+}
+
+// rebuilt builds the sheet again from its cache, asking GitHub nothing.
+func (h *harness) rebuilt(t *testing.T) Review {
+	t.Helper()
+
+	r, err := h.svc.Rebuild(t.Context(), pullID)
+	require.NoError(t, err)
+
+	return r
+}

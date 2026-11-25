@@ -7,7 +7,7 @@
  * as a release that reached GitHub, a run that failed, or a service the user watches
  * going down or coming back, or one of Autopilot's notices.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status" | "update_ready" | "autopilot_alert" | "autopilot_needs_you" | "autopilot_finished" | "autopilot_checks" | "autopilot_problem";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status" | "budget_draining" | "update_ready" | "autopilot_alert" | "autopilot_needs_you" | "autopilot_finished" | "autopilot_checks" | "autopilot_problem";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -65,6 +65,13 @@ export const Kind = {
      * back (see the svcstatus package).
      */
     KindServiceStatus: "service_status",
+
+    /**
+     * KindBudgetDraining is something else signed in as the user spending one of the GitHub
+     * API budgets fast enough to run it out before it refills (see the budget package). It is
+     * told once an hour at most for each budget.
+     */
+    KindBudgetDraining: "budget_draining",
 
     /**
      * KindUpdateReady is a new version of the app, downloaded and ready to restart into, or

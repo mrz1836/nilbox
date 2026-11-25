@@ -58,7 +58,8 @@ export interface Notification {
     /**
      * Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
      * (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed,
-     * KindServiceStatus, KindUpdateReady, or one of Autopilot's (notifyprefs.AutopilotKinds).
+     * KindServiceStatus, KindBudgetDraining, KindUpdateReady, or one of Autopilot's
+     * (notifyprefs.AutopilotKinds).
      */
     "kind": notifyprefs$0.Kind;
 

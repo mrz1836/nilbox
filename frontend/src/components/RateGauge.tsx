@@ -4,6 +4,7 @@ import { brand } from '../generated/brand'
 import {
   autopilotShareOf,
   budgets,
+  drainOf,
   levelFill,
   levelLabels,
   levelText,
@@ -19,7 +20,9 @@ import {
 } from '../lib/budget'
 import { counted, formatCount } from '../lib/format'
 import { formatAge, formatUntil } from '../lib/time'
-import type { BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
+import { toneText } from '../lib/tone'
+import type { BudgetDrain, BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
+import { AlertIcon } from './icons'
 
 export interface RateGaugeProps {
   // gauge is null until the budgets have loaded.
@@ -40,6 +43,7 @@ const unread: BudgetReading = {
   requests: 0,
   complete: false,
   purposes: { inbox: 0, watches: 0, follower: 0, autopilot: 0, other: 0 },
+  drain: { draining: false, others: 0, mine: 0, minutes: 0, runsOutAt: '' },
 }
 
 // amountText reads a budget as "4,980 of 5,000 left", or says it is unknown.
@@ -95,6 +99,33 @@ function readText(gauge: BudgetGauge | null, now: Date): string {
   return age === 'just now' ? 'Live · read just now' : `Read ${age} ago`
 }
 
+// runsOutText says when a draining budget runs out at its pace: "in 12m", or "any minute
+// now" once that time is here.
+function runsOutText(drain: BudgetDrain, now: Date): string {
+  const until = formatUntil(now, drain.runsOutAt)
+
+  return until === '' || until === 'now' ? 'any minute now' : `in ${until}`
+}
+
+// DrainLine says, under a budget's row, that everything else spends it fast enough to run
+// it out before it refills: how much over how long, and when it runs out at that pace. It
+// leads with a short warning and keeps the rest quiet.
+function DrainLine({ drain, now }: { drain: BudgetDrain; now: Date }) {
+  return (
+    <p
+      className="mt-1.5 flex gap-1.5 text-xs"
+      title={`Something signed in as you, such as gh, a coding agent, or another app, is spending this budget fast. ${brand.name} can't tell which; it spent ${formatCount(drain.mine)} of it meanwhile.`}
+    >
+      <AlertIcon className={`mt-px size-3.5 shrink-0 ${toneText.warning}`} />
+      <span className="text-muted">
+        <span className={`font-medium ${toneText.warning}`}>Draining fast.</span> Everything else used{' '}
+        <span className="tabular-nums">{formatCount(drain.others)}</span> in{' '}
+        {counted(drain.minutes, 'minute', 'minutes')}. At this pace it runs out {runsOutText(drain, now)}.
+      </span>
+    </p>
+  )
+}
+
 // percentText reads a small share: "<1%" below one percent, else whole percents.
 function percentText(percent: number): string {
   return percent > 0 && percent < 1 ? '<1%' : `${String(Math.round(percent))}%`
@@ -110,6 +141,7 @@ function BudgetRow({ label, rate, now }: BudgetRowProps) {
   const budget = readBudget(rate, now)
   const reset = resetText(rate, budget, now)
   const share = shareText(rate, now)
+  const drain = drainOf(rate, now)
 
   return (
     <li>
@@ -149,6 +181,7 @@ function BudgetRow({ label, rate, now }: BudgetRowProps) {
           Used: {share}
         </p>
       )}
+      {drain !== null && <DrainLine drain={drain} now={now} />}
     </li>
   )
 }

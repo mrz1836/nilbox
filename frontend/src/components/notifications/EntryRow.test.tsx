@@ -14,6 +14,7 @@ describe('EntryRow’s lists', () => {
     expect(kindTones).toEqual({
       release_failed: 'text-danger',
       run_failed: 'text-danger',
+      budget_draining: 'text-warning',
       autopilot_needs_you: 'text-warning',
       autopilot_problem: 'text-danger',
     })

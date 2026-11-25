@@ -17,7 +17,13 @@ import {
   UpdateIcon,
   XIcon,
 } from '../icons'
+import { GaugeIcon } from '../GaugeIcon'
 import { RelativeTime } from '../RelativeTime'
+
+// DrainingIcon is the API budget's dial, run low, for a budget draining fast.
+function DrainingIcon({ className = 'size-4' }: { className?: string }) {
+  return <GaugeIcon percent={20} known className={className} />
+}
 
 // kindIcons are each kind's icon in the history, Autopilot's all its bolt. A kind this
 // build does not know, as another build may have stored, shows the bell.
@@ -30,6 +36,7 @@ export const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { clas
   release_failed: XIcon,
   run_failed: XIcon,
   service_status: PulseIcon,
+  budget_draining: DrainingIcon,
   update_ready: UpdateIcon,
   autopilot_alert: AutopilotIcon,
   autopilot_needs_you: AutopilotIcon,
@@ -43,6 +50,7 @@ export const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { clas
 export const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
   release_failed: 'text-danger',
   run_failed: 'text-danger',
+  budget_draining: 'text-warning',
   autopilot_needs_you: 'text-warning',
   autopilot_problem: 'text-danger',
 }

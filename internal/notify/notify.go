@@ -70,6 +70,11 @@ const (
 	// It is about no item, and opens the incident or the status page.
 	KindServiceStatus = notifyprefs.KindServiceStatus
 
+	// KindBudgetDraining is something else signed in as the user spending a GitHub API
+	// budget fast enough to run it out before it refills. It is about no item, and opens
+	// nothing: a click brings the window forward, where the API budget's panel opens.
+	KindBudgetDraining = notifyprefs.KindBudgetDraining
+
 	// KindUpdateReady is a new version of the app, ready to restart into, or available. It
 	// is about no item, and opens nothing: a click brings the window forward, where the
 	// update's banner shows.
@@ -102,7 +107,8 @@ type Notification struct {
 
 	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
 	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed,
-	// KindServiceStatus, KindUpdateReady, or one of Autopilot's (notifyprefs.AutopilotKinds).
+	// KindServiceStatus, KindBudgetDraining, KindUpdateReady, or one of Autopilot's
+	// (notifyprefs.AutopilotKinds).
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.

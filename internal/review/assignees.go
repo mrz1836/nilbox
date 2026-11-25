@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/assignees"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -357,4 +358,29 @@ func shownAssignees(c *cached, viewer string) ([]Assignee, int) {
 	}
 
 	return out, max(a.Total-len(out), 0)
+}
+
+// InboxEdits follows, in the sheet's cache, what the inbox's own edits change of a pull
+// request: Unassign me takes the user off its assignees on GitHub, and the sheet that opens
+// next shows them gone. It is apart from the Service, which the window binds, since only
+// core calls it.
+type InboxEdits struct {
+	cache *cacheStore
+	clock clock.Clock
+}
+
+// NewInboxEdits returns the InboxEdits of the sheet s.
+func NewInboxEdits(s *Service) InboxEdits {
+	return InboxEdits{cache: s.cache, clock: s.clock}
+}
+
+// Unassigned takes login off the assignees of the pull request with id in the sheet's
+// cache, as the inbox's Unassign me left them on GitHub. The rest of the cache stays as
+// read, and so does when it was read, so a sheet that opens in the next moments, which
+// serves a read under 20 seconds old again, shows them gone at once, and the next read
+// from GitHub, which may name them still in the moment after the edit, comes no sooner. A
+// pull request the sheet holds no cache of, or whose cache doesn't list login among its
+// assignees, is left as it is.
+func (e InboxEdits) Unassigned(ctx context.Context, id int64, login string) error {
+	return e.cache.takeOffAssignee(ctx, id, login, e.clock.Now().UTC())
 }

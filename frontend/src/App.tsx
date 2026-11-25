@@ -45,6 +45,7 @@ import {
   bannerOpens,
   filterEntries,
   opensAutopilot,
+  opensBudget,
   opensRun,
   opensUpdate,
   startLists,
@@ -261,8 +262,10 @@ interface BannerClick {
 // follows; clear drops it once another view opens. A notification about a run, as a
 // failed run's banner is, opens the run with openRun instead, and one about a new version
 // of the app, whose banner names nothing but itself, shows the update's banner with
-// openUpdate. One of Autopilot's, or a row of the menu bar's Autopilot group, opens what it
-// names in the Autopilot tab with openAutopilot. A clicked banner names the notification it
+// openUpdate. One about an API budget draining, whose banner names nothing but itself
+// too, opens the API budget's panel with openBudget. One of Autopilot's, or a row of the
+// menu bar's Autopilot group, opens what it names in the Autopilot tab with openAutopilot.
+// A clicked banner names the notification it
 // stands for, which markBanner marks read first, and opens what that entry opens, by its
 // kind (entryOf looks it up in the log), or by what the banner names when the log doesn't
 // hold it. While held, as the first-run setup holds the window, a request is let go.
@@ -271,6 +274,7 @@ function useReveal(
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
   openUpdate: () => void,
+  openBudget: () => void,
   openAutopilot: (target: AutopilotTarget) => void,
   markBanner: (click: BannerClick) => void,
   entryOf: (id: number) => AppNotification | undefined,
@@ -313,6 +317,9 @@ function useReveal(
         break
       case 'update':
         openUpdate()
+        break
+      case 'budget':
+        openBudget()
         break
       case 'autopilot':
         openAutopilot(click.autopilot)
@@ -796,11 +803,18 @@ export function App() {
       }
     })
   }
+  // budgetOpens counts the requests to open the API budget's panel, as a click on a budget
+  // draining's notification makes one; the toolbar's gauge opens its panel at each.
+  const [budgetOpens, setBudgetOpens] = useState(0)
+  const openBudget = () => {
+    setBudgetOpens((n) => n + 1)
+  }
   const revealer = useReveal(
     inbox.snapshot,
     openInbox,
     openRun,
     openUpdate,
+    openBudget,
     openAutopilot,
     markBanner,
     entryOf,
@@ -1014,6 +1028,12 @@ export function App() {
 
     if (opensUpdate(entry)) {
       openUpdate()
+
+      return
+    }
+
+    if (opensBudget(entry)) {
+      openBudget()
 
       return
     }
@@ -1328,6 +1348,7 @@ export function App() {
               account={account}
               gauge={budget.gauge}
               onBudgetCheck={budget.check}
+              budgetOpenRequest={budgetOpens}
               serviceStatus={serviceStatus}
               onServiceStatusSettings={openServiceStatusSettings}
               inboxCount={triaged?.count ?? 0}

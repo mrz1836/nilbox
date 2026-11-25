@@ -66,10 +66,11 @@ failed. A pass that changes what `Snapshot` shows, the passes' times aside, emit
 It clears the threads by the user's rules (`clear.go`), and owns `gh_thread_moments` and
 `gh_thread_clears` for it. The inbox's `Config.Outcomes` is core's `outcomesFanOut`, which tells
 Autopilot's engine, then this package's `Settler` (core's `ghThreadOutcomes` adapts `inbox.Outcome`
-to its own `Outcome`, never bound), then the sessions. The `Settler`'s `Settle` records, in one
-transaction and without waiting, the moments the user finished an item in the app (a merge, a close,
-a review that approves or requests changes, a dismissal, taking themselves off), a review of the
-user's made anywhere else that the inbox saw (an agent's gh, a browser: `OutcomeReviewed` from a
+to its own `Outcome`, never bound), then the sessions, then the sheets' caches (`sheetOutcomes`). The
+`Settler`'s `Settle` records, in one transaction and without waiting, the moments the user finished
+an item in the app (a merge, a close, a review that approves or requests changes, a dismissal,
+taking themselves off), a review of the user's made anywhere else that the inbox saw (an agent's gh,
+a browser: `OutcomeReviewed` from a
 read of the pull request alone or a whole refresh, once per review and within two hours of it, at
 GitHub's time for it, so a thread that moved after it isn't cleared), a merge's or a close's state
 as GitHub answered it (`MERGED` or `CLOSED`, read now), and a restore's taking back of the

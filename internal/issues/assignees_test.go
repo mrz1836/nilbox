@@ -95,3 +95,20 @@ func TestTheAssigneeReadsOfWhatIsNoIssue(t *testing.T) {
 
 	assert.Empty(t, h.github.searched)
 }
+
+func TestTheInboxsUnassignMeHasTheSheetReadTheIssueAgain(t *testing.T) {
+	t.Parallel()
+
+	h := readHarness(t)
+	h.github.views = append(h.github.views, issueView())
+
+	h.refreshed(t)
+	require.Equal(t, 1, h.github.called(callView), "a read under 20 seconds old is served again")
+
+	edits := NewInboxEdits(h.svc)
+	require.NoError(t, edits.Unassigned(t.Context(), issueID))
+
+	h.refreshed(t)
+	assert.Equal(t, 2, h.github.called(callView), "the next refresh reads the issue, however recently it was read")
+	require.NoError(t, edits.Unassigned(t.Context(), issueID+1), "an issue with no cache is no error")
+}

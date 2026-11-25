@@ -19,16 +19,16 @@ The kinds are `notifyprefs.Kind` constants, which this package names again: the 
 kinds of arrival (`KindReviewRequested`, `KindAssigned`, and `KindWoke`, the strings of
 `inbox.ArrivalReviewRequested`, `ArrivalAssigned`, and `ArrivalWoke`), the kinds about no item
 (`KindReleaseDone`, `KindReleasePublished`, `KindReleaseFailed`, `KindRunFailed`,
-`KindServiceStatus`, and `KindUpdateReady`), Autopilot's five (`KindAutopilotAlert`,
-`KindAutopilotNeedsYou`, `KindAutopilotFinished`, `KindAutopilotChecks`, and
-`KindAutopilotProblem`), and, in `sessions.go`, the sessions' two (`KindSessionNeedsYou` and
+`KindServiceStatus`, `KindBudgetDraining`, and `KindUpdateReady`), Autopilot's five
+(`KindAutopilotAlert`, `KindAutopilotNeedsYou`, `KindAutopilotFinished`, `KindAutopilotChecks`,
+and `KindAutopilotProblem`), and, in `sessions.go`, the sessions' two (`KindSessionNeedsYou` and
 `KindSessionFinished`), which the history never keeps. `TestKindsAreTheInboxArrivals` holds them
 to `notifyprefs.Kinds`, in its order. Every kind but the sessions' has a banner title
 (`kindTitles`: *Review requested*, *Assigned to you*, *Back from snooze*, *Released*,
-*Published*, *Release workflow failed*, *Run failed*, *Service status*, *New version*, *Autopilot
-alert*, *Needs your OK*, *Agent finished*, *Checks after a fix*, and *Autopilot problem*) and a
-summary noun, singular and plural (`summaryNouns`), which `TestEveryKindHasATitleAndASummaryNoun`
-checks, the two tables holding no other kind.
+*Published*, *Release workflow failed*, *Run failed*, *Service status*, *API budget draining
+fast*, *New version*, *Autopilot alert*, *Needs your OK*, *Agent finished*, *Checks after a fix*,
+and *Autopilot problem*) and a summary noun, singular and plural (`summaryNouns`), which
+`TestEveryKindHasATitleAndASummaryNoun` checks, the two tables holding no other kind.
 
 ## The history (`notify.go`, migration `0101_inbox`)
 
@@ -225,6 +225,11 @@ svcstatus, update, scriptrun, and Autopilot, among others, off it):
 - **A service status change** (`statusAlerts`, `adapters_status.go`, the svcstatus `Notifier`):
   `Notify` with `service_status`, its title, body, and the incident's or status page's URL
   ([`internal/svcstatus`](svcstatus.md)).
+- **An API budget draining fast** (`budgetAlerts`, `adapters_budget.go`, the budget `Notifier`,
+  which the budget's `Warner` calls once an hour at most for each budget): `Notify` with
+  `budget_draining`, its sentence and body, no URL, and a `Key` of the budget and its window, so
+  the same window is told once; a click brings the window forward, which opens the API budget's
+  panel ([`internal/budget` and `internal/github`](budget-and-github.md#a-budget-draining-fast)).
 - **A new version** (`updateNotices`, `adapters_update.go`, the update `Notifier`): `Notify` with
   `update_ready`, the app's name and version with *is ready* (*Restart to update when you're
   ready.*) or *is available* (*Update when you're ready.*), and no URL, so a click only brings the

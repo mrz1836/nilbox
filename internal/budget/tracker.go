@@ -79,6 +79,10 @@ type held struct {
 	// purposes splits spent by what each request was sent for (github.Purpose), so the
 	// shares add up to spent.
 	purposes map[github.Purpose]int
+
+	// samples are what the window had used, and the app had spent of it, lately, oldest
+	// first, from which its pace is worked out (see drain.go). They are kept in memory only.
+	samples []sample
 }
 
 // spend counts what one request, sent for purpose, spent from the budget.
@@ -139,8 +143,13 @@ type Tracker struct {
 	bulk      lane
 	heldUntil time.Time
 
-	// dirty holds a signal while a change waits to be saved (see Saver).
+	// warned is when the user was last told of each budget draining (see drain.go).
+	warned map[string]time.Time
+
+	// dirty holds a signal while a change waits to be saved (see Saver), and looks one
+	// while a change waits to be looked at for a budget draining (see Warner).
 	dirty chan struct{}
+	looks chan struct{}
 }
 
 // NewTracker returns a Tracker that stamps readings from c, the system clock when nil, and
@@ -150,7 +159,8 @@ func NewTracker(c clock.Clock, events event.Sink) *Tracker {
 
 	return &Tracker{
 		clock: c, events: event.Or(events), started: c.Now().UTC(), budgets: make(map[string][]*held),
-		writes: writeLane(), chores: choreLane(), bulk: bulkLane(), dirty: make(chan struct{}, 1),
+		writes: writeLane(), chores: choreLane(), bulk: bulkLane(), warned: make(map[string]time.Time),
+		dirty: make(chan struct{}, 1), looks: make(chan struct{}, 1),
 	}
 }
 
@@ -206,11 +216,13 @@ func (t *Tracker) Refreshed(points, items int) {
 	t.changed()
 }
 
-// changed tells the window, and the Saver, that something changed.
+// changed tells the window, the Saver, and the Warner that something changed.
 func (t *Tracker) changed() {
-	select {
-	case t.dirty <- struct{}{}:
-	default:
+	for _, signal := range []chan struct{}{t.dirty, t.looks} {
+		select {
+		case signal <- struct{}{}:
+		default:
+		}
 	}
 
 	t.events.Emit(event.BudgetUpdated{})
@@ -237,6 +249,7 @@ func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.
 		// counts from its start, or from when the app began counting.
 		h = &held{reading: reading, takenAt: now, countedFrom: later(t.started, windowStart(reading))}
 		h.spend(spent, purpose)
+		h.keepSample(now)
 		t.budgets[reading.Resource] = append(roomFor(windows, now), h)
 
 		return true
@@ -249,6 +262,7 @@ func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.
 	if reading.Used >= h.reading.Used {
 		changed = changed || reading != h.reading
 		h.reading, h.takenAt = reading, now
+		h.keepSample(now)
 	}
 
 	return changed

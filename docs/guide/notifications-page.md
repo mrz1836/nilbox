@@ -18,11 +18,11 @@ list too. Long lists stay quick: only the rows near the screen are drawn.
 
 The whole history, up to the latest 1,000, in the local database (the `notifications` table),
 whether or not a banner was shown. **Type** is **Reviews**, **Assigned**, **Snoozes**, **Releases**,
-**Runs**, **Status**, **Updates**, or **Autopilot** (its five kinds together, offered while
-Autopilot (beta) is on). Click an entry to open it as the bell does, which marks it read. Point at
-one: an unread entry offers **✓ Done**, and a read one **Mark unread**, which puts it back on the
-bell. **Mark all done** marks them all read, and **Clear history** forgets every notification, after
-asking; banners and settings stay.
+**Runs**, **Status**, **API budget**, **Updates**, or **Autopilot** (its five kinds together,
+offered while Autopilot (beta) is on). Click an entry to open it as the bell does, which marks
+it read. Point at one: an unread entry offers **✓ Done**, and a read one **Mark unread**, which
+puts it back on the bell. **Mark all done** marks them all read, and **Clear history** forgets every
+notification, after asking; banners and settings stay.
 
 ## GitHub
 

@@ -13,21 +13,22 @@ notifications](../guide/autopilot/notifications-and-menu-bar.md).
 ## The kinds
 
 `Kind` is a named string type, all its constants in `notifyprefs.go`, so `magex app:bindings`
-writes it as one TypeScript union. `Kinds` lists all 16 in the order the settings list them:
+writes it as one TypeScript union. `Kinds` lists all 17 in the order the settings list them:
 `review_requested`, `assigned`, and `woke` (the inbox's arrivals, `inbox.Arrival`);
 `session_needs_you` and `session_finished` (an agent session waiting for the user's approval or
 input, or finishing its turn); `release_done`, `release_published`, and `release_failed` (a
 release's tag reaching GitHub, its workflow publishing it, or its workflow failing); `run_failed`
 (a run from the Scripts tab that failed or ran past its time limit); `service_status` (a part of a
-service the user watches going down, or coming back); `update_ready` (a new version ready to
-restart into, or only available with Just tell me, told once per version); and Autopilot's five,
-which `AutopilotKinds` lists in the same order: `autopilot_alert`, `autopilot_needs_you`,
-`autopilot_finished`, `autopilot_checks`, and `autopilot_problem`. `Kind.Valid` reports a kind of
-`Kinds`, `Kind.Autopilot` one of `AutopilotKinds`, and `ErrUnknownKind` is the error for any
-other.
+service the user watches going down, or coming back); `budget_draining` (something else signed in
+as the user spending a GitHub API budget fast enough to run it out before it refills, told once an
+hour at most for each budget); `update_ready` (a new version ready to restart into, or only
+available with Just tell me, told once per version); and Autopilot's five, which `AutopilotKinds`
+lists in the same order: `autopilot_alert`, `autopilot_needs_you`, `autopilot_finished`,
+`autopilot_checks`, and `autopilot_problem`. `Kind.Valid` reports a kind of `Kinds`,
+`Kind.Autopilot` one of `AutopilotKinds`, and `ErrUnknownKind` is the error for any other.
 
 `Kind.DefaultOn` is true for every kind but the sessions' two, which start off, since the coding
-agents and the terminal can already notify the user themselves: the other nine kinds and
+agents and the terminal can already notify the user themselves: the other ten kinds and
 Autopilot's five show banners until the user turns them off (`TestDefaultOn`).
 
 ## The switches

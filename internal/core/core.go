@@ -272,6 +272,11 @@ type Core struct {
 	// with the other work, which it stops before it closes the database.
 	BudgetSaver *budget.Saver
 
+	// BudgetWarner tells the user when something else signed in as them spends an API
+	// budget fast enough to run it out before it refills, once an hour at most for each,
+	// once Run is called. The desktop shell runs it with the other work.
+	BudgetWarner *budget.Warner
+
 	// Timing records the first paint.
 	Timing *timing.Recorder
 
@@ -585,6 +590,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// The agent sessions record what came of their items on GitHub; they are followed
 	// once the inbox is built, below.
 	sessionNotes := &sessionOutcomes{logger: logger}
+	sheetNotes := &sheetOutcomes{logger: logger}
 	// The push watch hears every change to the inbox, so it watches a pull request newly
 	// listed at once; it is built once the inbox is, below.
 	pushes := &pushWaker{}
@@ -598,6 +604,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Arrivals: dispatcher,
 		Outcomes: outcomesFanOut{
 			threads: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)}, engine: engine, sessions: sessionNotes,
+			sheets: sheetNotes,
 		},
 		Usage:   tracker,
 		Watches: watchSource,
@@ -846,6 +853,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
 		Pictures: pictures, Assignees: finder, Clock: opts.Clock, Logger: logger,
 	})
+	// The sheets' caches follow the inbox's own edits from now on (sheetOutcomes).
+	sheetNotes.pulls, sheetNotes.issues = review.NewInboxEdits(reviewSheet), issues.NewInboxEdits(issueSheet)
 
 	budgetSvc := budget.NewService(budget.Config{
 		Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
@@ -992,6 +1001,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		UpdateWorker:          updateWorker,
 		tokens:                tokens,
 		BudgetSaver:           budget.NewSaver(tracker, keeper, logger),
+		BudgetWarner:          budget.NewWarner(tracker, budgetAlerts{dispatcher: dispatcher}),
 		client:                client,
 		budget:                tracker,
 		budgetKeeper:          keeper,

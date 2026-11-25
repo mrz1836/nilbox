@@ -5,9 +5,10 @@
 // Every GitHub response the app gets says what is left of its budget, so the readings are
 // as of the app's latest call; the gauge's panel also reads them from GitHub while open.
 // Each reading says what the app itself spent since the budget last refilled, which tells
-// the app's share from everything else signed in as the same account.
+// the app's share from everything else signed in as the same account, and whether
+// everything else spends it fast enough to run it out before it refills (its drain).
 
-import type { BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
+import type { BudgetDrain, BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
 import { toneFill, toneText } from './tone'
 
 // BudgetLevel grades the share of a budget left: healthy (green), moderate (yellow), low
@@ -219,6 +220,28 @@ export function autopilotShareOf(gauge: BudgetGauge, now: Date): AutopilotShare 
   }
 
   return { points, percent: graphql.limit > 0 ? (points / graphql.limit) * 100 : 0 }
+}
+
+// drainOf returns a budget's drain while something else spends it fast enough to run it
+// out before it refills, or null: while it doesn't, and once it has refilled since it was
+// read, which ends the drain.
+export function drainOf(rate: BudgetReading, now: Date): BudgetDrain | null {
+  return rate.known && rate.drain.draining && !hasReset(rate, now) ? rate.drain : null
+}
+
+// drainingLabels are the labels of the budgets draining now, in display order.
+export function drainingLabels(gauge: BudgetGauge | null, now: Date): string[] {
+  if (gauge === null) {
+    return []
+  }
+
+  return budgets.filter(({ key }) => drainOf(gauge[key], now) !== null).map(({ label }) => label)
+}
+
+// drainingText says which budgets drain fast, for the gauge's label and tooltip: "GraphQL
+// draining fast", "GraphQL and REST draining fast", or '' for none.
+export function drainingText(labels: readonly string[]): string {
+  return labels.length === 0 ? '' : `${labels.join(' and ')} draining fast`
 }
 
 // newestRead is when the newest reading was taken, as RFC 3339, or '' before any.

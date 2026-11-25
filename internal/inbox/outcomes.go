@@ -82,6 +82,10 @@ type Outcome struct {
 	// Ref names the item.
 	Ref item.Ref
 
+	// ItemID is the stored item, which the inbox's own edits name (OutcomeUnassigned and
+	// OutcomeUnrequested), so the sheets can follow them; 0 for every other outcome.
+	ItemID int64
+
 	// At is when it happened: when the inbox learned of it, or the review's own time.
 	At time.Time
 

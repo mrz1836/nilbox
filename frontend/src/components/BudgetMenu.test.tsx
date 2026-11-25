@@ -135,4 +135,45 @@ describe('BudgetMenu', () => {
     })
     expect(onCheck).toHaveBeenCalledTimes(2)
   })
+
+  it('puts a quiet dot on the dial, and says which budget drains, while one drains fast', () => {
+    const draining = reading({
+      drain: { draining: true, others: 1800, mine: 12, minutes: 10, runsOutAt: '2026-06-15T12:12:00Z' },
+    })
+    const { unmount } = renderMenu({ ...healthy, graphql: draining })
+
+    const gauge = screen.getByRole('button', { name: 'API budget: Healthy, 99% left · GraphQL draining fast' })
+    expect(gauge).toHaveClass('text-success')
+    expect(gauge).toHaveAttribute('title', 'API budget: Healthy, 99% left · GraphQL draining fast')
+    expect(screen.getByTestId('budget-draining')).toHaveAttribute('aria-hidden', 'true')
+
+    unmount()
+    renderMenu({ ...healthy, graphql: draining, core: reading({ remaining: 4990, drain: draining.drain }) })
+    expect(screen.getByRole('button', { name: /GraphQL and REST draining fast$/ })).toBeInTheDocument()
+  })
+
+  it('shows no dot while no budget drains, or once the draining budget has refilled', () => {
+    const { unmount } = renderMenu(healthy)
+    expect(screen.queryByTestId('budget-draining')).not.toBeInTheDocument()
+
+    unmount()
+    renderMenu({
+      ...healthy,
+      graphql: reading({
+        resetAt: '2026-06-15T11:58:00Z',
+        drain: { draining: true, others: 1800, mine: 12, minutes: 10, runsOutAt: '2026-06-15T11:57:00Z' },
+      }),
+    })
+    expect(screen.queryByTestId('budget-draining')).not.toBeInTheDocument()
+  })
+
+  it('opens its panel when asked, as a click on a budget draining’s notification asks', () => {
+    const { rerender } = renderMenu(healthy)
+    const gauge = screen.getByRole('button', { name: /API budget/ })
+    expect(gauge).toHaveAttribute('aria-expanded', 'false')
+
+    rerender(<BudgetMenu gauge={healthy} openRequest={1} />)
+    expect(gauge).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('dialog', { name: 'API budget' })).toBeInTheDocument()
+  })
 })

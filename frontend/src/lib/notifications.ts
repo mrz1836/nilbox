@@ -72,6 +72,13 @@ export const notificationKinds: readonly KindDescription[] = [
       'A part of GitHub, Claude, or OpenAI you watch goes down, or comes back, as its status page says. Choose what you watch in Service status.',
   },
   {
+    kind: 'budget_draining',
+    title: 'API budget draining fast',
+    label: 'API budget draining fast',
+    description:
+      'Something else signed in as you, such as gh or a coding agent, spends your GitHub API budget fast enough to run it out before it refills. You hear of each budget once an hour at most.',
+  },
+  {
     kind: 'update_ready',
     title: 'New version',
     label: 'New versions',
@@ -145,6 +152,7 @@ const everyKind: Readonly<Record<NotificationKind, true>> = {
   release_failed: true,
   run_failed: true,
   service_status: true,
+  budget_draining: true,
   update_ready: true,
   autopilot_alert: true,
   autopilot_needs_you: true,
@@ -230,6 +238,12 @@ export function opensUpdate(entry: AppNotification): boolean {
   return entry.kind === 'update_ready'
 }
 
+// opensBudget reports an entry about an API budget draining fast, which opens the API
+// budget's panel, where the drain shows under the budget.
+export function opensBudget(entry: AppNotification): boolean {
+  return entry.kind === 'budget_draining'
+}
+
 // opensRun reports an entry that opens a run, as a failed run's does: Scripts → Runs with
 // the run in its panel.
 export function opensRun(entry: AppNotification): boolean {
@@ -270,7 +284,8 @@ export const startLists: NotificationLists = {
 
 // AppTypeID is one of the app tab's types, as its Type control offers it and type: names
 // it in the toolbar's field.
-export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status' | 'update' | 'autopilot'
+export type AppTypeID =
+  'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status' | 'budget' | 'update' | 'autopilot'
 
 // AppType is a type's name, the kinds of entry it lists (none for every kind), and what
 // the page says when it lists none.
@@ -294,6 +309,7 @@ export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
   },
   run: { label: 'Runs', kinds: ['run_failed'], none: 'No failed runs.' },
   status: { label: 'Status', kinds: ['service_status'], none: 'No service status changes.' },
+  budget: { label: 'API budget', kinds: ['budget_draining'], none: 'No API budget warnings.' },
   update: { label: 'Updates', kinds: ['update_ready'], none: `No new versions of ${brand.name} yet.` },
   autopilot: {
     label: 'Autopilot',
@@ -311,6 +327,7 @@ export const appTypeOrder: readonly AppTypeID[] = [
   'release',
   'run',
   'status',
+  'budget',
   'update',
   'autopilot',
 ]
@@ -353,8 +370,8 @@ export interface BannerRef {
   autopilot: AutopilotTarget
 }
 
-// updateBanner reports a clicked banner that names nothing but its entry, as only a new
-// version's banner does.
+// updateBanner reports a clicked banner that names nothing but its entry, as a new
+// version's banner does, and an API budget draining's.
 export function updateBanner(banner: BannerRef): boolean {
   return banner.itemId <= 0 && banner.runId <= 0 && banner.url === '' && !targetNamed(banner.autopilot)
 }
@@ -362,20 +379,21 @@ export function updateBanner(banner: BannerRef): boolean {
 // bannerEntry reports whether the log's entry a clicked banner names is the one it stood
 // for: the log hands an id out again once it is cleared, so a banner left from before
 // stands for the entry with its id only while that entry is about the banner's item, page,
-// run, or Autopilot target, or, for a banner about none, while it is about a new version.
+// run, or Autopilot target, or, for a banner about none, while it is about a new version or
+// an API budget draining.
 export function bannerEntry(entry: AppNotification, banner: BannerRef): boolean {
   return (
     (banner.itemId > 0 && entry.itemId === banner.itemId) ||
     (banner.runId > 0 && entry.runId === banner.runId) ||
     (banner.url !== '' && entry.url === banner.url) ||
     sameTarget(banner.autopilot, entry.autopilot) ||
-    (updateBanner(banner) && opensUpdate(entry))
+    (updateBanner(banner) && (opensUpdate(entry) || opensBudget(entry)))
   )
 }
 
 // BannerOpen is what a clicked banner opens: its run (Scripts → Runs), the update's banner,
-// the Autopilot tab, or its item or page.
-export type BannerOpen = 'run' | 'update' | 'autopilot' | 'item'
+// the API budget's panel, the Autopilot tab, or its item or page.
+export type BannerOpen = 'run' | 'update' | 'budget' | 'autopilot' | 'item'
 
 // bannerOpens works out what a clicked banner opens, as its entry in the log would: by
 // that entry's kind (entry, the log's entry with the banner's notification id), while it
@@ -392,6 +410,10 @@ export function bannerOpens(entry: AppNotification | undefined, banner: BannerRe
 
     if (opensAutopilot(entry)) {
       return 'autopilot'
+    }
+
+    if (opensBudget(entry)) {
+      return 'budget'
     }
 
     return opensUpdate(entry) ? 'update' : 'item'

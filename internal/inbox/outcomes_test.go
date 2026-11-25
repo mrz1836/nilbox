@@ -344,7 +344,9 @@ func TestOutcomesUnassignedOnceGitHubAnswered(t *testing.T) {
 	_, err = h.svc.Unassign(t.Context(), ids[2])
 	require.ErrorIs(t, err, ErrNotAssigned)
 
-	assert.Equal(t, [][]Outcome{{told(OutcomeUnassigned, issueRef("example-repo", 3), h.clock.Now())}}, sink.told())
+	unassigned := told(OutcomeUnassigned, issueRef("example-repo", 3), h.clock.Now())
+	unassigned.ItemID = ids[3] // an edit names its item, so the sheets can follow it
+	assert.Equal(t, [][]Outcome{{unassigned}}, sink.told())
 }
 
 func TestOutcomesUnrequestedEvenWhenStoreFails(t *testing.T) {
@@ -372,10 +374,9 @@ func TestOutcomesUnrequestedEvenWhenStoreFails(t *testing.T) {
 		uierr.Message(err))
 	assert.True(t, h.reasons(t, 1)[0], "nothing was stored")
 
-	assert.Equal(t, [][]Outcome{
-		{told(OutcomeUnrequested, prRef(2), h.clock.Now())},
-		{told(OutcomeUnrequested, prRef(1), h.clock.Now())},
-	}, sink.told())
+	first, second := told(OutcomeUnrequested, prRef(2), h.clock.Now()), told(OutcomeUnrequested, prRef(1), h.clock.Now())
+	first.ItemID, second.ItemID = ids[2], ids[1]
+	assert.Equal(t, [][]Outcome{{first}, {second}}, sink.told())
 }
 
 func TestOutcomesNoEditOutcomeWhenGitHubRefuses(t *testing.T) {

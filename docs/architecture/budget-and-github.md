@@ -4,7 +4,8 @@
 
 `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands every
 response's rate-limit reading, and what the request spent, to its `Tracker` (`github.RateObserver`),
-whose state the `Saver` keeps across runs.
+whose state the `Saver` keeps across runs, and whose `Warner` tells the user when something else
+spends a budget fast enough to run it out before it refills.
 
 Every GitHub request goes through `(*github.Client).do`, apart from three reads that aren't the API
 and carry no token: a profile picture (`FetchAvatar`, by the URL GitHub gives: the user's own, and a
@@ -142,6 +143,40 @@ first entry, keeps that one, and the state's version stays 1. Without a state it
 the first run of a build that keeps it, it seeds it from the readings the last refresh stored
 (`Tracker.Seed`), each for a budget it has no reading of yet, so the window shows them until the
 first response; a seeded budget counts nothing the app spent, which was spent in another run.
+
+### A budget draining fast
+
+Everything else signed in as the user (gh, a coding agent, another app) can spend a budget much
+faster than the app does: one `gh project item-edit` that names its project field by name reads the
+project's fields and its first hundred items to find the field's ID, which GitHub prices at about
+100 GraphQL points. The `Tracker` tells when that pace would run a budget out before it refills, from
+the readings the app's own responses carry, so it costs no request (`drain.go`).
+
+- **Samples.** Each window keeps, in memory only, what it had used and what the app had spent of it
+  (`held.samples`, `note`), taken as a reading lands: the newest moves along until it is
+  `sampleGap` (a minute) past the one before, so a refresh's burst of responses keeps one, and none
+  older than `paceSpan` (15 minutes) is kept. A restart starts them afresh.
+- **The pace.** `held.drain` compares the oldest sample within `paceSpan` of now with the newest.
+  The window drains when they are at least `minPaceSpan` (5 minutes) apart, everything else (what
+  was used, less what the app spent) used at least `drainShare` (10) percent of the budget between
+  them, and at the pace of everything spent, the app's included, what is left runs out before the
+  window refills. Only GraphQL and REST drain (`drainBudgets`): the search budget's window lasts a
+  minute. A pace whose newest sample falls out of `paceSpan` ends by itself.
+- **The gauge.** `Reading.Drain` is the drain of the window the gauge shows (`Draining`, what
+  everything else used as `Others` and the app as `Mine` over `Minutes`, and `RunsOutAt`), the zero
+  value while it doesn't drain. The window marks the toolbar's gauge with a dot, names the budget
+  in its label, and words it under the budget in the panel (`lib/budget`'s `drainOf`, `BudgetMenu`,
+  and `RateGauge`'s `DrainLine`).
+- **The notification.** The `Warner` (`NewWarner`, tracked work beside the `Saver`) waits for a
+  signal on `Tracker.looks`, which each change sends without waiting, and asks `Tracker.alerts` for
+  each budget draining now in the window the gauge shows, none for a budget told of within
+  `warnEvery` (an hour, `Tracker.warned`, in memory). Each `Alert` holds its sentence (*Something
+  signed in as you, not Nilbox, used 1,490 GraphQL points in 10 minutes.*), what follows (*At this
+  pace it runs out around 12:51 PM, before it refills at 1:00 PM.*, in the clock's own time zone),
+  and a `Key` of the budget and its window's reset, so a restart never tells the same window again.
+  Core's `budgetAlerts` (`internal/core/adapters_budget.go`) hands it to the notifications'
+  `Dispatcher` as `budget_draining`, an entry about no item, whose banner shows while that kind is
+  on ([`internal/notify`](notify.md)); a click on either opens the API budget's panel.
 
 ## Held workflow runs
 

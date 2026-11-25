@@ -114,6 +114,7 @@ export type PerAgent<T> = Partial<Record<Exclude<AgentID, ''>, T>>
 
 export type BudgetGauge = NonNullLists<budget.Gauge>
 export type BudgetReading = NonNullLists<budget.Reading>
+export type BudgetDrain = NonNullLists<budget.Drain>
 export type BudgetRefresh = NonNullLists<budget.Refresh>
 export type BudgetWrites = NonNullLists<budget.Writes>
 

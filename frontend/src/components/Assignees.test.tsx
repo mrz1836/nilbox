@@ -101,7 +101,8 @@ describe('AssigneesSection', () => {
     const edit = vi.fn().mockResolvedValue('')
     section([], editing(edit))
 
-    expect(screen.getByText('No one is assigned.')).toBeInTheDocument()
+    // Something missing, in the warning tone, beside an empty place for a picture.
+    expect(screen.getByText('No one is assigned.')).toHaveClass('text-warning', 'font-medium')
 
     const chips = within(await screen.findByRole('group', { name: 'Suggested assignees' }))
     expect(chips.getAllByRole('button').map((b) => b.textContent)).toEqual([

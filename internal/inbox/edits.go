@@ -261,7 +261,7 @@ func (s *Service) editLocked(ctx context.Context, id int64, kind editKind) (Snap
 		return Snapshot{}, nil, fmt.Errorf("%s: %w", kind.verb(), ErrIncompleteFetch)
 	}
 
-	told := []Outcome{{Kind: kind.outcome(), Login: target.login, Ref: target.ref, At: s.now()}}
+	told := []Outcome{{Kind: kind.outcome(), Login: target.login, Ref: target.ref, ItemID: target.id, At: s.now()}}
 
 	if err = s.storeEdit(ctx, target, kind, edited); err != nil {
 		return Snapshot{}, told, uierr.New(

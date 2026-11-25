@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    Drain,
     Gauge,
     Purposes,
     Reading,

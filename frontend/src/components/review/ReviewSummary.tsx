@@ -24,7 +24,7 @@ import { PersonAvatar } from '../Avatar'
 import { chipClass, inkLinkClass, quietButtonClass } from '../controls'
 import { ExternalIcon, RereviewIcon, XIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
-import { RowAction, SuggestionChips } from '../PeopleParts'
+import { NobodyLine, RowAction, SuggestionChips } from '../PeopleParts'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
 import { ReviewerPicker, type OnReviewers } from './ReviewerPicker'
@@ -592,7 +592,7 @@ function Reviewers({
       </div>
       {reviews.length === 0 ? (
         <div className="space-y-1.5">
-          <p className="text-muted">No one is asked to review yet.</p>
+          <NobodyLine>No one is asked to review yet.</NobodyLine>
           <Suggestions
             candidates={editing?.candidates}
             busy={busy}

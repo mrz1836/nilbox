@@ -128,6 +128,35 @@ else signed in as you did, such as **Nilbox 45 · everything else 62**. When the
 budget last refilled, it can't know what an earlier copy of itself spent, and says **Nilbox 3 since
 it opened** instead.
 
+## When a budget drains fast
+
+Something else signed in as you can spend a budget far faster than the app does, and run it out
+before it refills, which stops the inbox's refreshes and your agents' `gh` calls until then. The
+app watches for that from the readings it already gets, so it costs no request. When everything
+else has used at least a tenth of a budget over the last 5 to 15 minutes, at a pace that would run
+it out before it refills:
+
+- **A small amber dot** sits on the gauge, whatever its color, and its tooltip adds which budget,
+  such as **API budget: Healthy, 64% left · GraphQL draining fast**.
+- **The panel** says so under the budget, quietly: **Draining fast.** Everything else used 1,800 in
+  10 minutes. At this pace it runs out in 12m. Point at the line to see how much the app spent
+  meanwhile: the app can't tell which tool is spending, only that it isn't the app.
+- **A notification**, [API budget draining fast](menu-bar.md#what-is-notified), once an hour at most
+  for each budget, with a banner while that kind is on in Settings → Notifications. Clicking it,
+  or its entry under the bell, opens the panel.
+
+All three go away by themselves once the pace drops or the budget refills. Only GraphQL and REST
+are watched; the search budget refills every minute. The app judges the pace only as often as it
+gets a reading: with the inbox refreshing every five minutes, a drain shows within about ten, and
+with refreshes off, a GraphQL drain shows only while something else in the app reads GitHub.
+
+Common culprits are agents running many `gh` commands in a loop. A costly one is `gh project
+item-edit` naming the item by URL and the field by name (`--url … --field … --value …`): to find
+the IDs it needs, it reads the project's fields and its first hundred items, about 100 GraphQL
+points a call. Editing by ID (`--id`, `--project-id`, `--field-id`) costs about 1. To price a query
+yourself, add `rateLimit { cost }` to it, or ask `rateLimit(dryRun: true) { cost }`, which costs
+nothing.
+
 ## What the refreshes cost
 
 **Inbox refresh** shows what the last whole refresh spent of the GraphQL budget and how many items

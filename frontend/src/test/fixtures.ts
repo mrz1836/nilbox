@@ -2233,6 +2233,11 @@ function noPurposes(): BudgetReading['purposes'] {
   return { inbox: 0, watches: 0, follower: 0, autopilot: 0, other: 0 }
 }
 
+// noDrain is a budget that is not draining.
+export function noDrain(): BudgetReading['drain'] {
+  return { draining: false, others: 0, mine: 0, minutes: 0, runsOutAt: '' }
+}
+
 // unreadBudget is a budget GitHub has not reported yet.
 export const unreadBudget: BudgetReading = {
   known: false,
@@ -2245,6 +2250,7 @@ export const unreadBudget: BudgetReading = {
   requests: 0,
   complete: false,
   purposes: noPurposes(),
+  drain: noDrain(),
 }
 
 // reading is a GraphQL-sized budget reading, taken a minute before the tests' noon and
@@ -2261,6 +2267,7 @@ export function reading(overrides: Partial<BudgetReading> = {}): BudgetReading {
     requests: 0,
     complete: true,
     purposes: noPurposes(),
+    drain: noDrain(),
     ...overrides,
   }
 }

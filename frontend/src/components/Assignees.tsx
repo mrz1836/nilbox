@@ -8,7 +8,7 @@ import { AssigneePicker, type AssigneeReads, type OnAssignees } from './Assignee
 import { PersonAvatar } from './Avatar'
 import { captionClass, quietButtonClass } from './controls'
 import { XIcon } from './icons'
-import { RowAction, SuggestionChips } from './PeopleParts'
+import { NobodyLine, RowAction, SuggestionChips } from './PeopleParts'
 
 // AssigneesEditing is what a sheet's assignees need to change: the picker's reads of the
 // item, why the user's own assignment can't be taken off here (ownLock), and the edit.
@@ -106,7 +106,7 @@ export function AssigneesSection({ look, itemId, repo, noun, url, assignees, mor
       </div>
       {assignees.length === 0 ? (
         <div className="space-y-1.5">
-          <p className={small ? 'text-muted' : 'text-sm text-muted'}>No one is assigned.</p>
+          <NobodyLine size={small ? '' : 'text-sm'}>No one is assigned.</NobodyLine>
           {editing !== undefined && (
             <SuggestionChips
               label="Suggested assignees"
