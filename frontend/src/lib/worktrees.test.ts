@@ -49,9 +49,16 @@ function row(overrides: Partial<Worktree> = {}): Worktree {
   return worktree({ legacy: false, displayPath: managed('pr-7'), stage: 'active', item: open(), ...overrides })
 }
 
-const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '' } as const
-const codexHere = { pid: 60311, command: 'codex', agent: 'codex', by: '' } as const
-const routineHere = { pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks' } as const
+const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '', args: '', detached: false } as const
+const codexHere = { pid: 60311, command: 'codex', agent: 'codex', by: '', args: '', detached: false } as const
+const routineHere = {
+  pid: 61022,
+  command: '2.1.328',
+  agent: 'claude',
+  by: '⚡ Fix checks',
+  args: '',
+  detached: false,
+} as const
 
 const runningClaude = row({
   branch: 'feat/inspect-point',
@@ -722,6 +729,22 @@ describe('safety', () => {
         icon: 'info',
         text: 'Can’t be removed while Codex runs in it (pid 60311, started 11:48, 12m ago).',
         also: 'Once it ends, its 2 commits not on GitHub stay in the clone on feat/retry, which removing it keeps.',
+        command: '',
+      },
+    ],
+    [
+      'a program left running with no terminal, all its work on GitHub',
+      row({
+        inUse: [{ pid: 75083, command: 'bash', agent: '', by: '', args: '/bin/sh -c sleep 30', detached: true }],
+        stage: 'in-use',
+        dirtyCount: 0,
+        dirty: false,
+      }),
+      {
+        tone: 'info',
+        icon: 'info',
+        text: 'Can’t be removed while bash runs in it (pid 75083, detached).',
+        also: 'No terminal runs it, and what started it has exited, as when a test or a script leaves a child behind. Once it ends, nothing in it would be lost: every commit is on GitHub.',
         command: '',
       },
     ],

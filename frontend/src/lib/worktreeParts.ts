@@ -443,6 +443,9 @@ export const stateWords: Readonly<Record<SessionState, string>> = {
   unknown: 'running',
 }
 
+// detachedWords say what a detached process is (Session.detached), after its name.
+export const detachedWords = 'detached: no terminal runs it, and what started it has exited'
+
 // stateTones color those words: blue at work, amber while it waits for the user, green
 // once its turn is done, red when it failed, muted otherwise.
 export const stateTones: Readonly<Record<SessionState, Tone>> = {
@@ -460,7 +463,9 @@ export const stateTones: Readonly<Record<SessionState, Tone>> = {
 // agent (routine), another process, a session the app follows or not (live), a live agent
 // lock with no process listed (lock); or else the last session the app launched there
 // (past). name names the program; version is Claude Code's, read from its process; state
-// and since are the followed session's, '' when none is.
+// and since are the followed session's, '' when none is. A live process's args is its whole
+// command line, '' when it wasn't read, and detached says no terminal runs it and what
+// started it has exited (Session.detached).
 export type AgentLine =
   | { kind: 'routine'; name: string; version: string; pid: number; by: string; state: SessionState | ''; since: string }
   | {
@@ -471,6 +476,8 @@ export type AgentLine =
       followed: boolean
       state: SessionState | ''
       since: string
+      args: string
+      detached: boolean
     }
   | { kind: 'lock'; name: string; pid: number; since: string }
   | { kind: 'past'; name: string; at: string }
@@ -508,6 +515,8 @@ export function agentLine(
       followed,
       state: followed ? state : '',
       since: followed ? since : '',
+      args: s.args,
+      detached: s.detached,
     }
   }
 

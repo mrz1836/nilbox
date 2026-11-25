@@ -103,7 +103,7 @@ const ag = worktreeRepo({
 })
 const df = worktreeRepo({ path: '/home/user/projects/dotfiles', displayPath: '~/projects/dotfiles', name: 'dotfiles' })
 
-const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '' } as const
+const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '', args: '', detached: false } as const
 
 const inspect = row('inspect-point', {
   path: '/home/user/projects/example-repo/.claude/worktrees/inspect-point',
@@ -129,7 +129,7 @@ const inspect = row('inspect-point', {
 })
 const codexRun = row('issue-91', {
   item: issue(91, 'Paste loses the trailing newline'),
-  inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '' }],
+  inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '', args: '', detached: false }],
   agent: 'codex',
   lastLaunchedAt: isoAgo({ s: 6 * minute }),
   dirty: true,
@@ -140,7 +140,7 @@ const codexRun = row('issue-91', {
 })
 const routine = row('pr-233', {
   item: pr(233, 'Bump the linter and fix what it finds'),
-  inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks' }],
+  inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks', args: '', detached: false }],
   dirty: true,
   dirtyCount: 3,
   stage: 'in-use',
@@ -149,7 +149,7 @@ const routine = row('pr-233', {
 const issue88 = row('issue-88', {
   displayPath: managed('issue-88', 'api-gateway'),
   item: issue(88, 'Rate limits reset at the wrong hour', { name: 'api-gateway' }),
-  inUse: [{ pid: 51207, command: 'codex', agent: 'codex', by: '' }],
+  inUse: [{ pid: 51207, command: 'codex', agent: 'codex', by: '', args: '', detached: false }],
   agent: 'codex',
   lastLaunchedAt: isoAgo({ s: 40 * minute }),
   dirty: true,
@@ -888,9 +888,34 @@ describe('WorktreeLine gallery', () => {
   })
 
   it('says a program the app doesn’t follow by its pid', () => {
-    renderLine(row('pr-7', { inUse: [{ pid: 4242, command: 'node', agent: '', by: '' }], stage: 'in-use' }))
+    renderLine(
+      row('pr-7', {
+        inUse: [{ pid: 4242, command: 'node', agent: '', by: '', args: '', detached: false }],
+        stage: 'in-use',
+      }),
+    )
 
     expect(screen.getByTitle('node, pid 4242')).toHaveTextContent('node · pid 4242')
+  })
+
+  it('says a program left running with no terminal is detached, with its command line in its tooltip', () => {
+    const loop = '/bin/sh -c while true; do sleep 0.05; done'
+    renderLine(
+      row('pr-7', {
+        inUse: [{ pid: 75083, command: 'bash', agent: '', by: '', args: loop, detached: true }],
+        stage: 'in-use',
+      }),
+    )
+
+    // The command line is the tooltip's second line, matched as it is, newline and all.
+    const cell = screen.getByTitle(
+      `bash, pid 75083, detached: no terminal runs it, and what started it has exited\n${loop}`,
+      {
+        normalizer: (title) => title,
+      },
+    )
+    expect(cell).toHaveTextContent(/^bash · pid 75083 · detached$/)
+    expect(within(cell).getByText('detached')).toHaveClass('text-caution')
   })
 
   it('names the routine whose agent works in the background', () => {

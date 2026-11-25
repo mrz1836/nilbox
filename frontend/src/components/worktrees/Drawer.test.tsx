@@ -60,7 +60,7 @@ function read(overrides: Partial<WorktreeDetails> = {}): DetailsRead {
   return { state: 'read', details: worktreeDetails(overrides) }
 }
 
-const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '' } as const
+const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '', args: '', detached: false } as const
 
 const running = row({
   branch: 'feat/inspect-point',
@@ -948,21 +948,45 @@ describe('Drawer about', () => {
     ['a followed session', running, working, 'Claude Code 2.1.328 · pid 47890 · working · started 11:48 (12m ago)'],
     [
       'a program with no version',
-      row({ inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '' }], stage: 'in-use' }),
+      row({
+        inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '', args: '', detached: false }],
+        stage: 'in-use',
+      }),
       undefined,
       'Codex · pid 60311',
     ],
     [
       'a routine’s agent',
-      row({ inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks' }], stage: 'in-use' }),
+      row({
+        inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks', args: '', detached: false }],
+        stage: 'in-use',
+      }),
       working,
       'Claude Code 2.1.328 · pid 61022 · working · started 11:48 (12m ago) · for ⚡ Fix checks, in the background',
     ],
     [
       'a process with none',
-      row({ inUse: [{ pid: 0, command: 'node', agent: '', by: '' }], stage: 'in-use' }),
+      row({ inUse: [{ pid: 0, command: 'node', agent: '', by: '', args: '', detached: false }], stage: 'in-use' }),
       undefined,
       'node',
+    ],
+    [
+      'a program left running with no terminal, with its command line',
+      row({
+        inUse: [
+          {
+            pid: 75083,
+            command: 'bash',
+            agent: '',
+            by: '',
+            args: '/bin/sh -c while true; do sleep 1; done',
+            detached: true,
+          },
+        ],
+        stage: 'in-use',
+      }),
+      undefined,
+      'bash · pid 75083 · detached/bin/sh -c while true; do sleep 1; done',
     ],
     [
       'a live lock',

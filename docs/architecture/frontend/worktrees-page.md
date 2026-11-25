@@ -10,7 +10,9 @@ nothing themselves (the `can*` flags say what may be removed). `laneOf` puts a w
 from the `Worktree` alone, so the toolbar's filter (`lib/worktreeFilter`, which leaves the main
 checkout out and keeps a row showing an error) counts what the page shows, and `attentionSort`
 orders a clone's rows by lane, then the newest commit. `stateOf`, `workNotes`, and `agentLine` word
-a row's cells, `verbOf` its one verb, `removeWhy` why Remove… or Force remove… can't run, and
+a row's cells (a live process's command line, and whether it is detached, come with it: the agent
+cell's tooltip and the drawer's Session line show the one, and the cell, that line, and `safety`'s
+band mark the other, `detachedWords`), `verbOf` its one verb, `removeWhy` why Remove… or Force remove… can't run, and
 `safety` what removing it would cost, as `Words` data the drawer's band, the confirmations, and the
 bulk confirmations' `SafetyLine` render. A worktree whose only changes are files missing from its
 folder (`onlyMissing`, from the backend's `missingCount`) has nothing to discard (`uncommitted` is

@@ -362,6 +362,11 @@ type Config struct {
 	// still counts.
 	Procs procs.Lister
 
+	// Describe reads a process's whole command line and whether it has a terminal, for the
+	// processes a listing finds working in a worktree (procs.DetailOf). Optional: without
+	// it, the view names a process by its program alone and never calls one detached.
+	Describe func(pid int) (procs.Detail, bool)
+
 	// History records each cleanup, for the view's list of recent ones.
 	History History
 
@@ -418,6 +423,7 @@ type Service struct {
 	launches Records
 	copyLog  CopyRecords
 	lister   procs.Lister
+	describe func(pid int) (procs.Detail, bool)
 	history  History
 	agents   AgentProcesses
 	runs     RunFolders
@@ -482,6 +488,7 @@ func NewService(cfg Config) *Service {
 		launches: cfg.Records,
 		copyLog:  cfg.Copies,
 		lister:   cfg.Procs,
+		describe: cfg.Describe,
 		history:  cfg.History,
 		agents:   cfg.Agents,
 		runs:     cfg.Runs,

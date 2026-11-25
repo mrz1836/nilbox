@@ -448,7 +448,10 @@ describe('WorktreesView chips', () => {
       linked('ahead', { unpushed: 1, onGitHub: false, canRemove: false }),
       linked('review', { item: linkedItem({ number: 9 }), stage: 'needs-review', unpushed: 2, onGitHub: false }),
       finishedWorktree(),
-      linked('busy', { inUse: [{ pid: 4242, command: 'zsh', agent: '', by: '' }], stage: 'in-use' }),
+      linked('busy', {
+        inUse: [{ pid: 4242, command: 'zsh', agent: '', by: '', args: '', detached: false }],
+        stage: 'in-use',
+      }),
     ])
   }
 
@@ -573,7 +576,10 @@ describe('WorktreesView clones', () => {
       linked('dirty', { dirty: true, dirtyCount: 1, canRemove: false, lastCommitUnix: unix(5) }),
       linked('open-new', { stage: 'active', lastCommitUnix: unix(2) }),
       linked('review', { item: linkedItem({ number: 9 }), stage: 'needs-review', unpushed: 1, onGitHub: false }),
-      linked('busy', { inUse: [{ pid: 4242, command: 'zsh', agent: '', by: '' }], stage: 'in-use' }),
+      linked('busy', {
+        inUse: [{ pid: 4242, command: 'zsh', agent: '', by: '', args: '', detached: false }],
+        stage: 'in-use',
+      }),
     ])
     draw()
 
@@ -704,7 +710,7 @@ describe('WorktreesView drawers', () => {
         path: managedPath,
         displayPath: managedDisplay,
         legacy: false,
-        inUse: [{ pid: 4242, command: '2.1.319', agent: 'claude', by: '' }],
+        inUse: [{ pid: 4242, command: '2.1.319', agent: 'claude', by: '', args: '', detached: false }],
         stage: 'in-use',
         canRemove: false,
       }),

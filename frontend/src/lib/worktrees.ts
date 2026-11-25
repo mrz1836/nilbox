@@ -616,7 +616,12 @@ export function safety(
     const pid = a !== null && a.kind !== 'past' && a.pid > 0 ? `pid ${String(a.pid)}` : ''
     const since = a !== null && a.kind !== 'past' ? a.since : ''
     const started = since === '' ? '' : `started ${clockOf(since)}, ${formatAgo(now, since)}`
-    const bits = [pid, started].filter((b) => b !== '').join(', ')
+    const detached = a?.kind === 'live' && a.detached
+    const bits = [pid, detached ? 'detached' : '', started].filter((b) => b !== '').join(', ')
+    // A detached process is no session the user can see, so the band says what it is.
+    const why: Words = detached
+      ? ['No terminal runs it, and what started it has exited, as when a test or a script leaves a child behind.']
+      : []
     const then: Words =
       files > 0
         ? joined(
@@ -637,7 +642,7 @@ export function safety(
       'info',
       'info',
       [`Can’t be removed while ${runsIn(wt, agentName)}${bits === '' ? '' : ` (${bits})`}.`],
-      then,
+      joined(why, then),
     )
   }
 

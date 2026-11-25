@@ -678,6 +678,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Records:  workLog,
 		Copies:   workLog,
 		Procs:    procs.System{Run: runner},
+		Describe: procs.DetailOf,
 		History:  workLog,
 		Agents:   follow.ledger,
 		Runs:     background,

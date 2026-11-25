@@ -609,7 +609,9 @@ describe('ItemRow chips', () => {
     }
 
     expect(shown(worktree({ dirty: true, dirtyCount: 2 }))).toBe('2 changes')
-    expect(shown(worktree({ inUse: [{ pid: 4242, command: 'claude', agent: '', by: '' }] }))).toBe('in use')
+    expect(
+      shown(worktree({ inUse: [{ pid: 4242, command: 'claude', agent: '', by: '', args: '', detached: false }] })),
+    ).toBe('in use')
     expect(shown(worktree({ agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' }))).toBeNull()
   })
 
@@ -1787,9 +1789,9 @@ describe('WorktreeTag', () => {
     expect(tag({ dirtyCount: 2, agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' })).toBe(
       'worktree · 2 changes · Codex 3h ago',
     )
-    expect(tag({ inUse: [{ pid: 1, command: 'claude', agent: '', by: '' }], agent: 'claude' })).toBe(
-      'worktree · in use',
-    )
+    expect(
+      tag({ inUse: [{ pid: 1, command: 'claude', agent: '', by: '', args: '', detached: false }], agent: 'claude' }),
+    ).toBe('worktree · in use')
     expect(tag({})).toBe('worktree')
   })
 })

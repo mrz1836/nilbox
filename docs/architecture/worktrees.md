@@ -405,6 +405,17 @@ started is folded into its furthest listed ancestor (`sessionsOf`, `rootOf`), an
 The app's own runs, which the process list leaves out, count too (`RunFolders`, from core's
 `backgroundAgents`).
 
+Each session's process is then described (`describeSessions`, over `Config.Describe`, core's
+`procs.DetailOf`), once per process whatever worktrees it is in, and never one of the app's own
+runs: `Session.Args` is its whole command line, and `Session.Detached` reports one with no terminal
+that the process manager adopted (`procs.Adopted`: its parent is PID 1, or `launchd`, `init`, or
+`systemd`), so what started it has exited, as a test's child does when its test binary dies first.
+The window marks it, since nothing the user can see holds the worktree. `DetailOf` reads the
+kernel's process table on macOS (`kern.proc.pid` and `kern.procargs2`, the arguments alone, never
+the environment after them) and `/proc` on Linux, starting nothing, and only for the few processes
+in a worktree. A process it can't read keeps its program's name alone and is never called
+detached.
+
 When the processes can't be listed, the listing sets `Snapshot.SessionsUnknown`: no process is
 found in any worktree (runs still are), no row is `CanForceRemove`, and the sweep removes nothing.
 With no `Procs` lister, the processes count as listed, and none runs. A removal reads them again

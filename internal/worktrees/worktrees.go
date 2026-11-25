@@ -199,6 +199,17 @@ type Session struct {
 	// process: an agent Autopilot runs in the background, which the process list leaves
 	// out, as it leaves out the app's children and an orphan after a quit.
 	By string `json:"by"`
+
+	// Args is the process's whole command line on one line, cut short when long, as in
+	// "/bin/sh -c while true; do sleep 1; done", or "" when it wasn't read: for the app's
+	// own runs, and where Config.Describe is missing or couldn't read it.
+	Args string `json:"args"`
+
+	// Detached reports a process no terminal runs that the system's process manager
+	// adopted (procs.Adopted): what started it has exited, as when a test's or a script's
+	// child outlives the run that started it, or it runs as a background service. Nothing
+	// the user can see holds it, but it still keeps the worktree from being removed.
+	Detached bool `json:"detached"`
 }
 
 // name is what the session is called: its agent's name when the app follows it, else its

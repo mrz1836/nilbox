@@ -243,6 +243,7 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	s.judgeCopied(ctx, g, snap.Repos, refs)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx), s.runSessions(ctx))
+	describeSessions(snap.Repos, running, s.describe)
 	snap.SessionsUnknown = !known
 	s.tally(&snap)
 	s.markBranches(ctx, g, snap.Repos, refs, rules)

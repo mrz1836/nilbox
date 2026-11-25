@@ -70,7 +70,7 @@ function row(overrides: Partial<Worktree> = {}): Worktree {
 
 describe('the row’s predicates', () => {
   it.each([
-    ['a process', row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '' }] }), true],
+    ['a process', row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '', args: '', detached: false }] }), true],
     ['a live agent lock', row({ stage: 'in-use' }), true],
     ['nothing', row(), false],
   ])('knows something runs in a worktree: %s', (_, wt, want) => {
@@ -382,13 +382,16 @@ describe('lockInfo', () => {
 })
 
 describe('agentLine', () => {
-  const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '' } as const
+  const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '', args: '', detached: false } as const
   const followed = agentSession({ state: 'needs_input', launchedAt: isoAgo({ m: 40 }) })
+  const loop = '/bin/sh -c while true; do sleep 0.05; done'
 
   it.each([
     [
       'a routine’s agent, as the session followed there stands',
-      row({ inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks' }] }),
+      row({
+        inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks', args: '', detached: false }],
+      }),
       agentSession({ state: 'working', launchedAt: isoAgo({ m: 3 }) }),
       {
         kind: 'routine',
@@ -402,7 +405,7 @@ describe('agentLine', () => {
     ],
     [
       'a routine’s agent before its session is followed',
-      row({ inUse: [{ pid: 0, command: 'codex', agent: 'codex', by: '⚡Triage' }] }),
+      row({ inUse: [{ pid: 0, command: 'codex', agent: 'codex', by: '⚡Triage', args: '', detached: false }] }),
       undefined,
       { kind: 'routine', name: 'Codex', version: '', pid: 0, by: 'Triage', state: '', since: '' },
     ],
@@ -418,36 +421,94 @@ describe('agentLine', () => {
         followed: true,
         state: 'needs_input',
         since: isoAgo({ m: 40 }),
+        args: '',
+        detached: false,
       },
     ],
     [
       'a session the app follows, not yet listed',
-      row({ inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '' }] }),
+      row({ inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '', args: '', detached: false }] }),
       undefined,
-      { kind: 'live', name: 'Codex', version: '', pid: 60311, followed: true, state: '', since: '' },
+      {
+        kind: 'live',
+        name: 'Codex',
+        version: '',
+        pid: 60311,
+        followed: true,
+        state: '',
+        since: '',
+        args: '',
+        detached: false,
+      },
     ],
     [
       'Claude Code started outside the app, by its version',
       row({ inUse: [{ ...claudeHere, agent: '' }] }),
       followed,
-      { kind: 'live', name: 'Claude', version: '2.1.328', pid: 47890, followed: false, state: '', since: '' },
+      {
+        kind: 'live',
+        name: 'Claude',
+        version: '2.1.328',
+        pid: 47890,
+        followed: false,
+        state: '',
+        since: '',
+        args: '',
+        detached: false,
+      },
     ],
     [
       'another program',
-      row({ inUse: [{ pid: 7, command: 'node', agent: '', by: '' }] }),
+      row({ inUse: [{ pid: 7, command: 'node', agent: '', by: '', args: '', detached: false }] }),
       undefined,
-      { kind: 'live', name: 'node', version: '', pid: 7, followed: false, state: '', since: '' },
+      {
+        kind: 'live',
+        name: 'node',
+        version: '',
+        pid: 7,
+        followed: false,
+        state: '',
+        since: '',
+        args: '',
+        detached: false,
+      },
+    ],
+    [
+      'a program left running with no terminal, with its command line',
+      row({ inUse: [{ pid: 75083, command: 'bash', agent: '', by: '', args: loop, detached: true }] }),
+      undefined,
+      {
+        kind: 'live',
+        name: 'bash',
+        version: '',
+        pid: 75083,
+        followed: false,
+        state: '',
+        since: '',
+        args: loop,
+        detached: true,
+      },
     ],
     [
       'the agent’s process over a shell before it',
       row({
         inUse: [
-          { pid: 6, command: 'zsh', agent: '', by: '' },
-          { pid: 8, command: 'codex', agent: 'codex', by: '' },
+          { pid: 6, command: 'zsh', agent: '', by: '', args: '', detached: false },
+          { pid: 8, command: 'codex', agent: 'codex', by: '', args: '', detached: false },
         ],
       }),
       undefined,
-      { kind: 'live', name: 'Codex', version: '', pid: 8, followed: true, state: '', since: '' },
+      {
+        kind: 'live',
+        name: 'Codex',
+        version: '',
+        pid: 8,
+        followed: true,
+        state: '',
+        since: '',
+        args: '',
+        detached: false,
+      },
     ],
     [
       'a live lock with no process listed',
@@ -492,7 +553,7 @@ describe('agentLine', () => {
     ['nothing it knows of', row({ stage: 'in-use' }), 'a session runs in it'],
     [
       'a routine’s agent',
-      row({ inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '⚡ Fix checks' }] }),
+      row({ inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '⚡ Fix checks', args: '', detached: false }] }),
       '⚡ Fix checks runs its agent in it',
     ],
     [
@@ -500,7 +561,11 @@ describe('agentLine', () => {
       row({ locked: true, agentLock: true, lockReason: '' }),
       'the Claude session that locked it still runs',
     ],
-    ['a program', row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '' }] }), 'node runs in it'],
+    [
+      'a program',
+      row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '', args: '', detached: false }] }),
+      'node runs in it',
+    ],
     ['the last launch', row({ stage: 'in-use', agent: 'codex', lastLaunchedAt: isoAgo({ m: 5 }) }), 'Codex runs in it'],
   ])('says what runs in it: %s', (_, wt, want) => {
     expect(runsIn(wt, agentName)).toBe(want)
@@ -508,7 +573,11 @@ describe('agentLine', () => {
 
   it.each([
     ['Claude Code', row({ legacy: true }), 'Claude Code (legacy), in the clone’s .claude/worktrees'],
-    ['a routine', row({ inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '⚡ Fix checks' }] }), '⚡ Fix checks'],
+    [
+      'a routine',
+      row({ inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '⚡ Fix checks', args: '', detached: false }] }),
+      '⚡ Fix checks',
+    ],
     ['the app', row(), brand.name],
     ['someone else', row({ managed: false }), 'outside the app'],
   ])('says %s made it', (_, wt, want) => {
@@ -615,7 +684,10 @@ describe('the chips', () => {
     worktreeRepo({
       worktrees: [
         mainWorktree({ dirty: true, dirtyCount: 4 }),
-        row({ inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '' }], stage: 'in-use' }),
+        row({
+          inUse: [{ pid: 1, command: 'codex', agent: 'codex', by: '', args: '', detached: false }],
+          stage: 'in-use',
+        }),
         row({ dirtyCount: 2, unpushed: 2, onGitHub: false }),
         row({ dirtyCount: 1, stage: 'needs-review' }),
         row({ stage: 'finished' }),
@@ -675,7 +747,12 @@ describe('the chips', () => {
     const several = [
       worktreeRepo({
         worktrees: [
-          row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '' }], dirtyCount: 1, unpushed: 1, onGitHub: false }),
+          row({
+            inUse: [{ pid: 1, command: 'node', agent: '', by: '', args: '', detached: false }],
+            dirtyCount: 1,
+            unpushed: 1,
+            onGitHub: false,
+          }),
           row({ stage: 'in-use', unpushed: 1, onGitHub: false }),
           row({ stage: 'needs-review' }),
           row({ stage: 'needs-review' }),
