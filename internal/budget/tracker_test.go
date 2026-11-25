@@ -122,17 +122,107 @@ func TestANewWindowStartsCountingAgain(t *testing.T) {
 	assert.Equal(t, 3, tr.gauge(12).GraphQL.Spent)
 }
 
-func TestAnotherAccountsBudgetReplacesTheOneHeld(t *testing.T) {
+func TestTwoWindowsGitHubCountsAtOnceEachKeepWhatTheAppSpent(t *testing.T) {
 	t.Parallel()
 
-	tr, _, _ := newTestTracker()
+	tr, clk, _ := newTestTracker()
 
-	tr.ObserveRate(graphql(100, reset), 5)
-	tr.ObserveRate(graphql(40, reset.Add(-20*time.Minute)), 1) // gh auth switch: another hour, still running
+	// GitHub counts the one GraphQL budget in two windows, and its responses report one or
+	// the other by turns: an older one, which refills at reset, and one that began as the
+	// app opened and refills an hour later.
+	older, newer := reset, start.Add(time.Hour)
+	inbox := func(used int, at time.Time) github.RateReading {
+		r := graphql(used, at)
+		r.Purpose = github.PurposeInbox
+
+		return r
+	}
+
+	tr.ObserveRate(graphql(126, older), 0) // the rate limit endpoint
+	tr.ObserveRate(inbox(3, newer), 2)
+	clk.Advance(time.Second)
+	tr.ObserveRate(inbox(128, older), 1)
+	tr.ObserveRate(inbox(6, newer), 3)
+	tr.ObserveRate(graphql(128, older), 0)
 
 	got := tr.gauge(12).GraphQL
-	assert.Equal(t, 40, got.Used)
-	assert.Equal(t, 1, got.Spent)
+	assert.Equal(t, 128, got.Used, "the gauge shows the window with the least left")
+	assert.Equal(t, "2026-01-10T13:00:00Z", got.ResetAt)
+	assert.Equal(t, 1, got.Spent, "what the app spent in that window, never cleared by a report of the other")
+	assert.Equal(t, 1, got.Requests)
+	assert.Equal(t, Purposes{Inbox: 1}, got.Purposes)
+	assert.False(t, got.Complete, "the app opened after the older window began")
+
+	clk.Advance(time.Minute)
+	tr.ObserveRate(inbox(300, newer), 4)
+
+	got = tr.gauge(12).GraphQL
+	assert.Equal(t, 300, got.Used, "once the other has less left, the gauge shows it")
+	assert.Equal(t, "2026-01-10T13:20:00Z", got.ResetAt)
+	assert.Equal(t, 9, got.Spent, "with all the app spent in it")
+	assert.Equal(t, 3, got.Requests)
+	assert.True(t, got.Complete, "the app was open as the newer window began")
+
+	clk.Set(reset.Add(-5 * time.Minute))
+	tr.ObserveRate(inbox(310, newer), 1)
+	clk.Set(reset.Add(time.Second))
+	tr.ObserveRate(graphql(1, reset.Add(time.Hour)), 1)
+	assert.Len(t, tr.budgets[github.ResourceGraphQL], 2, "a window that refilled is let go once another begins")
+	assert.Equal(t, 310, tr.gauge(12).GraphQL.Used, "the window still running with the least left")
+}
+
+func TestAnotherAccountsBudgetTakesOverOnceTheOldOneGoesUnreported(t *testing.T) {
+	t.Parallel()
+
+	tr, clk, _ := newTestTracker()
+
+	tr.ObserveRate(graphql(100, reset), 5)
+	tr.ObserveRate(graphql(40, reset.Add(-10*time.Minute)), 1) // gh auth switch: another hour, still running
+
+	got := tr.gauge(12).GraphQL
+	assert.Equal(t, 100, got.Used, "both were reported lately, so the one with the least left shows")
+	assert.Equal(t, 5, got.Spent)
+
+	clk.Advance(unseenFor)
+	tr.ObserveRate(graphql(45, reset.Add(-10*time.Minute)), 1)
+	assert.Equal(t, 100, tr.gauge(12).GraphQL.Used, "a window unreported for no longer than unseenFor still counts")
+
+	clk.Advance(time.Second)
+	tr.ObserveRate(graphql(46, reset.Add(-10*time.Minute)), 1)
+
+	got = tr.gauge(12).GraphQL
+	assert.Equal(t, 46, got.Used, "the old account's window, unreported for longer, no longer shows")
+	assert.Equal(t, 3, got.Spent)
+}
+
+func TestATrackerHoldsAFewWindowsOfABudgetAtMost(t *testing.T) {
+	t.Parallel()
+
+	tr, clk, _ := newTestTracker()
+
+	for i := range maxWindows + 1 {
+		tr.ObserveRate(graphql(10*(i+1), reset.Add(time.Duration(i)*time.Minute)), 1)
+		clk.Advance(time.Second)
+	}
+
+	windows := tr.budgets[github.ResourceGraphQL]
+	require.Len(t, windows, maxWindows)
+	assert.Nil(t, windowAt(windows, reset), "the window reported longest ago makes room")
+	assert.Equal(t, 40, tr.gauge(12).GraphQL.Used)
+}
+
+func TestALateAnswerOfAWindowNotHeldIsDropped(t *testing.T) {
+	t.Parallel()
+
+	tr, clk, events := newTestTracker()
+
+	tr.ObserveRate(graphql(100, reset), 1)
+	clk.Set(reset.Add(10 * time.Minute))
+	tr.ObserveRate(graphql(5, reset.Add(time.Hour)), 1)
+	tr.ObserveRate(graphql(900, reset.Add(5*time.Minute)), 1) // a window that began and ended unseen
+
+	assert.Equal(t, 5, tr.gauge(12).GraphQL.Used)
+	assert.Equal(t, 2, events.Count())
 }
 
 func TestAnUnchangedReadingIsFreshWithoutTellingTheWindow(t *testing.T) {

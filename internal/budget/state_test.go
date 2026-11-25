@@ -2,6 +2,7 @@ package budget
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -77,6 +79,33 @@ func TestAStateRoundTripsAndKeepsCountingAcrossARestart(t *testing.T) {
 	assert.Equal(t, 2, got.GraphQL.Requests)
 	assert.True(t, got.GraphQL.Complete, "the app spends nothing while closed, so the count is still all of it")
 	assert.Equal(t, Refresh{Known: true, At: "2026-01-10T12:20:00Z", Points: 6, Items: 31}, got.Refresh)
+}
+
+func TestEveryWindowOfABudgetOutlivesARestartTheShownOneFirst(t *testing.T) {
+	t.Parallel()
+
+	first, _, _ := newTestTracker()
+	first.ObserveRate(graphql(20, reset.Add(20*time.Minute)), 3)
+	first.ObserveRate(graphql(130, reset), 2)
+
+	state, err := first.state()
+	require.NoError(t, err)
+
+	var saved savedState
+	require.NoError(t, json.Unmarshal([]byte(state), &saved))
+	require.Len(t, saved.Budgets, 2)
+	assert.Equal(t, 130, saved.Budgets[0].Used, "the window the gauge shows comes first, which a build that holds one keeps")
+	assert.Equal(t, 20, saved.Budgets[1].Used)
+
+	second, _, _ := newTestTracker()
+	require.NoError(t, second.Restore(state))
+	second.ObserveRate(graphql(25, reset.Add(20*time.Minute)), 1)
+
+	windows := second.budgets[github.ResourceGraphQL]
+	require.Len(t, windows, 2)
+	assert.Equal(t, 4, windowAt(windows, reset.Add(20*time.Minute)).spent, "each window's count carries on")
+	assert.Equal(t, 2, second.gauge(12).GraphQL.Spent)
+	assert.Equal(t, 130, second.gauge(12).GraphQL.Used)
 }
 
 func TestRestoreRefusesAStateItCannotRead(t *testing.T) {

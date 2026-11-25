@@ -61,7 +61,10 @@ type savedState struct {
 	Bulk []time.Time `json:"bulk,omitempty"`
 }
 
-// savedBudget is one budget's newest reading and what the app spent from its window.
+// savedBudget is the newest reading of one window of a budget and what the app spent from
+// it. A budget GitHub counts in more than one window has one for each, the one the gauge
+// shows first, so a build that holds one window per budget, which takes a budget's first and
+// ignores the rest, keeps that one, and the version stays the same.
 type savedBudget struct {
 	Resource    string    `json:"resource"`
 	Limit       int       `json:"limit"`
@@ -90,24 +93,17 @@ type savedRefresh struct {
 func (t *Tracker) state() (string, error) {
 	t.mu.Lock()
 
+	now := t.clock.Now().UTC()
 	out := savedState{Version: stateVersion, TrackingSince: t.started, Budgets: make([]savedBudget, 0, len(t.budgets))}
 
 	for _, resource := range []string{github.ResourceGraphQL, github.ResourceCore, github.ResourceSearch} {
-		if h := t.budgets[resource]; h != nil {
-			r := h.reading
-			out.Budgets = append(out.Budgets, savedBudget{
-				Resource: resource, Limit: r.Limit, Remaining: r.Remaining, Used: r.Used, ResetAt: r.ResetAt,
-				TakenAt: h.takenAt, Spent: h.spent, Requests: h.requests, CountedFrom: h.countedFrom,
-				Purposes: savedPurposes(h.purposes),
-			})
-		}
+		out.Budgets = append(out.Budgets, t.savedWindowsLocked(resource, now)...)
 	}
 
 	if !t.last.at.IsZero() {
 		out.Refresh = &savedRefresh{At: t.last.at, Points: t.last.points, Items: t.last.items}
 	}
 
-	now := t.clock.Now().UTC()
 	t.writes.prune(now)
 	t.chores.prune(now)
 	t.bulk.prune(now)
@@ -129,12 +125,41 @@ func (t *Tracker) state() (string, error) {
 	return string(raw), nil
 }
 
-// Restore starts the Tracker from a state an earlier run kept: each budget's reading
-// and what the app spent from its window, the last refresh, the edits, the chores, and the
-// bulk lane's writes of the last hour and any wait GitHub asked for, and when the app
-// began counting. It is
-// meant for startup, before any response; a budget already read in this run keeps its
-// reading. A state that cannot be read changes nothing.
+// savedWindowsLocked converts the windows held of resource for keeping, the one the gauge
+// shows first. The caller holds mu.
+func (t *Tracker) savedWindowsLocked(resource string, now time.Time) []savedBudget {
+	shown := t.shownLocked(resource, now)
+	if shown == nil {
+		return nil
+	}
+
+	out := []savedBudget{savedWindow(resource, shown)}
+
+	for _, h := range t.budgets[resource] {
+		if h != shown {
+			out = append(out, savedWindow(resource, h))
+		}
+	}
+
+	return out
+}
+
+// savedWindow converts one window of resource for keeping.
+func savedWindow(resource string, h *held) savedBudget {
+	r := h.reading
+
+	return savedBudget{
+		Resource: resource, Limit: r.Limit, Remaining: r.Remaining, Used: r.Used, ResetAt: r.ResetAt,
+		TakenAt: h.takenAt, Spent: h.spent, Requests: h.requests, CountedFrom: h.countedFrom,
+		Purposes: savedPurposes(h.purposes),
+	}
+}
+
+// Restore starts the Tracker from a state an earlier run kept: each budget's windows, with
+// their readings and what the app spent from each, the last refresh, the edits, the chores,
+// and the bulk lane's writes of the last hour and any wait GitHub asked for, and when the
+// app began counting. It is meant for startup, before any response; a budget already read
+// in this run keeps its windows. A state that cannot be read changes nothing.
 func (t *Tracker) Restore(state string) error {
 	var saved savedState
 
@@ -153,8 +178,15 @@ func (t *Tracker) Restore(state string) error {
 		t.started = saved.TrackingSince.UTC()
 	}
 
+	read := make(map[string]bool, len(t.budgets))
+	for resource := range t.budgets {
+		read[resource] = true
+	}
+
 	for _, b := range saved.Budgets {
-		t.restoreBudgetLocked(b)
+		if !read[b.Resource] {
+			t.restoreWindowLocked(b)
+		}
 	}
 
 	if saved.Refresh != nil && t.last.at.IsZero() {
@@ -166,20 +198,21 @@ func (t *Tracker) Restore(state string) error {
 	return nil
 }
 
-// restoreBudgetLocked holds a saved budget, unless it is not one or this run already
-// read it. The caller holds mu.
-func (t *Tracker) restoreBudgetLocked(b savedBudget) {
-	if b.Resource == "" || b.Limit <= 0 || t.budgets[b.Resource] != nil {
+// restoreWindowLocked holds a saved window of a budget, unless it is not one, its window is
+// held already, or the budget holds as many windows as it may. The caller holds mu.
+func (t *Tracker) restoreWindowLocked(b savedBudget) {
+	windows := t.budgets[b.Resource]
+	if b.Resource == "" || b.Limit <= 0 || len(windows) >= maxWindows || windowAt(windows, b.ResetAt) != nil {
 		return
 	}
 
-	t.budgets[b.Resource] = &held{
+	t.budgets[b.Resource] = append(windows, &held{
 		reading: github.RateReading{
 			Resource: b.Resource, Limit: b.Limit, Remaining: b.Remaining, Used: b.Used, ResetAt: b.ResetAt.UTC(),
 		},
 		takenAt: b.TakenAt.UTC(), spent: max(b.Spent, 0), requests: max(b.Requests, 0),
 		countedFrom: b.CountedFrom.UTC(), purposes: restoredPurposes(b.Purposes, max(b.Spent, 0)),
-	}
+	})
 }
 
 // savedPurposes converts what a budget spent by purpose for keeping.

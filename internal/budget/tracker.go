@@ -10,6 +10,12 @@
 // hourly pace. None of this makes a request of its own: Service.Check reads GitHub's free
 // rate limit endpoint, and only when the window asks.
 //
+// GitHub sometimes counts one budget in two hourly windows at once, each with its own
+// reset and its own count, and its responses report one or the other by turns, the rate
+// limit endpoint included. So the Tracker holds each window a response reported, with the
+// app's own spend in it, and shows the one with the least left (see shownLocked); a
+// response never takes another window's place, nor clears what the app spent in it.
+//
 // The same Tracker paces the edits the app makes on GitHub for the user (github.WriteGate,
 // see writes.go): an edit is refused before it is sent when its budget is down to the
 // reserve left for everything else, when the app has made as many as it makes in a minute
@@ -39,6 +45,16 @@ func windowLength(resource string) time.Duration {
 	return time.Hour
 }
 
+// unseenFor is how long a window of a budget can go unreported, while another of the same
+// budget is reported, before the Tracker stops showing it. Two windows GitHub counts at once
+// are each reported every few responses; a window no response reported for this long is
+// an account's the token no longer belongs to, as after gh auth switch.
+const unseenFor = 15 * time.Minute
+
+// maxWindows is the most windows of one budget the Tracker holds: the two GitHub has been
+// seen counting at once, and the next hour's.
+const maxWindows = 3
+
 // Stored is a reading kept from an earlier run, which the Tracker starts from until a
 // response says otherwise.
 type Stored struct {
@@ -48,7 +64,7 @@ type Stored struct {
 	TakenAt time.Time
 }
 
-// held is the newest reading of one budget, and what the app spent from it.
+// held is the newest reading of one window of a budget, and what the app spent from it.
 type held struct {
 	reading github.RateReading
 	takenAt time.Time
@@ -102,15 +118,17 @@ type refresh struct {
 	items  int
 }
 
-// Tracker holds the newest reading of each budget, what the app spent from each since it
-// last refilled, and the last refresh's cost. It is safe for concurrent use.
+// Tracker holds the newest reading of each budget's windows, what the app spent from each
+// since it last refilled, and the last refresh's cost. It is safe for concurrent use.
 type Tracker struct {
 	clock   clock.Clock
 	events  event.Sink
 	started time.Time
 
-	mu      sync.Mutex
-	budgets map[string]*held
+	mu sync.Mutex
+	// budgets holds each budget's windows, by resource; a budget never read has no entry,
+	// never an empty list.
+	budgets map[string][]*held
 	last    refresh
 
 	// writes, chores, and bulk are the lanes of the edits, the chores, and a bulk mark's
@@ -131,17 +149,16 @@ func NewTracker(c clock.Clock, events event.Sink) *Tracker {
 	c = clock.Or(c)
 
 	return &Tracker{
-		clock: c, events: event.Or(events), started: c.Now().UTC(), budgets: make(map[string]*held),
+		clock: c, events: event.Or(events), started: c.Now().UTC(), budgets: make(map[string][]*held),
 		writes: writeLane(), chores: choreLane(), bulk: bulkLane(), dirty: make(chan struct{}, 1),
 	}
 }
 
-// ObserveRate records a budget reading a response carried, and what its request spent.
-// The newest reading wins: one from a later window, or from the same window with more
-// used, since used only grows within a window. A reading from a window that is already
-// over is a late answer and is dropped; one from an earlier window still running belongs
-// to another account, as after gh auth switch, and replaces the one held. A reading older
-// than the one held still counts what its request spent, if it belongs to the window held.
+// ObserveRate records a budget reading a response carried, and what its request spent, in
+// the window it reports, which its reset names. Within a window the newest reading wins,
+// the one with the most used, since used only grows within a window, and a reading older
+// than the one held still counts what its request spent. A reading of a window not held
+// yet adds it, unless that window is already over, which makes it a late answer, dropped.
 func (t *Tracker) ObserveRate(reading github.RateReading, spent int) {
 	if reading.Resource == "" || reading.Limit <= 0 {
 		return
@@ -167,13 +184,13 @@ func (t *Tracker) Seed(stored []Stored) {
 
 	for _, s := range stored {
 		r := s.Reading
-		if r.Resource == "" || r.Limit <= 0 || t.budgets[r.Resource] != nil {
+		if r.Resource == "" || r.Limit <= 0 || len(t.budgets[r.Resource]) > 0 {
 			continue
 		}
 
 		// What this run spends from the window counts from its start; what an earlier run
 		// spent is not known.
-		t.budgets[r.Resource] = &held{reading: r, takenAt: s.TakenAt.UTC(), countedFrom: later(t.started, windowStart(r))}
+		t.budgets[r.Resource] = []*held{{reading: r, takenAt: s.TakenAt.UTC(), countedFrom: later(t.started, windowStart(r))}}
 	}
 }
 
@@ -206,31 +223,124 @@ func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.
 	purpose := reading.Purpose
 	reading.Purpose = github.PurposeOther
 
-	h := t.budgets[reading.Resource]
+	windows := t.budgets[reading.Resource]
 
-	switch {
-	case h == nil || reading.ResetAt.After(h.reading.ResetAt) ||
-		(reading.ResetAt.Before(h.reading.ResetAt) && reading.ResetAt.After(now)):
-		// The first reading, the first of a new window, or another account's: counting
-		// starts again.
+	h := windowAt(windows, reading.ResetAt)
+	if h == nil {
+		if len(windows) > 0 && !reading.ResetAt.After(now) {
+			// A late answer from a window already over.
+			return false
+		}
+
+		// The first reading of a window: the budget's first, the next hour's, another
+		// window GitHub counts at once, or another account's. What the app spends in it
+		// counts from its start, or from when the app began counting.
 		h = &held{reading: reading, takenAt: now, countedFrom: later(t.started, windowStart(reading))}
 		h.spend(spent, purpose)
-		t.budgets[reading.Resource] = h
+		t.budgets[reading.Resource] = append(roomFor(windows, now), h)
 
 		return true
-	case reading.ResetAt.Before(h.reading.ResetAt):
-		// A late answer from a window already over.
-		return false
 	}
 
 	changed := spent > 0
 	h.spend(spent, purpose)
 
-	// A reading as new as the one held is the budget as of now, even when nothing moved.
+	// A reading as new as the one held is the window as of now, even when nothing moved.
 	if reading.Used >= h.reading.Used {
 		changed = changed || reading != h.reading
 		h.reading, h.takenAt = reading, now
 	}
 
 	return changed
+}
+
+// windowAt returns the window of windows that refills at resetAt, or nil.
+func windowAt(windows []*held, resetAt time.Time) *held {
+	for _, h := range windows {
+		if h.reading.ResetAt.Equal(resetAt) {
+			return h
+		}
+	}
+
+	return nil
+}
+
+// roomFor makes room in windows for one more: it lets go of every window over at now, then,
+// while maxWindows are still held, of the one reported longest ago. It returns a new list.
+func roomFor(windows []*held, now time.Time) []*held {
+	out := make([]*held, 0, len(windows)+1)
+
+	for _, h := range windows {
+		if h.reading.ResetAt.After(now) {
+			out = append(out, h)
+		}
+	}
+
+	for len(out) >= maxWindows {
+		oldest := 0
+		for i, h := range out {
+			if h.takenAt.Before(out[oldest].takenAt) {
+				oldest = i
+			}
+		}
+
+		out = append(out[:oldest], out[oldest+1:]...)
+	}
+
+	return out
+}
+
+// shownLocked returns the window of resource the gauge shows and the edits' reserve
+// checks, or nil when none was read. Of the windows reported within unseenFor of the
+// budget's newest report, it is the one still running with the least left, since a
+// request may count against any of them; when none is still running, the one that
+// refilled last. The caller holds mu.
+func (t *Tracker) shownLocked(resource string, now time.Time) *held {
+	windows := t.budgets[resource]
+	if len(windows) == 0 {
+		return nil
+	}
+
+	since := newestTaken(windows).Add(-unseenFor)
+
+	var shown *held
+
+	for _, h := range windows {
+		if !h.takenAt.Before(since) && showsOver(h, shown, now) {
+			shown = h
+		}
+	}
+
+	return shown
+}
+
+// showsOver reports whether the gauge shows h rather than shown, nil when none was chosen
+// yet: a window still running over one that refilled, then the one with less left, then
+// the one that refills later.
+func showsOver(h, shown *held, now time.Time) bool {
+	if shown == nil {
+		return true
+	}
+
+	running, shownRunning := h.reading.ResetAt.After(now), shown.reading.ResetAt.After(now)
+
+	switch {
+	case running != shownRunning:
+		return running
+	case running && h.reading.Remaining != shown.reading.Remaining:
+		return h.reading.Remaining < shown.reading.Remaining
+	default:
+		return h.reading.ResetAt.After(shown.reading.ResetAt)
+	}
+}
+
+// newestTaken returns when the newest reading of windows was taken.
+func newestTaken(windows []*held) time.Time {
+	var newest time.Time
+
+	for _, h := range windows {
+		newest = later(newest, h.takenAt)
+	}
+
+	return newest
 }
