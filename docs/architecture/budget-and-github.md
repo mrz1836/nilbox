@@ -110,13 +110,38 @@ seconds), and calls that come while one runs share it; the readings reach the `T
 client's `RateObserver`, as every response's do, and a failed read returns the gauge as it was, with
 the error. The window reads `Gauge` again on each `event.BudgetUpdated`, which the `Tracker` emits
 on every change (`lib/useBudget`), and its budget menu calls `Check` as its panel opens and every 30
-seconds while it stays open (`checkEveryMs`).
+seconds while it stays open (`checkEveryMs`). Nothing reads `GET /rate_limit` while the panel is
+closed: the toolbar's gauge follows the app's own responses, the inbox's refresh for GraphQL and
+the notifications' conditional read for REST.
+
+### A budget GitHub counts in two windows
+
+GitHub sometimes counts one budget in two hourly windows at once, each with its own reset and its
+own count, and answers each request from one or the other by turns: two identical requests a moment
+apart can report 135 used, refilling in 15 minutes, and 338 used, refilling in 55. Its rate limit
+endpoint and a `rateLimit`-only query take turns as well. So the `Tracker` holds each budget's
+windows apart (`Tracker.budgets`, keyed by the reset each reading names): a reading updates its own
+window, the newest reading of it winning (the one with the most used), and counts its request's
+spend there, so the app's share in each window stays right, and no report of one window replaces
+another or clears what the app spent in it. A reading of a window not held adds it, unless that
+window is over already, which makes it a late answer, dropped. Adding one lets go of every window
+over by then, and of the one reported longest ago while `maxWindows` (3) are held.
+
+The gauge shows one window of each budget (`shownLocked`): of those
+reported within `unseenFor` (15 minutes) of the budget's newest report, the one still running with
+the least left, since a request may count against either, else the one that refilled last. The
+edits' and chores' reserve checks use the same window. A window no response reported for longer,
+while another of its budget was, is an account's the token no longer belongs to, as after `gh auth
+switch`, so the new account's windows take over within `unseenFor`; until then the gauge shows the
+lower of the two. `Check` counts a budget as read when any of its windows was.
 
 At startup core starts the `Tracker` from the state the `Saver` kept (`Restore`, from the prefs key
-`budget.state`). Without one it can read, as on the first run of a build that keeps it, it seeds it
-from the readings the last refresh stored (`Tracker.Seed`), each for a budget it has no reading of
-yet, so the window shows them until the first response; a seeded budget counts nothing the app
-spent, which was spent in another run.
+`budget.state`), every window of each budget with what the app spent in it. The state lists the
+window the gauge shows first, so a build that holds one window per budget, which takes a budget's
+first entry, keeps that one, and the state's version stays 1. Without a state it can read, as on
+the first run of a build that keeps it, it seeds it from the readings the last refresh stored
+(`Tracker.Seed`), each for a budget it has no reading of yet, so the window shows them until the
+first response; a seeded budget counts nothing the app spent, which was spent in another run.
 
 ## Held workflow runs
 

@@ -111,6 +111,20 @@ func TestAllowWriteLeavesTheReserve(t *testing.T) {
 	require.NoError(t, tr.AllowWrite(github.ResourceCore))
 }
 
+func TestAllowWriteLeavesTheReserveOfTheWindowWithTheLeastLeft(t *testing.T) {
+	t.Parallel()
+
+	tr, _, _ := newTestTracker()
+
+	// GitHub counts the budget in two windows at once; a request may count against either.
+	tr.ObserveRate(core(5000, 50), 1)
+	tr.ObserveRate(github.RateReading{
+		Resource: github.ResourceCore, Limit: 5000, Remaining: 4000, Used: 1000, ResetAt: reset.Add(10 * time.Minute),
+	}, 1)
+
+	require.ErrorIs(t, tr.AllowWrite(github.ResourceCore), ErrBudgetReserved)
+}
+
 func TestAllowWriteKeepsThePacePerMinute(t *testing.T) {
 	t.Parallel()
 

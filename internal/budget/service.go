@@ -186,12 +186,12 @@ func (t *Tracker) gauge(perHour int) Gauge {
 	defer t.mu.Unlock()
 
 	now := t.clock.Now().UTC()
-	reserve := t.reserveLocked()
+	reserve := t.reserveLocked(now)
 
 	out := Gauge{
-		GraphQL:          t.readingLocked(github.ResourceGraphQL),
-		Core:             t.readingLocked(github.ResourceCore),
-		Search:           t.readingLocked(github.ResourceSearch),
+		GraphQL:          t.readingLocked(github.ResourceGraphQL, now),
+		Core:             t.readingLocked(github.ResourceCore, now),
+		Search:           t.readingLocked(github.ResourceSearch, now),
 		RefreshesPerHour: perHour,
 		Writes:           t.writes.writes(now, reserve, t.heldUntil),
 		Chores:           t.chores.writes(now, reserve, t.heldUntil),
@@ -205,9 +205,10 @@ func (t *Tracker) gauge(perHour int) Gauge {
 	return out
 }
 
-// readingLocked converts the reading held of one budget. The caller holds mu.
-func (t *Tracker) readingLocked(resource string) Reading {
-	h := t.budgets[resource]
+// readingLocked converts the reading of the window of one budget the gauge shows, and what
+// the app spent in that window. The caller holds mu.
+func (t *Tracker) readingLocked(resource string, now time.Time) Reading {
+	h := t.shownLocked(resource, now)
 	if h == nil {
 		return Reading{}
 	}
@@ -222,13 +223,14 @@ func (t *Tracker) readingLocked(resource string) Reading {
 	}
 }
 
-// freshSince reports whether every budget the window shows was read at since or later.
+// freshSince reports whether every budget the window shows was read at since or later, in
+// any of its windows.
 func (t *Tracker) freshSince(since time.Time) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	for _, resource := range []string{github.ResourceGraphQL, github.ResourceCore, github.ResourceSearch} {
-		if h := t.budgets[resource]; h == nil || h.takenAt.Before(since) {
+		if windows := t.budgets[resource]; len(windows) == 0 || newestTaken(windows).Before(since) {
 			return false
 		}
 	}

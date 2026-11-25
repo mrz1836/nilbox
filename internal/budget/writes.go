@@ -369,7 +369,7 @@ func (t *Tracker) sharedRefusalLocked(resource string, now time.Time) error {
 		)
 	}
 
-	if h := t.budgets[resource]; h != nil && h.reading.ResetAt.After(now) {
+	if h := t.shownLocked(resource, now); h != nil && h.reading.ResetAt.After(now) {
 		if keep := Reserve(h.reading.Limit); h.reading.Remaining <= keep {
 			wait := h.reading.ResetAt.Sub(now)
 			reserved = refused(
@@ -384,9 +384,9 @@ func (t *Tracker) sharedRefusalLocked(resource string, now time.Time) error {
 }
 
 // reserveLocked is the reserve of the REST budget, which edits and chores spend, as far
-// as the Tracker knows it. The caller holds mu.
-func (t *Tracker) reserveLocked() int {
-	if h := t.budgets[github.ResourceCore]; h != nil {
+// as the Tracker knows it at now: of the window the gauge shows. The caller holds mu.
+func (t *Tracker) reserveLocked(now time.Time) int {
+	if h := t.shownLocked(github.ResourceCore, now); h != nil {
 		return Reserve(h.reading.Limit)
 	}
 

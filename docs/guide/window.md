@@ -116,6 +116,11 @@ budget from GitHub's rate limit endpoint, which costs nothing, as it opens and e
 after, so what `gh` and your agents spend shows as you watch. **Live · read just now** says the
 newest reading is fresh. A budget whose reset time has passed counts as full again.
 
+GitHub sometimes counts one budget in two hourly windows at once, each with its own count and reset
+time, and answers each request from one or the other, so `gh api rate_limit` can show other numbers
+than the panel. The gauge then shows the window with the least left, since a request may count
+against either, with what the app spent in that window.
+
 ## Who used it
 
 Each budget's row says what the app itself spent from it since it last refilled, and what everything
