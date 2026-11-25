@@ -1,8 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { useServiceStatus } from '../lib/useServiceStatus'
 import type { Account, ServiceStatus } from '../platform'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import { account, claudeOutage, serviceIncident, serviceProvider, serviceStatus, signedOut } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AccountMenu } from './AccountMenu'
@@ -12,15 +15,28 @@ vi.mock('../platform', () => import('../test/platform').then((fake) => fake.plat
 function renderMenu(who: Account | null = account(), status: ServiceStatus | null = null) {
   const onOpenSettings = vi.fn()
   const onChooseWatch = vi.fn()
+  const check = vi.fn()
 
-  render(
+  renderAt(
     <>
-      <AccountMenu account={who} serviceStatus={status} onOpenSettings={onOpenSettings} onChooseWatch={onChooseWatch} />
+      <AccountMenu
+        account={who}
+        service={{ status, checking: false, check }}
+        onOpenSettings={onOpenSettings}
+        onChooseWatch={onChooseWatch}
+      />
       <button type="button">Elsewhere</button>
     </>,
   )
 
-  return { onOpenSettings, onChooseWatch, trigger: screen.getByRole('button', { name: /^Account/ }) }
+  return { onOpenSettings, onChooseWatch, check, trigger: screen.getByRole('button', { name: /^Account/ }) }
+}
+
+// Watching is the menu over the service status as the app loads it and checks it again.
+function Watching() {
+  const service = useServiceStatus(1800)
+
+  return <AccountMenu account={account()} service={service} onOpenSettings={vi.fn()} />
 }
 
 // openServiceStatus opens the menu and its Service status submenu, and returns the submenu.
@@ -144,7 +160,13 @@ describe('AccountMenu', () => {
       within(submenu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['GitHub, Operational', 'Claude, Partial outage', 'OpenAI, Operational', 'Choose what to watch…'])
+    ).toEqual([
+      'GitHub, Operational',
+      'Claude, Partial outage',
+      'OpenAI, Operational',
+      'Check again, Checked 1m ago',
+      'Choose what to watch…',
+    ])
     expect(within(submenu).getByRole('menuitem', { name: /^Claude/ })).toHaveAccessibleName(
       /^Claude,\s*Partial outage$/,
     )
@@ -170,7 +192,7 @@ describe('AccountMenu', () => {
       within(submenu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['GitHub, Operational', 'Claude, Operational', 'Choose what to watch…'])
+    ).toEqual(['GitHub, Operational', 'Claude, Operational', 'Check again, Checked 1m ago', 'Choose what to watch…'])
 
     await userEvent.click(within(submenu).getByRole('menuitem', { name: 'Choose what to watch…' }))
 
@@ -188,6 +210,62 @@ describe('AccountMenu', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual(['Choose what to watch…'])
+  })
+
+  it('offers nothing to check again while the check is off', async () => {
+    const off = { state: 'off', checkedAt: '' } as const
+    const { trigger } = renderMenu(
+      account(),
+      serviceStatus(
+        { state: 'off', checkedAt: '' },
+        serviceProvider(off),
+        serviceProvider({ id: 'claude', name: 'Claude', ...off }),
+        serviceProvider({ id: 'openai', name: 'OpenAI', ...off }),
+      ),
+    )
+
+    const submenu = await openServiceStatus(trigger)
+
+    expect(
+      within(submenu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Choose what to watch…'])
+  })
+
+  it('checks again with the menu open, showing each state as it is now', async () => {
+    const answer = deferred<ServiceStatus>()
+    platform.checkServiceStatus.mockReturnValue(answer.promise)
+    renderAt(<Watching />)
+
+    const submenu = await openServiceStatus(screen.getByRole('button', { name: /^Account/ }))
+    const again = await within(submenu).findByRole('menuitem', { name: /^Check again/ })
+    expect(again).toHaveAccessibleName(/^Check again,\s*Checked 1m ago$/)
+
+    await userEvent.click(again)
+
+    expect(platform.checkServiceStatus).toHaveBeenCalledOnce()
+    expect(again).toHaveAccessibleName(/^Check again,\s*Checking…$/)
+
+    // A click while it checks asks nothing more.
+    await userEvent.click(again)
+    expect(platform.checkServiceStatus).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      answer.resolve(serviceStatus({ state: 'major', checkedAt: '2026-06-15T12:00:00Z' }, claudeOutage()))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(again).toHaveAccessibleName(/^Check again,\s*Checked just now$/)
+    })
+    expect(within(submenu).getByRole('menuitem', { name: /^Claude/ })).toHaveAccessibleName(
+      /^Claude,\s*Partial outage$/,
+    )
+    expect(screen.getByRole('menuitem', { name: /^Service status/ })).toHaveAccessibleName(
+      /^Service status,\s*Partial outage$/,
+    )
+    expect(again).toHaveFocus()
   })
 
   it('names the worst problem beside Service status, an outage in red', async () => {

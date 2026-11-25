@@ -2,15 +2,11 @@ import type { ReactNode } from 'react'
 
 import { logFailure } from '../lib/call'
 import { stateLabel, toneOf, troubled, watched, worst } from '../lib/serviceStatus'
+import { formatAgo } from '../lib/time'
 import { toneFill, toneText } from '../lib/tone'
-import {
-  bugReportURL,
-  feedbackURL,
-  openExternal,
-  type Account,
-  type ServiceState,
-  type ServiceStatus,
-} from '../platform'
+import { useNowAs } from '../lib/useNow'
+import type { ServiceStatusState } from '../lib/useServiceStatus'
+import { bugReportURL, feedbackURL, openExternal, type Account, type ServiceState } from '../platform'
 import { Avatar } from './Avatar'
 import { BugIcon, CommentIcon, ExternalIcon, PulseIcon, SlidersIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
@@ -18,10 +14,10 @@ import { MenuButton, type MenuItem } from './Menu'
 export interface AccountMenuProps {
   // account is null before the inbox has loaded; its login is "" before the first refresh.
   account: Account | null
-  // serviceStatus is where the services the user watches stand, which the Service status
-  // item names while a part watched has a problem, and lists, a provider each; null or
-  // absent, it names and lists nothing.
-  serviceStatus?: ServiceStatus | null
+  // service is where the services the user watches stand, which the Service status item
+  // names while a part watched has a problem, and lists, a provider each, with Check
+  // again; absent, or before the first reading, it names and lists nothing.
+  service?: ServiceStatusState | undefined
   onOpenSettings: () => void
   // onChooseWatch opens Settings → Service status; it defaults to onOpenSettings.
   onChooseWatch?: () => void
@@ -45,9 +41,20 @@ function stateHint(state: ServiceState): ReactNode {
 }
 
 // serviceItems are the Service status submenu: each provider watched, its state as a hint,
-// opening its status page, then a way to choose what to watch.
-function serviceItems(status: ServiceStatus | null, chooseWatch: () => void): MenuItem[] {
-  const items: MenuItem[] = watched(status).map((provider) => ({
+// opening its status page; Check again, which reads their pages now and keeps the menu
+// open, so their states change in place, with when they were checked as its hint; then a
+// way to choose what to watch. With nothing watched, or the check off, there is nothing to
+// check again.
+function serviceItems(service: ServiceStatusState | undefined, checked: string, chooseWatch: () => void): MenuItem[] {
+  const choose: MenuItem = { label: 'Choose what to watch…', onSelect: chooseWatch }
+  const providers = watched(service?.status ?? null)
+
+  if (service === undefined || providers.length === 0) {
+    return [choose]
+  }
+
+  const { checking, check } = service
+  const items: MenuItem[] = providers.map((provider) => ({
     label: provider.name,
     hint: stateHint(provider.state),
     onSelect: () => {
@@ -55,7 +62,20 @@ function serviceItems(status: ServiceStatus | null, chooseWatch: () => void): Me
     },
   }))
 
-  items.push({ label: 'Choose what to watch…', divided: items.length > 0, onSelect: chooseWatch })
+  items.push(
+    {
+      label: 'Check again',
+      hint: checking ? 'Checking…' : checked === '' ? undefined : `Checked ${checked}`,
+      divided: true,
+      keepOpen: true,
+      onSelect: () => {
+        if (!checking) {
+          check()
+        }
+      },
+    },
+    choose,
+  )
 
   return items
 }
@@ -113,18 +133,15 @@ function AccountCard({ account, close }: { account: Account | null; close: () =>
 // AccountMenu is the toolbar's profile button. It shows the signed-in account's picture
 // and opens a menu with who is signed in, Settings, the account's GitHub profile, and
 // Service status, which names the worst problem a service the user watches reports and
-// opens a submenu of each one's status page, then a way to report a bug or send feedback,
-// signed in or not. Everything but Settings and choosing what to watch opens in the
-// browser: the bug report and the feedback as a new issue on the project's repository,
-// filled in for the user to read before sending.
-export function AccountMenu({
-  account,
-  serviceStatus = null,
-  onOpenSettings,
-  onChooseWatch = onOpenSettings,
-}: AccountMenuProps) {
+// opens a submenu of each one's status page and Check again, then a way to report a bug or
+// send feedback, signed in or not. Everything but Settings, Check again, and choosing what
+// to watch opens in the browser: the bug report and the feedback as a new issue on the
+// project's repository, filled in for the user to read before sending.
+export function AccountMenu({ account, service, onOpenSettings, onChooseWatch = onOpenSettings }: AccountMenuProps) {
   const login = account?.login ?? ''
-  const trouble = troubled(serviceStatus)
+  const trouble = troubled(service?.status ?? null)
+  const checkedAt = service?.status?.checkedAt ?? ''
+  const checked = useNowAs((now) => (checkedAt === '' ? '' : formatAgo(now, checkedAt)))
   const items: MenuItem[] = [
     {
       label: 'Settings',
@@ -149,7 +166,7 @@ export function AccountMenu({
       label: 'Service status',
       icon: <PulseIcon className="size-4 text-muted" />,
       hint: trouble.length === 0 ? undefined : stateHint(worst(trouble)),
-      items: () => serviceItems(serviceStatus, onChooseWatch),
+      items: () => serviceItems(service, checked, onChooseWatch),
     },
     {
       label: 'Report a bug',

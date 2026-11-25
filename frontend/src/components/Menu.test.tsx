@@ -320,6 +320,34 @@ describe('MenuButton', () => {
       expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus()
     })
 
+    it('runs an item that keeps the menus open, leaving focus on it', async () => {
+      const onSelect = vi.fn()
+      render(
+        <MenuButton
+          label="More actions"
+          items={[{ label: 'Status', items: [{ label: 'Check again', keepOpen: true, onSelect }] }]}
+        >
+          ⋯
+        </MenuButton>,
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Status' }))
+      const again = screen.getByRole('menuitem', { name: 'Check again' })
+      expect(again).toHaveFocus()
+
+      await userEvent.keyboard('{Enter}')
+      await userEvent.click(again)
+
+      expect(onSelect).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole('menu', { name: 'More actions' })).toBeInTheDocument()
+      expect(screen.getByRole('menu', { name: 'Status' })).toBeInTheDocument()
+      expect(again).toHaveFocus()
+
+      await userEvent.keyboard('{Escape}')
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
     it('opens a submenu as the pointer rests on its item, and closes it on another', async () => {
       render(
         <MenuButton label="More actions" items={nested()}>

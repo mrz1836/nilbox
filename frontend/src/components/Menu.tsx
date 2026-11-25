@@ -24,6 +24,9 @@ export interface MenuItem {
   shortcut?: string
   // onSelect runs when the item is chosen. An item with a submenu needs none.
   onSelect?: () => void
+  // keepOpen leaves every menu open when the item is chosen, for an action whose result
+  // the menu itself shows, such as checking the services' status again.
+  keepOpen?: boolean
   // items makes the item open a submenu of them beside it, as the pointer rests on it,
   // as it is clicked, or with the right arrow; the left arrow closes it again. A function
   // is called only while the submenu is open.
@@ -189,7 +192,8 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
 
 interface MenuItemsProps {
   items: readonly MenuItem[]
-  // onChoose closes every menu open and runs the item chosen.
+  // onChoose closes every menu open, unless the item keeps them open, and runs the item
+  // chosen.
   onChoose: (item: MenuItem) => void
 }
 
@@ -379,7 +383,10 @@ export function MenuButton({
   }
 
   const choose = (item: MenuItem) => {
-    close(true)
+    if (item.keepOpen !== true) {
+      close(true)
+    }
+
     item.onSelect?.()
   }
 

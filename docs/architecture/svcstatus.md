@@ -21,7 +21,8 @@ are on every `Status`, so ticking a part costs no request.
 `Config.Rules` reads the interval and the choices in one read of the settings (core's `statusRules`,
 the defaults, logged, when the settings can't be read). The bound `Status` serves every provider in
 catalog order, off while not watched (switched off, no part ticked) or the check off, and `CheckNow`
-(the popover's Check again) reads, in parallel, each watched provider whose last check ended
+(Check again, in the popover, the account menu's Service status submenu, and Settings → Service
+status) reads, in parallel, each watched provider whose last check ended
 `FreshFor` (10 s) ago or more, one `flight` key per provider, so a timed pass and a click share a
 request; a check that fails keeps the reading before it, with the reason in its `Error`, and is
 logged, and each pass emits one `event.ServiceStatusUpdated` (`servicestatus:updated`).
@@ -49,4 +50,7 @@ The window shows nothing while every watched provider is operational, unchecked,
 off; otherwise one amber (minor, maintenance) or red (major, critical) warning sits before the
 budget gauge, opening a card per provider in trouble (its parts affected, its incidents with their
 stages, how many others don't touch what is watched, and its last error), and the account menu's
-Service status submenu names each watched provider's state.
+Service status submenu names each watched provider's state, with Check again, a menu item that
+leaves the menu open (`MenuItem.keepOpen`) so the states change in place. Settings → Service status
+offers Check again beside What to watch, disabled, with the reason as its tooltip, while the check
+is off or nothing is watched, since `CheckNow` would read nothing.

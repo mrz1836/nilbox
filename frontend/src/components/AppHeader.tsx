@@ -47,8 +47,8 @@ export interface AppHeaderProps {
   budgetOpenRequest?: number
   // serviceStatus is where the services the user watches stand (GitHub, Claude, OpenAI),
   // which shows a warning beside the budget gauge while a part watched has a problem, and
-  // each provider watched in the account menu's Service status; without it there is
-  // neither. onServiceStatusSettings opens Settings → Service status, where the user
+  // each provider watched in the account menu's Service status, with Check again; without
+  // it there is neither. onServiceStatusSettings opens Settings → Service status, where the user
   // chooses what to watch; it defaults to onOpenSettings.
   serviceStatus?: ServiceStatusState
   onServiceStatusSettings?: () => void
@@ -361,7 +361,7 @@ export function AppHeader(props: AppHeaderProps) {
         <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} openRequest={budgetOpenRequest} />
         <AccountMenu
           account={account}
-          serviceStatus={serviceStatus?.status ?? null}
+          service={serviceStatus}
           onOpenSettings={onOpenSettings}
           onChooseWatch={onServiceStatusSettings}
         />

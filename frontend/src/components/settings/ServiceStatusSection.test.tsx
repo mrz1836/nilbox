@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Settings } from '../../platform'
+import type { ServiceStatus, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import { claudeOutage, serviceProvider, serviceStatus, settings, statusWatch } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { renderSaving } from '../../test/settings'
@@ -179,6 +180,64 @@ describe('ServiceStatusSection', () => {
     expect(await card('Claude').findByText('Not checked yet')).toBeInTheDocument()
     expect(card('Claude').getByText('Couldn’t reach Claude’s status page.')).toBeInTheDocument()
     expect(card('OpenAI').getByText('Off: its page isn’t read')).toBeInTheDocument()
+  })
+
+  it('checks every page watched again, saying while it checks', async () => {
+    const answer = deferred<ServiceStatus>()
+    platform.checkServiceStatus.mockReturnValue(answer.promise)
+    renderSection()
+
+    expect(await card('Claude').findByText('Operational · checked 1m ago')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+
+    expect(platform.checkServiceStatus).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
+
+    await act(async () => {
+      answer.resolve(
+        serviceStatus({ state: 'major' }, claudeOutage({ checkedAt: '2026-06-15T12:00:00Z' }), serviceProvider()),
+      )
+      await Promise.resolve()
+    })
+
+    expect(await card('Claude').findByText('Partial outage · checked just now')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
+  })
+
+  it('offers no check again while the check is off', async () => {
+    platform.getServiceStatus.mockResolvedValue(serviceStatus({ state: 'off', checkedAt: '' }))
+    renderSection(settings({ refresh: { ...settings().refresh, serviceStatus: 0 } }))
+
+    await waitFor(() => {
+      expect(platform.getServiceStatus).toHaveBeenCalled()
+    })
+    const again = screen.getByRole('button', { name: 'Check again' })
+    expect(again).toBeDisabled()
+    expect(again).toHaveAttribute('title', 'The check is off.')
+  })
+
+  it('offers no check again while nothing is watched', async () => {
+    const off = { state: 'off', checkedAt: '' } as const
+    platform.getServiceStatus.mockResolvedValue(
+      serviceStatus(
+        { state: 'off', checkedAt: '' },
+        serviceProvider(off),
+        serviceProvider({ id: 'claude', name: 'Claude', ...off }),
+        serviceProvider({ id: 'openai', name: 'OpenAI', ...off }),
+      ),
+    )
+    const watch = statusWatch()
+    watch.watch = watch.watch.map((w) => ({ ...w, on: false }))
+    renderSection(settings({ serviceStatus: watch }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Check again' })).toBeDisabled()
+    })
+    expect(screen.getByRole('button', { name: 'Check again' })).toHaveAttribute(
+      'title',
+      'Nothing is watched: turn a page on and tick a part.',
+    )
   })
 
   it('says why a change was refused, on its card', async () => {

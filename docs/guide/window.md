@@ -54,8 +54,9 @@ that fails leaves it pushed to, and is tried again on the next refresh. Its
 Click your picture for who is signed in, **Settings** (also ⌘,), **View GitHub profile** (or click
 your name or picture at the top), and **Service status**, a submenu with each service you watch and
 where it stands, each opening its status page in your browser, for when GitHub, Claude, or OpenAI is
-having an incident and the inbox, reviews, checks, or agents lag, and **Choose what to watch…**,
-which opens Settings → Service status. Below them, **Report a bug** opens a GitHub issue with your
+having an incident and the inbox, reviews, checks, or agents lag; **Check again**, which reads their
+pages now and leaves the menu open, so each state changes in place, beside when they were last
+checked; and **Choose what to watch…**, which opens Settings → Service status. Below them, **Report a bug** opens a GitHub issue with your
 versions, settings, and integrations filled in, as Settings → About's button does, and **Send
 feedback** opens a blank issue with a `[Feedback]` title, a few prompts, and your version filled in.
 You read either on GitHub before you send it. After a refresh, the picture is downloaded from
@@ -69,7 +70,9 @@ Nilbox checks the status pages of the services it depends on,
 [GitHub's](https://www.githubstatus.com/), [Claude's](https://status.claude.com/), and
 [OpenAI's](https://status.openai.com/) (Codex), once after it opens and then every 30 minutes.
 **Settings → Service status** sets how often (or turns the check off), turns each service on or off,
-and ticks the parts of each that you care about. To start with, those are what Nilbox and the agents
+and ticks the parts of each that you care about; its **Check again**, beside **What to watch**,
+reads every page you watch now, and each service's card says where it stands and when it was
+checked. To start with, those are what Nilbox and the agents
 it launches use: GitHub's Git Operations, API Requests, Issues, Pull Requests, and Actions; the
 Claude API and Claude Code; and the Codex API, Codex CLI, and Responses. Only a part you watch
 counts, so an incident with GitHub's Copilot or Codespaces stays quiet, and so does an incident that

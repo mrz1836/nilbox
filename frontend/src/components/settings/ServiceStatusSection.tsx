@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { othersOnPage, stateLabel, toneOf } from '../../lib/serviceStatus'
+import { othersOnPage, stateLabel, toneOf, watched } from '../../lib/serviceStatus'
 import { formatAgo } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import { useServiceStatus } from '../../lib/useServiceStatus'
@@ -19,8 +19,9 @@ import {
   type StatusProvider,
   type StatusProviderID,
 } from '../../platform'
-import { ErrorText, Switch } from '../controls'
-import { ExternalIcon } from '../icons'
+import { buttonClass, ErrorText, Switch } from '../controls'
+import { ExternalIcon, RefreshIcon } from '../icons'
+import { Spinner } from '../Spinner'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
 import { everyWords, refreshDefaults } from './RefreshingSection'
 import { Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
@@ -212,8 +213,9 @@ function watchOf(config: StatusConfig, id: StatusProviderID): { on: boolean; par
 // ServiceStatusSection holds the service status check: how often the status pages are
 // checked (off, or five minutes to an hour), and one card per status page Go's catalog
 // lists, each with its switch and its parts to tick, a dot of where it stands now, and
-// what the page says beside what is ticked. Each change is saved as soon as it is made;
-// ticking a part needs no request, since the last readings are judged again.
+// what the page says beside what is ticked, and Check again, which reads every page watched
+// now. Each change is saved as soon as it is made; ticking a part needs no request, since
+// the last readings are judged again.
 export function ServiceStatusSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
@@ -226,6 +228,12 @@ export function ServiceStatusSection({ settings: stored, onSaved }: SectionProps
   const every = settings.refresh.serviceStatus
   const checkOff = every <= 0
   const everyError = changed.on === 'every' ? error : ''
+  // cantCheck says why Check again would read nothing, or '' when it reads a page.
+  const cantCheck = checkOff
+    ? 'The check is off.'
+    : service.status !== null && watched(service.status).length === 0
+      ? 'Nothing is watched: turn a page on and tick a part.'
+      : ''
 
   const chooseEvery = (seconds: number) => {
     setChanged({ on: 'every', control: '' })
@@ -298,7 +306,21 @@ export function ServiceStatusSection({ settings: stored, onSaved }: SectionProps
         </SettingRow>
       </Group>
       <div className="flex flex-col gap-3">
-        <SectionIntro title="What to watch">
+        <SectionIntro
+          title="What to watch"
+          action={
+            <button
+              type="button"
+              disabled={service.checking || cantCheck !== ''}
+              title={cantCheck === '' ? undefined : cantCheck}
+              onClick={service.check}
+              className={`${buttonClass} shrink-0`}
+            >
+              {service.checking ? <Spinner className="size-3.5" /> : <RefreshIcon className="size-3.5 text-muted" />}
+              {service.checking ? 'Checking…' : 'Check again'}
+            </button>
+          }
+        >
           Only the parts you tick count: an incident elsewhere on a page shows no warning. While a part you watch has a
           problem, a warning shows in the toolbar.
         </SectionIntro>
@@ -327,7 +349,7 @@ export function ServiceStatusSection({ settings: stored, onSaved }: SectionProps
       </div>
       <Note>
         A change to what you watch applies at once, with no request: the last readings are judged again. A page turned
-        on is checked straight away.
+        on is checked straight away, and Check again reads every page you watch now.
       </Note>
     </div>
   )
