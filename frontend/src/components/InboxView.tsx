@@ -77,6 +77,7 @@ import { ListSection, type Reveal } from './ListSection'
 import { ProgressStatus } from './ProgressStatus'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
+import { RetryStatus } from './RetryStatus'
 import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
 import { SheetTriage, type TriageActions } from './TriageControls'
 import { useItemActions } from './useItemActions'
@@ -303,7 +304,9 @@ function firstMessage(...messages: string[]): string {
 
 // InboxView shows the inbox lists across the full width, with a refresh control, the
 // time of the last refresh, and the card guide's button beside it; only a list that holds
-// something, in any of its tabs, shows.
+// something, in any of its tabs, shows. A refresh that failed shows its error in a banner,
+// unless the inbox plans to try it again (a failure a later try may clear, as GitHub
+// answering a 500): then a countdown to that try sits beside the time (RetryStatus).
 // Each list has tabs for what was snoozed or dismissed from it and collapses from its
 // header, and each triage action is confirmed by a toast with an Undo. When every list is
 // empty, the inbox throws a party in their place (InboxNil), above any list that still
@@ -385,8 +388,16 @@ export function InboxView({
     setClosedError('')
   }
 
-  // refreshFailure is the refresh error to show, past the one the user closed.
-  const refreshFailure = [refreshError, lastError].find((e) => e !== '' && e !== closedError) ?? ''
+  // retry is the inbox's next try of a refresh that failed for a reason a later try may
+  // well not meet, as GitHub answering a 500, or null while none is planned. The row beside
+  // Refresh counts down to it (RetryStatus) in place of the banner, which would ask the user
+  // to act when nothing needs them.
+  const retry = lastError !== '' && snapshot !== null && snapshot.retry.at !== '' ? snapshot.retry : null
+  const retried = retry === null ? '' : lastError
+
+  // refreshFailure is the refresh error to show, past the one the user closed and the one
+  // a planned try stands for.
+  const refreshFailure = [refreshError, lastError].find((e) => e !== '' && e !== closedError && e !== retried) ?? ''
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const count = triaged?.count ?? 0
@@ -914,20 +925,23 @@ export function InboxView({
           className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-disabled"
         >
           <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing…' : 'Refresh'}
+          {refreshing ? (retry === null ? 'Refreshing…' : 'Retrying…') : 'Refresh'}
         </button>
         {refreshing ? (
           <ProgressStatus step={progressStep(progress)} />
         ) : (
-          <span className="text-muted">
-            {snapshot === null || snapshot.lastRefreshedAt === '' ? (
-              'Not refreshed yet'
-            ) : (
-              <>
-                Last refreshed <RelativeTime iso={snapshot.lastRefreshedAt} show={formatAgo} />
-              </>
-            )}
-          </span>
+          <>
+            <span className="text-muted">
+              {snapshot === null || snapshot.lastRefreshedAt === '' ? (
+                'Not refreshed yet'
+              ) : (
+                <>
+                  Last refreshed <RelativeTime iso={snapshot.lastRefreshedAt} show={formatAgo} />
+                </>
+              )}
+            </span>
+            {retry !== null && <RetryStatus at={retry.at} failures={retry.failures} error={lastError} />}
+          </>
         )}
         {onShowCardGuide !== undefined && (
           <button

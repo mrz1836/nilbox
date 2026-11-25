@@ -41,7 +41,9 @@ the user sees is [The menu bar icon](../guide/menu-bar.md#the-menu-bar-icon).
   empty.
 - **The status line.** `Status` is *Updated 3:42 PM* after a refresh today, *Updated Mar 4, 3:42
   PM* after an earlier one, *Last refresh failed* while `snap.LastError` is set (`Failed`, with
-  `Error` as its tooltip), or *Not refreshed yet* when `LastRefreshedAt` isn't RFC 3339.
+  `Error` as its tooltip), with *· retrying at 3:43 PM* after it while the inbox plans another try
+  (`snap.Retry.At`, see [internal/inbox](inbox.md#a-refresh-github-failed)), or *Not refreshed
+  yet* when `LastRefreshedAt` isn't RFC 3339.
 - **The next change.** `NextChange` is `snap.NextSnoozeEnd(now)`: when the soonest running snooze
   of an item that isn't muted ends, and the count goes up with nothing stored; zero for none.
 - **Autopilot.** `Autopilot` is `AutopilotGroup(autopilot, now)` (below).

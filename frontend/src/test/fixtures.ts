@@ -2590,6 +2590,7 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
     scopeWarning: '',
     projectAccess: 'on',
     refreshing: false,
+    retry: { at: '', failures: 0 },
     ...overrides,
   }
 }

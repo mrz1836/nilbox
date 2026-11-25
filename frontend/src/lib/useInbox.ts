@@ -188,7 +188,20 @@ export function useInbox(): InboxState {
 
   const shown = newer(loaded.data, answered)
   const [snapshot, showChange] = useOptimistic(shown?.snapshot ?? null, showTriage)
-  const refresher = useMutation((n: number) => record(n, refreshInbox()))
+  // A refresh that fails stored why, and whether the inbox tries it again; the inbox is read
+  // back before the failure shows, so the window never shows it without them (a banner for
+  // a moment, where a countdown to the next try belongs). The failure is news until a load
+  // numbered after that read.
+  const refresher = useMutation(async (n: number) => {
+    try {
+      return await record(n, refreshInbox())
+    } catch (err) {
+      await loaded.refetch()
+      setRefreshFrom(next())
+
+      throw err
+    }
+  })
   const lastLoad = loaded.data?.n ?? 0
 
   if (heard !== null && shown !== null && shown.n > heard.at && !shown.snapshot.refreshing) {

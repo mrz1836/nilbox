@@ -252,10 +252,15 @@ func entry(it inbox.Item) Entry {
 }
 
 // status says when the inbox was last refreshed, as of now and in now's location:
-// "Updated 3:42 PM" today, "Updated Mar 4, 3:42 PM" before, "Last refresh failed", or
-// "Not refreshed yet".
+// "Updated 3:42 PM" today, "Updated Mar 4, 3:42 PM" before, "Last refresh failed", with
+// "· retrying at 3:43 PM" after it while the inbox plans to try again, or "Not refreshed
+// yet".
 func status(snap inbox.Snapshot, now time.Time) string {
 	if snap.LastError != "" {
+		if at, err := time.Parse(time.RFC3339, snap.Retry.At); err == nil {
+			return "Last refresh failed · retrying at " + at.In(now.Location()).Format("3:04 PM")
+		}
+
 		return "Last refresh failed"
 	}
 

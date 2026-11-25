@@ -7,6 +7,7 @@ import {
   dayPassed,
   formatAge,
   formatAgo,
+  formatCountdown,
   formatDateTime,
   formatDay,
   formatFull,
@@ -67,6 +68,20 @@ describe('formatUntil', () => {
   it('returns an empty string for an empty or invalid time', () => {
     expect(formatUntil(FIXED_NOW, '')).toBe('')
     expect(formatUntil(FIXED_NOW, 'soon')).toBe('')
+  })
+})
+
+describe('formatCountdown', () => {
+  it('counts down to the second', () => {
+    expect(formatCountdown(45)).toBe('45s')
+    expect(formatCountdown(14.2)).toBe('15s')
+    expect(formatCountdown(120)).toBe('2m')
+    expect(formatCountdown(90)).toBe('1m 30s')
+  })
+
+  it('reads no wait, or a passed one, as 0s', () => {
+    expect(formatCountdown(0)).toBe('0s')
+    expect(formatCountdown(-5)).toBe('0s')
   })
 })
 

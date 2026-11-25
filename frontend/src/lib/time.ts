@@ -68,6 +68,20 @@ export function formatUntil(now: Date, iso: string): string {
   return span === 'just now' ? 'now' : span
 }
 
+// formatCountdown is a wait of whole seconds as a countdown says it, to the second:
+// "45s", "2m", "1m 30s", and "0s" for none or less.
+export function formatCountdown(seconds: number): string {
+  const left = Math.max(0, Math.ceil(seconds))
+  const minutes = Math.floor(left / minute)
+  const rest = left % minute
+
+  if (minutes === 0) {
+    return `${String(rest)}s`
+  }
+
+  return rest === 0 ? `${String(minutes)}m` : `${String(minutes)}m ${String(rest)}s`
+}
+
 // formatAgo is how long ago iso was as a phrase: "5m ago", or "just now".
 export function formatAgo(now: Date, iso: string): string {
   const age = formatAge(now, iso)

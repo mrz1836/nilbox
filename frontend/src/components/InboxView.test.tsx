@@ -389,6 +389,81 @@ describe('InboxView', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 
+  it('counts down to the next try of a refresh GitHub failed, in place of the banner', async () => {
+    const message = 'Refresh the inbox: read the item details: the GitHub API returned HTTP 500.'
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: '2026-06-15T11:59:00Z',
+        lastError: message,
+        retry: { at: fromNow(12_000).toISOString(), failures: 1 },
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByTitle(/HTTP 500/)).toHaveTextContent('Couldn’t refresh · retrying in 12s')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('1m ago')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+
+    // The try runs as any refresh does, and says it is one.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: '2026-06-15T11:59:00Z',
+        lastError: message,
+        retry: { at: fromNow(12_000).toISOString(), failures: 1 },
+        refreshing: true,
+      }),
+    )
+    send('inbox:updated')
+    expect(await screen.findByRole('button', { name: 'Retrying…' })).toBeDisabled()
+    expect(screen.queryByTitle(/HTTP 500/)).not.toBeInTheDocument()
+
+    // It succeeds: the countdown goes, and no banner ever showed.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: FIXED_NOW.toISOString() }))
+    send('inbox:updated')
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.queryByTitle(/HTTP 500/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('counts down to the try a failed click planned, never showing the banner first', async () => {
+    const message = 'Refresh the inbox: the GitHub API returned HTTP 502.'
+    const refresh = deferred<InboxSnapshot>()
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+    platform.refreshInbox.mockReturnValue(refresh.promise)
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
+
+    // GitHub fails the refresh, which stored why and planned the next try before it said so.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: '2026-06-15T11:55:00Z',
+        lastError: message,
+        retry: { at: fromNow(15_000).toISOString(), failures: 1 },
+      }),
+    )
+    await act(async () => {
+      refresh.reject(new Error(message))
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    expect(await screen.findByTitle(/HTTP 502/)).toHaveTextContent('retrying in 15s')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows the banner for a failed refresh the inbox does not try again', async () => {
+    const message = 'Refresh the inbox: the GitHub API returned HTTP 401: Bad credentials (run gh auth login).'
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(screen.queryByText(/retrying/)).not.toBeInTheDocument()
+  })
+
   it('keeps a closed stored error closed while a refresh runs, and shows it again once it clears and returns', async () => {
     const message = 'read the item details: the GitHub API returned HTTP 502'
     const refresh = deferred<InboxSnapshot>()

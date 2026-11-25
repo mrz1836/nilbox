@@ -30,6 +30,7 @@ export type {
     ProjectField,
     Rate,
     RateGauge,
+    RefreshRetry,
     Reviews,
     Snapshot,
     SubIssues

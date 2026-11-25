@@ -171,6 +171,22 @@ status](#the-window) check runs (off, or every 5 minutes to every hour, 30 minut
 costs no budget). A change applies at once: a refresh already due under the new interval starts
 straight away, and otherwise the next waits the new interval from the last one's end.
 
+## When a refresh fails
+
+GitHub sometimes has a bad minute: it answers a refresh with a server error (a 500 or a 502), asks
+the app to slow down, or doesn't answer at all, as when your Mac is offline. None of that needs you,
+so the inbox doesn't show it as an error. Beside **Last refreshed**, a small amber note says
+**Couldn't refresh · retrying in 12s** and counts down, and the inbox tries again on its own: 15
+seconds after the first failure, then 30 seconds, a minute, 2 minutes, 4 minutes, and from then on
+every 5 minutes (never less often than your inbox interval, and never sooner than GitHub asked),
+until a refresh gets through. Hover the note for GitHub's own words and how many tries failed, or
+click **Refresh** to try at once; while a try runs, the button says **Retrying…**. The menu bar's
+status says **Last refresh failed · retrying at 3:42 PM**. The cards keep what the last refresh
+read in the meantime.
+
+A failure only you can fix, such as a signed-out GitHub CLI or a token GitHub refused, shows as an
+error under the toolbar instead, and the inbox goes back to its interval.
+
 ## Pushes from this Mac
 
 Push to one of your inbox's pull requests from a clone on this Mac,

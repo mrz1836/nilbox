@@ -120,6 +120,14 @@ func TestTheStatus(t *testing.T) {
 	assert.True(t, failed.Failed)
 	assert.Equal(t, "network down", failed.Error)
 
+	retrying := Summarize(inbox.Snapshot{
+		LastRefreshedAt: "2026-03-04T11:00:00Z", LastError: "the GitHub API returned HTTP 500.",
+		Retry: inbox.RefreshRetry{At: "2026-03-04T12:00:15Z", Failures: 1},
+	}, nil, AutopilotState{}, now)
+	assert.Equal(t, "Last refresh failed · retrying at 12:00 PM", retrying.Status, "a planned try says when")
+	assert.True(t, retrying.Failed)
+	assert.Equal(t, "the GitHub API returned HTTP 500.", retrying.Error)
+
 	yesterday := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-03T22:15:00Z"}, nil, AutopilotState{}, now)
 	assert.Equal(t, "Updated Mar 3, 10:15 PM", yesterday.Status)
 }

@@ -157,6 +157,30 @@ pull request), whoever started it. It tells no `InboxUpdated` as it starts, so t
 that stays as it was, and it ends the tracker and clears the flag before the `changed()` that ends
 it, on success and failure, so the update's snapshot says it ended and no progress follows it.
 
+## A refresh GitHub failed
+
+A whole refresh that fails for a reason a later try may well not meet (`github.Retryable`: GitHub
+answering a 5xx, refusing it for its rate limits or asking the app to wait, or a request it never
+answered in full) is tried again soon, rather than at the scheduler's interval (`retry.go`).
+`runRefresh` records how each refresh ended in `Service.retries` before the `changed()` that ends
+it: such a failure counts one more in a row and plans the next try `retryWait` after it, 15 seconds
+after the first, doubling up to `retryMost` (`DefaultInterval`, five minutes), and never sooner than
+GitHub asked (`github.RetryAfter`); a success, or a failure only the user can change (a refused
+token, a missing scope, a store that failed), ends the plan. A refresh cut short by its ctx leaves
+it as it was. The plan is kept in memory, never stored: the app's start refreshes at once anyway.
+
+The `Scheduler` starts the try whoever ran the refresh that failed. `NewScheduler` hands the
+`Refresher` its job's `Wake` (`onRetry`), which each planned try calls, and its `Every` is `due`:
+the user's interval, or, while a try is planned (`retryAt`), the time from the end of the scheduler's
+own last refresh to that try, so a failed click, a menu bar Refresh Now, or the app's start is tried
+again on time, and never later than the interval. Each try is a whole refresh, so it joins one a
+click started meanwhile and costs what any refresh costs.
+
+Every snapshot read says the plan (`Snapshot.Retry`: the next try's time and the failures in a row,
+set on the copy returned, as `Refreshing` is), and `LastError` is recorded as for any failure. The
+window shows a planned try as a countdown beside the time of the last refresh (`RetryStatus`) in
+place of the error banner, and the menu bar's status says when it is due.
+
 ## The searches, after the refresh's store
 
 `Config.Watches` (`WatchSource`) gives the searches of the enabled routines of the account signed

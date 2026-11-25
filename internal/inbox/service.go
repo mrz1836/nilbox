@@ -16,7 +16,9 @@
 // during a scheduled refresh, joins it and gets its result. A refresh fetches without
 // holding any lock, so an item's own refresh (RefreshItem) and a check of its files
 // (CheckFiles) never wait for it; the stores are ordered by when each fetch started (see
-// order.go), so a slower fetch never overwrites what a later one stored.
+// order.go), so a slower fetch never overwrites what a later one stored. A refresh that
+// fails for a reason a later try may well not meet, as GitHub answering a 500, is tried
+// again soon, sooner the first times, by the Scheduler (see retry.go).
 //
 // The snapshot is built once per change and kept until the next write, so the window,
 // the menu bar, and the scheduler read the same one; it is built again when the trusted
@@ -278,6 +280,10 @@ type Service struct {
 	refreshing    atomic.Bool
 	progressEvery time.Duration
 
+	// retries plans the next try of the refreshes that failed for a reason a later try
+	// may well not meet (see retry.go), which every snapshot read says (Snapshot.Retry).
+	retries retries
+
 	// pending holds what whole refreshes found until a caller of Refresh tells it,
 	// outside the refresh's flight.
 	pending heldOutcomes
@@ -342,8 +348,10 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 // so what wakes on one, as Autopilot's engine does, doesn't wake for it. It stops telling,
 // and stops saying it is refreshing, before the InboxUpdated that ends it, on success and
 // on failure alike, so the snapshot that update brings says it ended and no progress comes
-// after it. A refresh cut short by its ctx records no failure, but still tells the window it
-// ended, which its progress told that it started.
+// after it. Before that update, it records how it ended in the plan of tries (see
+// retry.go), so the update says too when a failed refresh is tried again. A refresh cut
+// short by its ctx records no failure and leaves the plan as it was, but still tells the
+// window it ended, which its progress told that it started.
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeInbox)
 
@@ -374,6 +382,9 @@ func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 			return Snapshot{}, err
 		}
 
+		// The plan is set before the snapshot is read again, so the update says it.
+		s.retries.ended(s.now(), err)
+
 		recordErr := s.recordFailure(ctx, err)
 
 		// The refresh error is what the caller needs; the snapshot read is best effort.
@@ -384,6 +395,8 @@ func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 
 		return snap, errors.Join(err, recordErr)
 	}
+
+	s.retries.ended(s.now(), nil)
 
 	snap, err := s.changed(ctx)
 	if err == nil {

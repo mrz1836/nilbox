@@ -60,6 +60,12 @@ type Snapshot struct {
 	// Service's own state, never kept with a snapshot; the InboxUpdated that ends a refresh
 	// always brings one with it false.
 	Refreshing bool `json:"refreshing"`
+
+	// Retry says when the inbox tries again a refresh that failed for a reason a later try
+	// may well not meet, as GitHub answering a 500 (see retry.go): the window shows it in
+	// place of LastError, which needs nothing of the user then. Like Refreshing, it is the
+	// Service's own state, and the InboxUpdated that ends a refresh brings it.
+	Retry RefreshRetry `json:"retry"`
 }
 
 // Account is the signed-in GitHub account.
@@ -529,24 +535,26 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 
 		if keyOf(stored) == seen.settings {
-			return s.withRefreshing(*seen.snap), nil
+			return s.withRunState(*seen.snap), nil
 		}
 	}
 
 	snap, settings, err := s.buildSnapshot(ctx)
 	if err != nil {
-		return s.withRefreshing(snap), err
+		return s.withRunState(snap), err
 	}
 
 	s.snapshots.keep(seen, snap, settings)
 
-	return s.withRefreshing(snap), nil
+	return s.withRunState(snap), nil
 }
 
-// withRefreshing returns snap, a copy, saying whether a whole refresh runs now. The
-// snapshot kept is never changed, so a refresh's start or end needs no new one.
-func (s *Service) withRefreshing(snap Snapshot) Snapshot {
+// withRunState returns snap, a copy, saying whether a whole refresh runs now, and when a
+// failed one is tried again. The snapshot kept is never changed, so a refresh's start or
+// end, or a try planned, needs no new one.
+func (s *Service) withRunState(snap Snapshot) Snapshot {
 	snap.Refreshing = s.refreshing.Load()
+	snap.Retry = s.retries.state()
 
 	return snap
 }

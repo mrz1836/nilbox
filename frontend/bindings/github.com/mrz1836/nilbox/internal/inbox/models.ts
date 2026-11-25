@@ -591,6 +591,24 @@ export interface RateGauge {
 }
 
 /**
+ * RefreshRetry is the next try of a whole refresh that failed for a reason a later try
+ * may well not meet. It is the Service's own state, never kept with a snapshot.
+ */
+export interface RefreshRetry {
+    /**
+     * At is the RFC 3339 time the inbox tries the refresh again, "" while no try is
+     * planned: before any refresh failed so since the app started, and after one that
+     * succeeded or failed for a reason only the user can change.
+     */
+    "at": string;
+
+    /**
+     * Failures counts the refreshes that failed so in a row, the last included.
+     */
+    "failures": number;
+}
+
+/**
  * ReviewRequest says how a pull request asks the signed-in user to review it.
  */
 export type ReviewRequest = "none" | "you" | "team" | "pushed";
@@ -696,6 +714,14 @@ export interface Snapshot {
      * always brings one with it false.
      */
     "refreshing": boolean;
+
+    /**
+     * Retry says when the inbox tries again a refresh that failed for a reason a later try
+     * may well not meet, as GitHub answering a 500 (see retry.go): the window shows it in
+     * place of LastError, which needs nothing of the user then. Like Refreshing, it is the
+     * Service's own state, and the InboxUpdated that ends a refresh brings it.
+     */
+    "retry": RefreshRetry;
 }
 
 /**
