@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 )
 
@@ -78,6 +79,8 @@ func TestAPullRequestPushedSinceYourChangesIsInReviewRequested(t *testing.T) {
 	assert.Equal(t, ReviewRequestPushed, it.ReviewRequest)
 	require.NotNil(t, it.Details)
 	assert.True(t, it.Details.PushedSinceReview)
+	assert.Equal(t, headNow, it.Details.HeadOID, "the head the details read, for the card's sessions")
+	assert.Empty(t, it.ReviewRequestedAt, "listed for the push alone: no request arrived")
 	assert.Empty(t, snap.Yours.Items)
 
 	assert.Equal(t, [][]string{{nodeID(5)}}, h.client.detailsIDs,
@@ -121,6 +124,7 @@ func TestARequestAgainAfterAPushIsAnOrdinaryRequestWithTheTag(t *testing.T) {
 	h.client.details = askingAgain()
 	h.client.inbox = withReviewed(fetched([]github.Item{byOther(pr(5, "MEMBER", false))}, nil, nil), pushed(5))
 
+	arrived := clock.Format(h.clock.Now().UTC())
 	snap := h.refresh(t)
 
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
@@ -128,6 +132,7 @@ func TestARequestAgainAfterAPushIsAnOrdinaryRequestWithTheTag(t *testing.T) {
 	assert.Equal(t, ReviewRequestYou, it.ReviewRequest, "you can take yourself off it")
 	assert.True(t, it.Details.PushedSinceReview)
 	assert.True(t, it.Details.ReviewRequestedAgain, "the card says the review was requested again")
+	assert.Equal(t, arrived, it.ReviewRequestedAt, "when the request arrived, which the card's sessions are held to")
 
 	// Asked only through a team, the user isn't asked again by name.
 	d := atHead()
@@ -139,6 +144,7 @@ func TestARequestAgainAfterAPushIsAnOrdinaryRequestWithTheTag(t *testing.T) {
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
 	assert.False(t, snap.ReviewRequested.Items[0].Details.ReviewRequestedAgain)
 	assert.True(t, snap.ReviewRequested.Items[0].Details.PushedSinceReview)
+	assert.Equal(t, arrived, snap.ReviewRequested.Items[0].ReviewRequestedAt, "kept while it stays in the list")
 }
 
 func TestReviewingAPushedPullRequestTakesItOutAtOnce(t *testing.T) {
@@ -366,6 +372,7 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 	assert.Equal(t, ReviewRequestYou, again.ReviewRequest, "GitHub asks the user by name again, at once")
 	assert.True(t, again.Details.PushedSinceReview, "still pushed to since the user's review")
 	assert.True(t, again.Details.ReviewRequestedAgain, "the card says so at once, with no refresh")
+	assert.Equal(t, clock.Format(at.UTC()), again.ReviewRequestedAt, "the request arrived when the user asked again")
 	assert.Empty(t, snap.Yours.Items)
 	assert.Empty(t, h.client.itemIDs, "with no request")
 	assert.Empty(t, h.client.itemsIDs)

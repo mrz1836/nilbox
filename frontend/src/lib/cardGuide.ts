@@ -85,6 +85,7 @@ function guideDetails(now: Date): ItemDetails {
     autoMerge: '',
     mergeBot: '',
     fetchedAt: ago(now, 2),
+    headOid: head,
     pushedSinceReview: true,
     reviewRequestedAgain: false,
     viewerVerdict: 'changes',
@@ -151,6 +152,7 @@ export function guideItem(now: Date): InboxItem {
     authored: false,
     assigned: false,
     reviewRequest: 'you',
+    reviewRequestedAt: ago(now, 18),
     reviewTeams: [],
     closing: false,
   }

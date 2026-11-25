@@ -174,6 +174,13 @@ export interface Details {
     "fetchedAt": string;
 
     /**
+     * HeadOID is a pull request's head commit as the details last read it, "" for an
+     * issue. The card compares it with the commit an agent session's review was left on,
+     * so findings about a commit the pull request has moved past don't show as its latest.
+     */
+    "headOid": string;
+
+    /**
      * PushedSinceReview reports a pull request whose author pushed since the user requested
      * changes: the user's standing verdict requests changes at a commit other than its head,
      * and the user hasn't reviewed it from the inbox since it last moved. Whichever list it
@@ -414,6 +421,16 @@ export interface Item {
      * (RemoveReviewRequest).
      */
     "reviewRequest": ReviewRequest;
+
+    /**
+     * ReviewRequestedAt is when the inbox first saw a pull request in Review requested for
+     * a request of the user's review, while it is there, as RFC 3339, or "" otherwise (one
+     * listed only because its author pushed since the user's review included). It is
+     * stamped again each time a request arrives anew, the user's own Re-request my review
+     * included, so the card can tell an agent session that ended before the request came
+     * back from one that answers it.
+     */
+    "reviewRequestedAt": string;
 
     /**
      * ReviewTeams are the slugs of the teams a pull request asks to review, in GitHub's

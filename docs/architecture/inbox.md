@@ -83,6 +83,13 @@ at once after the user's own re-request, and through a refresh whose search trai
 it as pushed to again until the next. It was listed already, so the next refresh tells no arrival;
 it tells the outcome sink nothing (`pullOutcomes`), since it is no review, merge, or close.
 
+The card holds an agent session's findings to the pull request as it is now, from what the
+snapshot already carries: `Details.HeadOID`, the head the details last read, and
+`Item.ReviewRequestedAt`, the `review_requested_at` stamp of the request now open ("" with none,
+and for one listed only because it was pushed to). An ended session whose review was left on
+another commit, or that ended before the request arrived, is past
+([inbox cards](frontend/inbox-cards.md)), so neither asks GitHub anything.
+
 Autopilot's facts and searches keep GitHub's own three lists. The snapshot alone partitions them
 (`addItems`): an item that asks for the user's review, or was pushed to since the user requested
 changes, is in `ReviewRequested`, whatever else it is, and one the user opened or is assigned is

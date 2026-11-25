@@ -352,9 +352,9 @@ export const ItemRow = memo(function ItemRow({
   const going = leavingWords(work, item)
   const peekId = useId()
   const [peeking, setPeeking] = useState(false)
-  const sessionId = useNowAs((now) => cardSession(sessions, now)?.id ?? null)
+  const sessionId = useNowAs((now) => cardSession(sessions, now, item)?.id ?? null)
   const sessionFresh = useNowAs((now) => {
-    const s = cardSession(sessions, now)
+    const s = cardSession(sessions, now, item)
 
     return s?.state === 'failed' && now.getTime() - Date.parse(sinceWhen(s)) < endedShownMs
   })
