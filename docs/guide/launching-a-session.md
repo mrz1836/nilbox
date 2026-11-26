@@ -66,8 +66,8 @@ agent started there takes itself for that session's child: Claude Code then save
 launch unsets every agent's, whichever agent it starts, and the app starts your terminal without
 them. Only those names go: your own settings beside them, such as
 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, still reach the
-session. The launch menu's Preview lists these after the keys (`unset CLAUDECODE`, ...,
-`unset CODEX_THREAD_ID`).
+session. The launch menu's Preview folds them into one entry after the keys, *unset 15 inherited
+session variables*, whose tooltip names each one; the launch script unsets each.
 
 The same rules decide the environment of every launch: from the launch menu, a resume, a Take
 over, and an Autopilot routine's. Nothing logs a variable's value.

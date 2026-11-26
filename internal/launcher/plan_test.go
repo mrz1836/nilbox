@@ -48,12 +48,11 @@ func sessionEnv(unset ...string) []string {
 	return slices.Concat(unset, agent.SessionEnv())
 }
 
-// unsetLines are a preview's lines that unset names, then every agent's session variables.
+// unsetLines are a preview's lines that unset names; every agent's session variables are
+// the preview's Inherited, not lines.
 func unsetLines(names ...string) []string {
-	unset := sessionEnv(names...)
-
-	lines := make([]string, 0, len(unset))
-	for _, name := range unset {
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
 		lines = append(lines, "unset "+name)
 	}
 

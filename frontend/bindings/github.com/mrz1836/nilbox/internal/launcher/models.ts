@@ -434,9 +434,16 @@ export interface Preview {
 
     /**
      * Env lists the environment changes, such as "CODEX_HOME=~/.codex_work" or
-     * "unset CLAUDE_CONFIG_DIR".
+     * "unset CLAUDE_CONFIG_DIR", apart from Inherited's.
      */
     "env": string[] | null;
+
+    /**
+     * Inherited names the variables another agent session would hand down
+     * (agent.SessionEnv), which every launch unsets. They are listed apart from Env so the
+     * window can say them in one entry; the launch script unsets each.
+     */
+    "inherited": string[] | null;
 
     /**
      * Permission summarizes the session's permissions.

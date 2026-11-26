@@ -180,6 +180,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 		preview.Command)
 	assert.Equal(t, append(unsetLines("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), "CLAUDE_CONFIG_DIR=~/.claude_work"),
 		preview.Env, "an API key never signs the agent in while its setting is off")
+	assert.Equal(t, agent.SessionEnv(), preview.Inherited, "every agent session's variables, apart from the lines")
 	assert.Equal(t, "permission mode acceptEdits", preview.Permission)
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
 	assert.Equal(t, SourceLaunch, preview.Resolution.Model.Source)
@@ -190,14 +191,14 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 
 	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
+	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR", "unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN"},
+		preview.Env, "the default profile's config folder, then the keys")
 	assert.Equal(t, []string{
-		"unset CLAUDE_CONFIG_DIR", "unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN",
-		"unset CLAUDECODE", "unset CLAUDE_CODE_CHILD_SESSION", "unset CLAUDE_CODE_CHILD_NOTES_DIR",
-		"unset CLAUDE_CODE_ENTRYPOINT", "unset CLAUDE_CODE_EXECPATH", "unset CLAUDE_CODE_MESSAGING_SOCKET",
-		"unset CLAUDE_CODE_MESSAGING_TOKEN", "unset CLAUDE_CODE_SESSION_ATTENDED", "unset CLAUDE_CODE_SESSION_ID",
-		"unset CLAUDE_EFFORT", "unset CLAUDE_PID", "unset CLAUDE_TMPDIR",
-		"unset CODEX_SANDBOX", "unset CODEX_SANDBOX_NETWORK_DISABLED", "unset CODEX_THREAD_ID",
-	}, preview.Env, "the default profile's config folder, the keys, then every agent session's variables")
+		"CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_CHILD_NOTES_DIR", "CLAUDE_CODE_ENTRYPOINT",
+		"CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
+		"CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID", "CLAUDE_EFFORT", "CLAUDE_PID", "CLAUDE_TMPDIR",
+		"CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_THREAD_ID",
+	}, preview.Inherited, "every agent session's variables, which the window says in one entry")
 	assert.Nil(t, preview.Worktree)
 	assert.Equal(t, "~/projects/example-repo", preview.Dir)
 	assert.Contains(t, preview.Prompt, "Work on issue #3")
@@ -206,7 +207,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "codex --sandbox workspace-write -- <prompt>", codex.Command, "Codex's prompt comes last")
 	assert.Equal(t, append(unsetLines("OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"), "CODEX_HOME=~/.codex_work"),
-		codex.Env, "a Codex session unsets Claude Code's sessions' variables too")
+		codex.Env, "a Codex session's config folder and keys")
+	assert.Equal(t, agent.SessionEnv(), codex.Inherited, "a Codex session unsets Claude Code's sessions' variables too")
 	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 

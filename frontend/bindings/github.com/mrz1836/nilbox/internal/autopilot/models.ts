@@ -1670,11 +1670,14 @@ export interface RunPreview {
     "worktree": RunWorktree | null;
 
     /**
-     * Command is the agent's command line, the prompt shown as <prompt>, and Env the
-     * changes to its environment ("unset ANTHROPIC_API_KEY").
+     * Command is the agent's command line, the prompt shown as <prompt>, Env the changes
+     * to its environment ("unset ANTHROPIC_API_KEY"), and Inherited the variables another
+     * agent session would hand down, which it unsets too, apart so the window can say them
+     * in one entry.
      */
     "command": string;
     "env": string[] | null;
+    "inherited": string[] | null;
 
     /**
      * Permission summarizes its permissions, Prompt is the filled-in prompt, and Terminal

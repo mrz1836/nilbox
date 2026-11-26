@@ -339,8 +339,9 @@ func previewOf(got launcher.Preview) autopilot.RunPreview {
 	res := got.Resolution
 	out := autopilot.RunPreview{
 		Agent: res.Agent.Name, Profile: res.Profile.Value, Model: res.Model.Value, Effort: res.Effort.Value,
-		PromptName: res.Prompt.Nickname, Dir: got.Dir, Command: got.Command, Env: got.Env, Permission: got.Permission,
-		Prompt: got.Prompt, Terminal: terminal.Name(got.Terminal), Warnings: res.Warnings,
+		PromptName: res.Prompt.Nickname, Dir: got.Dir, Command: got.Command, Env: got.Env, Inherited: got.Inherited,
+		Permission: got.Permission,
+		Prompt:     got.Prompt, Terminal: terminal.Name(got.Terminal), Warnings: res.Warnings,
 		Sources: map[string]string{
 			"agent": routineSource(res.AgentSource), "profile": routineSource(res.Profile.Source),
 			"model": routineSource(res.Model.Source), "effort": routineSource(res.Effort.Source),

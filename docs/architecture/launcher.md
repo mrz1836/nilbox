@@ -109,11 +109,13 @@ hands those to its tabs (macOS's `open` passes on the caller's whole environment
 session that inherits `CLAUDE_CODE_CHILD_SESSION` saves no transcript, which `internal/sessions`
 follows it by. The profile's env can't set a key (with the setting off) or a session variable
 either. `Plan.Unset` holds them in that order, each agent's session variables in its spec's order,
-and the Preview lists them as `unset` lines before the `NAME=value` ones. The terminal drivers' own
-`open` and `osascript` run without the session variables too: core hands `terminal.DefaultRegistry`
-its `terminalRunner`, an `execpath.Exec` whose `Env` is this process's environment, read once at
-startup, minus `agent.SessionEnv`, so a terminal app the app starts never takes them on; every
-other program runs as before.
+and the Preview lists the config variable and the keys as `unset` lines before the `NAME=value`
+ones, and the session variables apart, in `Preview.Inherited`, which the window folds into one
+entry with their names in its tooltip (a routine's `RunPreview` carries the same). The terminal
+drivers' own `open` and `osascript` run without the session variables too: core hands
+`terminal.DefaultRegistry` its `terminalRunner`, an `execpath.Exec` whose `Env` is this process's
+environment, read once at startup, minus `agent.SessionEnv`, so a terminal app the app starts
+never takes them on; every other program runs as before.
 
 An Autopilot routine's launch is a click's launch with `LaunchRequest.Routine` set (Go-only,
 `json:"-"`), which only holds it back more: its files are checked under the unattended scope, only

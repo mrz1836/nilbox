@@ -41,16 +41,24 @@ export type PlannedWorktree = Pick<WorktreePlan, 'path' | 'branch' | 'base' | 'd
 
 // Plan is a launch planned and not started, as the launch menu's Preview and a routine's
 // Preview both have it: the filled-in prompt, the worktree it makes or resumes, where it
-// starts, its permissions, the changes to its environment, the command, and the terminal
-// it opens in.
+// starts, its permissions, the changes to its environment (with the variables another
+// agent session would hand down, which every launch unsets, apart in inherited), the
+// command, and the terminal it opens in.
 export interface Plan {
   prompt: string
   worktree: PlannedWorktree | null
   dir: string
   permission: string
   env: readonly string[]
+  inherited: readonly string[]
   command: string
   terminal: string
+}
+
+// inheritedEntry says, in one entry, the variables another agent session would hand down
+// that a launch unsets: "unset 15 inherited session variables".
+export function inheritedEntry(names: readonly string[]): string {
+  return `unset ${counted(names.length, 'inherited session variable', 'inherited session variables')}`
 }
 
 // worktreeLine says what the launch does to the item's worktree: "Creates … from the pull
@@ -85,7 +93,19 @@ export function PlannedLaunch({ plan }: { plan: Plan }) {
         In <span className="font-mono text-text">{plan.dir}</span> · {plan.permission}
         {plan.terminal !== '' && ` · opens in ${terminalLabel(plan.terminal, plan.terminal)}`}
       </p>
-      {plan.env.length > 0 && <p className="font-mono text-caption break-all text-muted">{plan.env.join(' · ')}</p>}
+      {(plan.env.length > 0 || plan.inherited.length > 0) && (
+        <p className="font-mono text-caption break-all text-muted">
+          {plan.env.join(' · ')}
+          {plan.inherited.length > 0 && (
+            <>
+              {plan.env.length > 0 && ' · '}
+              <span title={plan.inherited.map((name) => `unset ${name}`).join('\n')}>
+                {inheritedEntry(plan.inherited)}
+              </span>
+            </>
+          )}
+        </p>
+      )}
       <code className="block rounded-md bg-raised px-2 py-1.5 font-mono text-caption leading-snug break-all text-text">
         {plan.command}
       </code>
