@@ -1,0 +1,303 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="792" viewBox="0 0 1320 792" role="img" aria-labelledby="clones-title clones-desc">
+  <title id="clones-title">Your clones: tidy worktrees, and releases in two clicks</title>
+  <desc id="clones-desc">Top: the life of a worktree. The clone acme-org/api in ~/projects/api gives each item its own worktree, pr-412 on the branch worktree-pr-412 and issue-77 on worktree-issue-77. Claude and Codex work in them, and a worktree in use is never removed. Once pull request 412 merges it is ready to clean up, and the sweep, every 5 minutes, cleans it up: no uncommitted files, and every commit is on GitHub. Issue 77 closed too, but its worktree holds 3 uncommitted files, so it needs a look and is kept. Clean up merged branches… never touches main, master, or any branch you protect. Bottom: the Scripts tab for mage-x and go-pre-commit users, with Release (magex tags and pushes v1.4.3, followed to published), Hooks (go-pre-commit's hook installed and kept current in every clone), Repo scripts (tasks, magex targets, and your own commands), Deps (how old each clone's dependencies are), and Runs (every run, with its live log and result).</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <path id="spark" d="M0-7C0.9-2.2 2.2-0.9 7 0C2.2 0.9 0.9 2.2 0 7C-0.9 2.2-2.2 0.9-7 0C-2.2-0.9-0.9-2.2 0-7Z"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="792" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="640" cy="370" r="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.15"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <linearGradient id="folder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.5" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="792" rx="28"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <g id="ok"><circle r="10" fill="#3DBE8B" fill-opacity="0.12" stroke="#3DBE8B" stroke-width="1.8"/><path d="M-4.2 0.3L-1.2 3.3L4.4-2.6" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <!-- Line glyphs: each takes its stroke from the <use> that places it -->
+    <g id="g-branch" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="-4" cy="-5.5" r="2"/><circle cx="-4" cy="5.5" r="2"/><circle cx="4.5" cy="-4" r="2"/><path d="M-4-3.5V3.5M4.5-2C4.5 1.2 1 1.4-2.4 3.9"/></g>
+    <g id="g-merge" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="-4" cy="-5.5" r="2"/><circle cx="-4" cy="5.5" r="2"/><circle cx="4.5" cy="3.2" r="2"/><path d="M-4-3.5V3.5M-4-3.5C-4 1 -0.5 3.2 2.5 3.2"/></g>
+    <g id="g-closed" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle r="7"/><path d="M-3.2 0.2L-1 2.4L3.4-2"/></g>
+    <g id="g-shield" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M0-8L6.5-5.4V0.4C6.5 4.4 3.8 6.9 0 8.2C-3.8 6.9-6.5 4.4-6.5 0.4V-5.4Z"/><path d="M-2.8 0.2L-0.8 2.2L3-1.8"/></g>
+    <g id="g-tag" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-6.5-1.2V-6.5H-1.2L6.8 1.5L1.5 6.8Z"/><circle cx="-3.5" cy="-3.5" r="1.1"/></g>
+    <g id="g-anchor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cy="-5.2" r="1.9"/><path d="M0-3.3V7M-3.6-0.6H3.6M-6.5 2.6A6.5 4.6 0 0 0 6.5 2.6"/></g>
+    <g id="g-play" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-3.5-5.8L5.8 0L-3.5 5.8Z"/></g>
+    <g id="g-box" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M0-7.2L6.6-3.6V3.6L0 7.2L-6.6 3.6V-3.6Z"/><path d="M-6.6-3.6L0 0L6.6-3.6M0 0V7.2"/></g>
+    <g id="g-clock" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle r="7"/><path d="M0-3.8V0L2.8 1.8"/></g>
+    <g id="g-check" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M-4.2 0.3L-1.2 3.3L4.4-2.6"/></g>
+    <g id="g-x" fill="none" stroke-width="2" stroke-linecap="round"><path d="M-3.4-3.4L3.4 3.4M3.4-3.4L-3.4 3.4"/></g>
+    <g id="g-warn" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M0-6.2L6.8 5.6H-6.8Z"/><path d="M0-1.8V1.4"/><circle cy="3.4" r="0.5"/></g>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 44px; font-weight: 800; letter-spacing: -0.6px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .lede b, .lede .b { font-weight: 600; fill: #D5D9E0; }
+    .tab { font-size: 15.5px; fill: #8A93A3; }
+    .card { fill: #1A1E27; stroke: #2A303C; }
+    .pill { fill: #1A1E27; stroke: #3A4150; }
+    .pill-t { font-size: 15px; font-weight: 650; fill: #E6E8EC; }
+    .cap { font-size: 14.5px; fill: #9AA3B2; }
+    .say { font-size: 14.5px; fill: #C4CAD4; }
+    .num { font-size: 15px; font-weight: 800; fill: #1A0E06; }
+    .co-t { font-size: 18px; font-weight: 700; fill: #F2F3F5; }
+    .co-d { font-size: 15.5px; fill: #9AA3B2; }
+    .em { font-weight: 600; fill: #D5D9E0; }
+    .tile-t { font-size: 17px; font-weight: 700; fill: #E6E8EC; }
+    .row { font-size: 14.5px; fill: #C4CAD4; }
+    .badge { font-size: 12.5px; font-weight: 700; fill: #E6E8EC; }
+    .tile-d { font-size: 15px; fill: #9AA3B2; }
+    .rail { fill: none; stroke: #343B48; stroke-width: 2; }
+    .flow { fill: none; stroke: #F5803F; stroke-opacity: 0.75; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0.1 12; animation: flow 1s linear infinite; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    .later { animation-delay: 0.9s; }
+    @keyframes flow { to { stroke-dashoffset: -12.1; } }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .pulse { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="792" fill="url(#bg)"/>
+    <rect width="1320" height="792" fill="url(#dots)"/>
+    <rect width="1320" height="792" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="791" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Headline -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="76">YOUR CLONES</text>
+    <text class="headline" x="62" y="128">Tidy clones.<tspan dx="14">Releases in two clicks.</tspan></text>
+    <text class="lede" x="64" y="166">Each item gets its own worktree, cleaned up once merged or closed,<tspan class="b" dx="5">never at the cost of work</tspan>.</text>
+    <text class="lede" x="64" y="194">Use mage-x or go-pre-commit? Release, hooks, deps, and scripts,<tspan class="b" dx="5">all in one Scripts tab</tspan>.</text>
+  </g>
+
+  <!-- A worktree's life: the steps -->
+  <g class="sans">
+    <circle cx="286" cy="246" r="14" fill="#F5803F"/><text class="num" x="286" y="251.5" text-anchor="middle">1</text>
+    <text class="co-t" x="310" y="252">Its own worktree</text>
+    <circle cx="500" cy="246" r="14" fill="#F5803F"/><text class="num" x="500" y="251.5" text-anchor="middle">2</text>
+    <text class="co-t" x="524" y="252">An agent works</text>
+    <circle cx="714" cy="246" r="14" fill="#F5803F"/><text class="num" x="714" y="251.5" text-anchor="middle">3</text>
+    <text class="co-t" x="738" y="252">Done on GitHub</text>
+    <circle cx="928" cy="246" r="14" fill="#F5803F"/><text class="num" x="928" y="251.5" text-anchor="middle">4</text>
+    <text class="co-t" x="952" y="252">The sweep<tspan class="co-d" dx="10" font-weight="400">every 5 minutes</tspan></text>
+  </g>
+
+  <!-- The clone -->
+  <g class="sans">
+    <rect class="card" x="64" y="264" width="172" height="182" rx="12"/>
+    <rect x="84" y="292" width="40" height="40" rx="10" fill="#E8743B" fill-opacity="0.12" stroke="#E8743B" stroke-opacity="0.35"/>
+    <path d="M94.5 304Q94.5 301.5 97 301.5H101.6L104 304.4H111Q113.5 304.4 113.5 306.9V320Q113.5 322.5 111 322.5H97Q94.5 322.5 94.5 320Z" fill="url(#folder)"/>
+    <text x="84" y="362"><tspan font-size="15" fill="#7D8595">acme-org/</tspan><tspan font-size="17" font-weight="700" fill="#E6E8EC">api</tspan></text>
+    <text class="mono" x="84" y="386" font-size="14.5" fill="#9AA3B2">~/projects/api</text>
+    <text class="cap" x="84" y="412">on main · clean</text>
+  </g>
+
+  <!-- The rails -->
+  <path class="rail" d="M236 355H244Q254 355 254 345V316Q254 306 264 306H914"/>
+  <path class="rail" d="M236 355H244Q254 355 254 365V394Q254 404 264 404H914"/>
+  <path class="flow" d="M236 355H244Q254 355 254 345V316Q254 306 264 306H914"/>
+  <path class="flow" d="M236 355H244Q254 355 254 365V394Q254 404 264 404H914"/>
+
+  <!-- Rail 1: pr-412, merged, cleaned up -->
+  <g class="sans">
+    <rect class="pill" x="272" y="288" width="132" height="36" rx="18"/>
+    <use href="#g-branch" x="293" y="306" stroke="#9AA3B2"/>
+    <text class="mono" x="310" y="311.5" font-size="15" font-weight="600" fill="#E6E8EC">pr-412</text>
+    <text class="cap" x="274" y="348">on<tspan class="mono" dx="6" fill="#7D8595">worktree-pr-412</tspan></text>
+
+    <rect x="486" y="288" width="184" height="36" rx="18" fill="#1D2430" stroke="#8FA4C4" stroke-opacity="0.55"/>
+    <circle class="pulse" cx="506" cy="306" r="4.5" fill="#8FA4C4"/>
+    <text class="pill-t" x="519" y="311.5" style="fill:#AFC0DA">Claude · working</text>
+    <text class="cap" x="488" y="348">in use, never removed</text>
+
+    <rect class="pill" x="700" y="288" width="178" height="36" rx="18"/>
+    <use href="#g-merge" x="721" y="306" stroke="#8FA4C4"/>
+    <text class="pill-t" x="738" y="311.5">PR #412 merged</text>
+    <circle cx="705" cy="343" r="3.5" fill="#3DBE8B"/>
+    <text class="cap" x="715" y="348" font-weight="600" style="fill:#3DBE8B">ready to clean up</text>
+
+    <rect x="914" y="264" width="342" height="84" rx="12" fill="none" stroke="#3DBE8B" stroke-opacity="0.4" stroke-width="2" filter="url(#glow)"/>
+    <rect x="914" y="264" width="342" height="84" rx="12" fill="#18241F" stroke="#3DBE8B" stroke-opacity="0.55"/>
+    <use href="#ok" x="940" y="288"/>
+    <text x="960" y="294" font-size="17" font-weight="700" fill="#3DBE8B">Cleaned up</text>
+    <use href="#spark" transform="translate(1230 284) scale(0.9)" fill="#3DBE8B"/>
+    <use href="#spark" transform="translate(1212 296) scale(0.5)" fill="#3DBE8B" fill-opacity="0.7"/>
+    <text class="say" x="930" y="318">Safe to remove: no uncommitted files,</text>
+    <text class="say" x="930" y="337">and every commit is on GitHub.</text>
+  </g>
+
+  <!-- Rail 2: issue-77, closed, kept -->
+  <g class="sans">
+    <rect class="pill" x="272" y="386" width="132" height="36" rx="18"/>
+    <use href="#g-branch" x="293" y="404" stroke="#9AA3B2"/>
+    <text class="mono" x="310" y="409.5" font-size="15" font-weight="600" fill="#E6E8EC">issue-77</text>
+    <text class="cap" x="274" y="446">on<tspan class="mono" dx="6" fill="#7D8595">worktree-issue-77</tspan></text>
+
+    <rect x="486" y="386" width="184" height="36" rx="18" fill="#1D2430" stroke="#8FA4C4" stroke-opacity="0.55"/>
+    <circle class="pulse later" cx="506" cy="404" r="4.5" fill="#8FA4C4"/>
+    <text class="pill-t" x="519" y="409.5" style="fill:#AFC0DA">Codex · working</text>
+    <text class="cap" x="488" y="446">leaves<tspan dx="5" font-weight="700" fill="#E9B44C">3 files</tspan><tspan dx="5">uncommitted</tspan></text>
+
+    <rect class="pill" x="700" y="386" width="178" height="36" rx="18"/>
+    <use href="#g-closed" x="721" y="404" stroke="#8FA4C4"/>
+    <text class="pill-t" x="738" y="409.5">Issue #77 closed</text>
+    <circle cx="705" cy="441" r="3.5" fill="#E9B44C"/>
+    <text class="cap" x="715" y="446" font-weight="600" style="fill:#E9B44C">needs a look</text>
+
+    <rect x="914" y="362" width="342" height="84" rx="12" fill="#262217" stroke="#E9B44C" stroke-opacity="0.55"/>
+    <use href="#g-shield" x="940" y="386" stroke="#E9B44C"/>
+    <text x="960" y="392" font-size="17" font-weight="700" fill="#E9B44C">Kept for you</text>
+    <text class="say" x="930" y="416">Removing it would discard 3 uncommitted</text>
+    <text class="say" x="930" y="435">files, counting untracked ones.</text>
+  </g>
+
+  <!-- Protected branches -->
+  <g class="sans">
+    <use href="#g-shield" x="73" y="473" stroke="#9AA3B2"/>
+    <text class="co-d" x="90" y="478"><tspan class="em">Clean up merged branches…</tspan><tspan dx="5">clears out the local branches of pull requests that merged, never touching</tspan><tspan class="mono" dx="5" fill="#D5D9E0" font-size="14.5">main</tspan>,<tspan class="mono" dx="5" fill="#D5D9E0" font-size="14.5">master</tspan>, or any branch you protect.</text>
+  </g>
+
+  <!-- The Scripts tab -->
+  <g class="sans" transform="translate(0 8)">
+    <g filter="url(#shadow)"><rect x="64" y="502" width="1192" height="244" rx="14" fill="#13161D"/></g>
+    <path d="M78 502H1242A14 14 0 0 1 1256 516V546H64V516A14 14 0 0 1 78 502Z" fill="#191D26"/>
+    <rect x="64.5" y="502.5" width="1191" height="243" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="64" y1="546.5" x2="1256" y2="546.5" stroke="#2A303C"/>
+    <circle cx="88" cy="524" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="106" cy="524" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="124" cy="524" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <use href="#mark" transform="translate(150 514) scale(0.039)" fill="url(#glyph)"/>
+    <text x="172" y="530" font-size="17" font-weight="800" fill="#E6E8EC">nilbox</text>
+    <text class="tab" x="252" y="530">Inbox</text>
+    <text class="tab" x="321" y="530">Notifications</text>
+    <text class="tab" x="441" y="530">Worktrees</text>
+    <rect x="521" y="515" width="32" height="20" rx="10" fill="#2A303C"/>
+    <circle cx="531" cy="525" r="3" fill="#E9B44C"/>
+    <text class="badge" x="543" y="529.5" text-anchor="middle" style="fill:#C4CAD4">1</text>
+    <text class="tab" x="581" y="530">Prompts</text>
+    <text class="tab" x="667" y="530" style="fill:#E6E8EC;font-weight:600">Scripts</text>
+    <rect x="725" y="515" width="32" height="20" rx="10" fill="#E8743B" fill-opacity="0.14"/>
+    <circle cx="735" cy="525" r="3" fill="#F05D5E"/>
+    <text class="badge" x="747" y="529.5" text-anchor="middle">1</text>
+    <rect x="661" y="543" width="102" height="3" rx="1.5" fill="#E8743B"/>
+
+    <!-- Release -->
+    <rect class="card" x="80" y="560" width="220" height="170" rx="12"/>
+    <rect x="96" y="574" width="30" height="30" rx="8" fill="#E8743B" fill-opacity="0.12"/>
+    <use href="#g-tag" x="111" y="589" stroke="#F5803F"/>
+    <text class="tile-t" x="136" y="595">Release</text>
+    <rect x="262" y="579" width="22" height="20" rx="10" fill="#E8743B" fill-opacity="0.14"/>
+    <text class="badge" x="273" y="593.5" text-anchor="middle">3</text>
+    <rect x="96" y="616" width="3" height="18" rx="1.5" fill="#3DBE8B"/>
+    <text class="row" x="108" y="630" font-weight="700" style="fill:#E6E8EC">sdk</text>
+    <text class="mono" x="154" y="630" font-size="13.5" fill="#9AA3B2">v1.4.2</text>
+    <text class="row" x="224" y="630" font-weight="700" style="fill:#E6E8EC">+5</text>
+    <rect x="96.5" y="644.5" width="141" height="31" rx="8" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B"/>
+    <text x="167" y="665" text-anchor="middle" font-size="14.5" font-weight="700" fill="#F5803F">Release v1.4.3</text>
+    <use href="#spark" transform="translate(258 656) scale(0.95)" fill="#F5803F"/>
+    <use href="#spark" transform="translate(272 670) scale(0.55)" fill="#F5803F" fill-opacity="0.7"/>
+    <text class="tile-d" x="96" y="700">magex tags and pushes,</text>
+    <text class="tile-d" x="96" y="719">followed to published.</text>
+
+    <!-- Hooks -->
+    <rect class="card" x="315" y="560" width="220" height="170" rx="12"/>
+    <rect x="331" y="574" width="30" height="30" rx="8" fill="#E8743B" fill-opacity="0.12"/>
+    <use href="#g-anchor" x="346" y="589" stroke="#F5803F"/>
+    <text class="tile-t" x="371" y="595">Hooks</text>
+    <rect x="479" y="579" width="22" height="20" rx="10" fill="#E8743B" fill-opacity="0.14"/>
+    <text class="badge" x="490" y="593.5" text-anchor="middle">2</text>
+    <circle cx="512" cy="589" r="3.5" fill="#E9B44C"/>
+    <use href="#g-warn" transform="translate(338 625) scale(0.85)" stroke="#E9B44C"/>
+    <text class="row" x="352" y="630">web</text>
+    <text class="row" x="519" y="630" text-anchor="end" style="fill:#E9B44C">Outdated hook</text>
+    <use href="#g-x" transform="translate(338 647) scale(0.9)" stroke="#F05D5E"/>
+    <text class="row" x="352" y="652">cli</text>
+    <text class="row" x="519" y="652" text-anchor="end" style="fill:#F05D5E">No hook yet</text>
+    <use href="#g-check" transform="translate(338 669) scale(0.9)" stroke="#3DBE8B"/>
+    <text class="row" x="352" y="674">api</text>
+    <text class="row" x="519" y="674" text-anchor="end" style="fill:#3DBE8B">Installed</text>
+    <text class="tile-d" x="331" y="700">Installed and kept</text>
+    <text class="tile-d" x="331" y="719">current in every clone.</text>
+
+    <!-- Repo scripts -->
+    <rect class="card" x="550" y="560" width="220" height="170" rx="12"/>
+    <rect x="566" y="574" width="30" height="30" rx="8" fill="#E8743B" fill-opacity="0.12"/>
+    <use href="#g-play" x="582" y="589" stroke="#F5803F"/>
+    <text class="tile-t" x="606" y="595">Repo scripts</text>
+    <path d="M569 619.5L578 625L569 630.5Z" fill="#F5803F"/>
+    <text class="mono" x="586" y="630" font-size="14.5" fill="#E6E8EC">test:race</text>
+    <text class="mono" x="754" y="630" text-anchor="end" font-size="13" fill="#7D8595">magex</text>
+    <path d="M569 641.5L578 647L569 652.5Z" fill="#F5803F"/>
+    <text class="mono" x="586" y="652" font-size="14.5" fill="#E6E8EC">lint</text>
+    <text class="mono" x="754" y="652" text-anchor="end" font-size="13" fill="#7D8595">magex</text>
+    <path d="M569 663.5L578 669L569 674.5Z" fill="#F5803F"/>
+    <text class="mono" x="586" y="674" font-size="14.5" fill="#E6E8EC">build</text>
+    <text class="mono" x="754" y="674" text-anchor="end" font-size="13" fill="#7D8595">tasks.json</text>
+    <text class="tile-d" x="566" y="700">Tasks, magex targets,</text>
+    <text class="tile-d" x="566" y="719">and your own commands.</text>
+
+    <!-- Deps -->
+    <rect class="card" x="785" y="560" width="220" height="170" rx="12"/>
+    <rect x="801" y="574" width="30" height="30" rx="8" fill="#E8743B" fill-opacity="0.12"/>
+    <use href="#g-box" x="816" y="589" stroke="#F5803F"/>
+    <text class="tile-t" x="841" y="595">Deps</text>
+    <rect x="967" y="579" width="22" height="20" rx="10" fill="#E8743B" fill-opacity="0.14"/>
+    <text class="badge" x="978" y="593.5" text-anchor="middle">4</text>
+    <rect x="801" y="617" width="3" height="17" rx="1.5" fill="#F5803F"/>
+    <text class="row" x="813" y="630">api</text>
+    <text class="row" x="989" y="630" text-anchor="end" style="fill:#9AA3B2">5mo ago</text>
+    <rect x="801" y="639" width="3" height="17" rx="1.5" fill="#E9B44C"/>
+    <text class="row" x="813" y="652">web</text>
+    <text class="row" x="989" y="652" text-anchor="end" style="fill:#9AA3B2">2mo ago</text>
+    <rect x="801" y="661" width="3" height="17" rx="1.5" fill="#3DBE8B"/>
+    <text class="row" x="813" y="674">cli</text>
+    <text class="row" x="989" y="674" text-anchor="end" style="fill:#9AA3B2">2w ago</text>
+    <text class="tile-d" x="801" y="700">How old each clone’s</text>
+    <text class="tile-d" x="801" y="719">dependencies are.</text>
+
+    <!-- Runs -->
+    <rect class="card" x="1020" y="560" width="220" height="170" rx="12"/>
+    <rect x="1036" y="574" width="30" height="30" rx="8" fill="#E8743B" fill-opacity="0.12"/>
+    <use href="#g-clock" x="1051" y="589" stroke="#F5803F"/>
+    <text class="tile-t" x="1076" y="595">Runs</text>
+    <rect x="1202" y="579" width="22" height="20" rx="10" fill="#E8743B" fill-opacity="0.14"/>
+    <text class="badge" x="1213" y="593.5" text-anchor="middle">1</text>
+    <circle cx="1042" cy="625" r="5.5" fill="none" stroke="#3A4150" stroke-width="2"/>
+    <path class="pulse" d="M1042 619.5A5.5 5.5 0 0 1 1047.5 625" fill="none" stroke="#F5803F" stroke-width="2" stroke-linecap="round"/>
+    <text class="row" x="1056" y="630" style="fill:#E6E8EC">magex test:race</text>
+    <use href="#g-check" transform="translate(1042 647) scale(0.9)" stroke="#3DBE8B"/>
+    <text class="row" x="1056" y="652">Release v1.4.3</text>
+    <use href="#g-x" transform="translate(1042 669) scale(0.9)" stroke="#F05D5E"/>
+    <text class="row" x="1056" y="674">Checks · all files</text>
+    <text class="tile-d" x="1036" y="700">Every run, with its</text>
+    <text class="tile-d" x="1036" y="719">live log and result.</text>
+  </g>
+</svg>

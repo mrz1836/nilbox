@@ -142,6 +142,10 @@ hooks and scripts too. Your triage state stays on your machine and never touches
   <img src="docs/images/how-it-works.svg" width="100%" alt="How Nilbox works: GitHub's notifications from every repository arrive as one unranked pile; Nilbox, on your Mac, hides the bots and noise and keeps only what needs you; one click opens an item in Claude Code or Codex, already in the right clone, worktree, account, model, and prompt. Nilbox reads GitHub with your own gh token, and your triage state, prompts, and caches never leave your Mac.">
 </p>
 
+<p align="center">
+  <img src="docs/images/inbox-nil.svg" width="100%" alt="Inbox at nil: when every list is empty, Nilbox throws a party, with confetti, the heading inbox == nil, an Achievement unlocked chip for a 7-day streak, and a terminal that runs nilbox status, checks off each list, and ends in a playful panic: goroutine 1 vibing, Developer.TouchGrass, exit status 0. Beside it, the achievements you can unlock and the replay button, go run ./party.">
+</p>
+
 <br/>
 
 ## 🚀 Installation
@@ -400,6 +404,10 @@ links to its full write-up in the [User guide](docs/README.md#user-guide).
 
 ### <code>Your inbox</code>
 
+<p align="center">
+  <img src="docs/images/feature-inbox.svg" width="100%" alt="The inbox window with two lists, Review requested and Yours, and four cards. Numbered callouts explain how to read a card: the left edge's color says whose move it is (orange yours, green ready to ship, red blocked, blue an agent is on it); one line says why it's here, such as Re-review, Approved and ready to merge, or 2 of 14 checks failing; a track shows checks, review, and merge with the size underneath; and two buttons hold your next move and one click to hand it to Claude Code or Codex.">
+</p>
+
 <details>
 <summary><strong>One inbox, every repository</strong>: your reviews, pull requests, and assignments</summary>
 <br/>
@@ -555,6 +563,10 @@ More in [The item menu and edits on GitHub](docs/guide/item-menu.md).
 
 ### <code>Review and merge</code>
 
+<p align="center">
+  <img src="docs/images/feature-review.svg" width="100%" alt="The review sheet, a panel over the inbox, open on pull request acme-org/api #212 by alice. On the left, the diff with a line comment being written and its Suggest a change, Cancel, and Add to review buttons. On the right, the line that stays in view says what it still needs, An approval · auto-merge available, above the reviewers and the checks, then Your review with its reply and one button, Approve and squash-merge, with the other actions in its menu. Every merge asks first: the confirmation names the commit it is pinned to, and GitHub refuses it if anything is pushed first.">
+</p>
+
 <details>
 <summary><strong>The review sheet</strong>: a pull request's diff, checks, and reviews in one panel</summary>
 <br/>
@@ -683,6 +695,10 @@ More in [Reviewing a pull request](docs/guide/reviewing-a-pull-request.md) and
 <br>
 
 ### <code>Coding agents</code>
+
+<p align="center">
+  <img src="docs/images/feature-agents.svg" width="100%" alt="How a coding agent launch works, in four steps. One click on a card's Claude button opens the launch options for acme-org/api #412, already set from the item's settings: the Review prompt, the work profile, Opus from the repository's default, High effort from the org's default, and a new worktree, with buttons to save the choices as the default for the repository or the whole org before Open in Claude. A terminal then opens in the item's own pr-412 worktree with the prompt loaded. Back on the card, the session is followed live: Claude is on it, then Claude needs approval with a Show terminal button, then Claude's done. Beside it, an outside contributor's pull request that changes agent configuration starts in plan mode whatever the profile says, and waits until you confirm.">
+</p>
 
 <details>
 <summary><strong>One-click launch</strong>: Claude Code or OpenAI Codex in the item's own worktree</summary>
@@ -837,6 +853,10 @@ More in [Outside contributors](docs/guide/outside-contributors.md) and
 
 ### <code>Autopilot (beta)</code>
 
+<p align="center">
+  <img src="docs/images/feature-autopilot.svg" width="100%" alt="The Autopilot tab, marked Beta, showing the routine Fix Dependabot security failures set to Ask first. It watches pull requests by Dependabot in your account and acme-org, fires when checks fail once every check has finished, and only when a failed check's name names a security scanner; it then runs a coding agent in the background inside a fence, waits for the checks if it pushed, and tells you how it went. Test shows 3 of 7 open pull requests match now, and why. Beside it, a ladder of the routine's modes: Dry run records what it would do and does nothing else; Ask first has each match wait for your Run; Autopilot runs every step at once within your limits, followed to a verdict such as Fixed. Pause Autopilot stops every new start at once. Above, Describe it: tell Autopilot what you want in your own words, and Claude proposes cards you test and apply.">
+</p>
+
 Off until you turn it on in **Settings → Labs**.
 
 <details>
@@ -927,6 +947,10 @@ More in [Agents in the background](docs/guide/autopilot/agents-in-the-background
 <br>
 
 ### <code>Your clones</code>
+
+<p align="center">
+  <img src="docs/images/feature-clones.svg" width="100%" alt="Your clones, in two parts. Top: a worktree's life in four steps. The clone acme-org/api in ~/projects/api gives each item its own worktree, pr-412 and issue-77; Claude and Codex work in them, and a worktree in use is never removed. Once pull request 412 merges, the background sweep cleans its worktree up, since it has no uncommitted files and every commit is on GitHub; issue 77 closed too, but its worktree holds 3 uncommitted files, so it is kept and marked needs a look. Clean up merged branches clears out the local branches of merged pull requests, never touching main, master, or any branch you protect. Bottom: the Scripts tab for mage-x and go-pre-commit users, with Release, Hooks, Repo scripts, Deps, and Runs.">
+</p>
 
 The **Scripts** tab, with Release, Hooks, Repo scripts, Deps, and Runs, appears while mage-x or
 go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts on there.
@@ -1156,6 +1180,10 @@ More in [Tools the app finds and installs](docs/guide/tools.md) and
 <br>
 
 ### <code>The app</code>
+
+<p align="center">
+  <img src="docs/images/feature-app.svg" width="100%" alt="The app, in five tiles. The menu bar: the Nilbox icon shows a live count, and its menu lists the agent sessions waiting for you, the items asking for your review, and Refresh Now; closing the window keeps Nilbox running there. Native banners for a review request and an item back from snooze. The API budget: a dial for whichever GitHub budget has the least left. Light or dark: follow the system, or pin either theme. Service status for GitHub, Claude, and OpenAI, each check costing no API budget.">
+</p>
 
 <details>
 <summary><strong>Menu bar and notifications</strong>: a live count, native banners, and a history</summary>
