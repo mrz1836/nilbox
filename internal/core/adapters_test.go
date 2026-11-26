@@ -472,26 +472,90 @@ func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {
 	require.ErrorIs(t, runs.OpenRun(t.Context(), scriptrun.TerminalRun{Name: "run-8"}), errNoCommand)
 }
 
-func TestTerminalRunsOpenATerminalInAFolder(t *testing.T) {
-	t.Parallel()
+// folderRig is the terminal the runs open in, over a real launcher whose terminal programs
+// runner answers, the folder Open in terminal asks for, and the scripts written for it.
+type folderRig struct {
+	c      *Core
+	runner *testutil.Runner
+	runs   terminalRuns
+	dir    string
+	launch string
+}
+
+func newFolderRig(t *testing.T) folderRig {
+	t.Helper()
 
 	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
 	runner := &testutil.Runner{}
 	c := bootstrap(t, Options{Paths: paths, Home: testutil.ClaudeHome(t), Runner: runner})
-	runs := terminalRuns{
-		launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher), shell: func() string { return "/opt/shells/fish" },
+
+	return folderRig{
+		c: c, runner: runner, dir: filepath.Join(t.TempDir(), "example-repo"), launch: paths.Launch,
+		runs: terminalRuns{
+			launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher), shell: func() string { return "/opt/shells/fish" },
+		},
+	}
+}
+
+// scripts returns the scripts written into the launch folder under name.
+func (r folderRig) scripts(t *testing.T, name string) []string {
+	t.Helper()
+
+	scripts, err := filepath.Glob(filepath.Join(r.launch, name+"-*"))
+	require.NoError(t, err)
+
+	return scripts
+}
+
+func TestTerminalRunsOpenATerminalInAFolder(t *testing.T) {
+	t.Parallel()
+
+	r := newFolderRig(t)
+	require.NoError(t, os.Mkdir(r.dir, 0o700))
+
+	err := r.runs.OpenFolder(t.Context(), "run-9", r.dir)
+
+	if runtime.GOOS != "darwin" {
+		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
+		assert.Empty(t, r.scripts(t, "run-9"), "no terminal here, so no script for one")
+
+		return
 	}
 
-	err := runs.OpenFolder(t.Context(), "run-9", "/work/example-repo")
+	require.NoError(t, err)
 
-	scripts, globErr := filepath.Glob(filepath.Join(paths.Launch, "run-9-*"))
-	require.NoError(t, globErr)
-	require.Len(t, scripts, 1)
+	scripts := r.scripts(t, "run-9")
+	require.Len(t, scripts, 1, "iTerm2, the default, can't open a folder itself, so it opens a script")
 
 	data, readErr := os.ReadFile(scripts[0])
 	require.NoError(t, readErr)
-	assert.Contains(t, string(data), "cd -- '/work/example-repo' || exit 1\nexec '/opt/shells/fish' '-l'\n",
+	assert.Contains(t, string(data), "cd -- '"+r.dir+"' || exit 1\nexec '/opt/shells/fish' '-l'\n",
 		"the user's login shell, in the folder, and nothing else")
+
+	calls := r.runner.Calls()
+	require.NotEmpty(t, calls)
+	assert.Equal(t, "osascript", calls[len(calls)-1][0])
+	assert.Contains(t, strings.Join(calls[len(calls)-1], " "), scripts[0], "iTerm2 opens the script")
+
+	require.NoError(t, testutil.ErrOf(r.c.Settings.SetTerminal(t.Context(), settings.TerminalApp)))
+	require.NoError(t, r.runs.OpenFolder(t.Context(), "run-10", r.dir))
+
+	scripts = r.scripts(t, "run-10")
+	require.Len(t, scripts, 1, "nor can Terminal.app")
+
+	calls = r.runner.Calls()
+	assert.Equal(t, []string{"open", "-a", "Terminal", scripts[0]}, calls[len(calls)-1], "Terminal.app opens the script")
+}
+
+func TestTerminalRunsOpenAFolderInWarpItself(t *testing.T) {
+	t.Parallel()
+
+	r := newFolderRig(t)
+	require.NoError(t, os.Mkdir(r.dir, 0o700))
+	require.NoError(t, testutil.ErrOf(r.c.Settings.SetTerminal(t.Context(), settings.TerminalWarp)))
+
+	err := r.runs.OpenFolder(t.Context(), "run-9", r.dir)
+	assert.Empty(t, r.scripts(t, "run-9"), "no script: a script's nested shell would lose Warp's blocks")
 
 	if runtime.GOOS != "darwin" {
 		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
@@ -500,6 +564,27 @@ func TestTerminalRunsOpenATerminalInAFolder(t *testing.T) {
 	}
 
 	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"open", "-b", "dev.warp.Warp-Stable", r.dir}}, r.runner.Calls(),
+		"Warp opens the folder itself, a tab whose own shell starts there")
+}
+
+func TestTerminalRunsOpenNoTerminalInAFolderThatIsGone(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []terminal.ID{settings.TerminalWarp, settings.TerminalITerm2} {
+		t.Run(string(id), func(t *testing.T) {
+			t.Parallel()
+
+			r := newFolderRig(t)
+			require.NoError(t, testutil.ErrOf(r.c.Settings.SetTerminal(t.Context(), id)))
+
+			err := r.runs.OpenFolder(t.Context(), "run-9", r.dir)
+			require.ErrorIs(t, err, terminal.ErrInvalidFolder)
+			assert.Equal(t, r.dir+" isn't there anymore.", uierr.Message(err))
+			assert.Empty(t, r.scripts(t, "run-9"), "no script for a folder that isn't there")
+			assert.Empty(t, r.runner.Calls(), "nothing runs")
+		})
+	}
 }
 
 func TestFinderRevealShowsTheFile(t *testing.T) {

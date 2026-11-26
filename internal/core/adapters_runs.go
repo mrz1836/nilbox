@@ -23,14 +23,16 @@ var errNoCommand = errors.New("the run has no command")
 
 // terminalRuns opens the runs that go in the user's terminal: it writes each one's script
 // into the launch folder, as a launch writes its own, recorded so the app follows it, and
-// opens it in the terminal chosen in Settings → Launching (scriptrun.TerminalOpener).
+// opens it in the terminal chosen in Settings → Launching (scriptrun.TerminalOpener). It
+// opens that terminal in a folder too, for every page's Open in terminal.
 type terminalRuns struct {
 	launch string
 	opener *launcher.CommandOpener
 	clock  clock.Clock
 	logger *slog.Logger
 
-	// shell is the user's login shell, which a terminal opened in a folder starts.
+	// shell is the user's login shell, which the script that opens a terminal in a folder
+	// starts, for a terminal that can't open a folder itself.
 	shell func() string
 }
 
@@ -51,9 +53,16 @@ func (t terminalRuns) OpenRun(ctx context.Context, run scriptrun.TerminalRun) er
 	return t.opener.Open(ctx, path)
 }
 
-// OpenFolder opens the terminal in dir, for Open in terminal: a script that changes into
-// dir and starts the user's login shell there, and runs nothing else.
+// OpenFolder opens the terminal in dir, for Open in terminal, and runs nothing there. A
+// terminal that opens a folder itself, as Warp does, opens a tab whose own shell starts in
+// dir, so the tab is the terminal's own (Warp's, with its blocks), and no script is
+// written. Any other gets a script named name that changes into dir and starts the user's
+// login shell there, and runs nothing else.
 func (t terminalRuns) OpenFolder(ctx context.Context, name, dir string) error {
+	if opened, err := t.opener.OpenFolder(ctx, dir); err != nil || opened {
+		return err
+	}
+
 	path, err := terminal.WriteScript(t.launch, name, terminal.Script{
 		Purpose: "to open a terminal in a run's folder", Dir: dir, Binary: t.shell(), Args: []string{"-l"},
 		NoPrompt: true,
