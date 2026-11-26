@@ -39,8 +39,9 @@ The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, 
 and `card/RiskChip` is the one chip for trust and sensitive files. `card/CardActions` renders the
 primary and frames `LaunchControls`' `card` variant, which follows the card's session
 (`cardSession`) and keeps its hold, take-over, and clone dialogs mounted. The card's session is the
-newest running, else the newest that ended in the last day unless the item has moved past it
-(`superseded`): its review was left on a commit other than `Details.headOid`, or
+newest running, else the newest that ended in the last day, unless it ended with nothing to read
+(`silent`: no last message and no review, merge, or close; a failed one still shows) or the item
+has moved past it (`superseded`): its review was left on a commit other than `Details.headOid`, or
 `Item.reviewRequestedAt` is later than its end, as when the author pushes and asks again or the user
 re-requests their own review. Then the slot offers a fresh launch, the situation's, in place of its
 Findings. The action column is two

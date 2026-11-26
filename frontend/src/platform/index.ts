@@ -1184,7 +1184,9 @@ export const {
 // terminal, newest first. A "scriptruns:updated" event follows each start, end, or change
 // of status, never output: the window reads a live run's output by polling Output from
 // where it left off. Stop works only on a run going in the app; Run again never on a
-// release. QuitAnyway answers the "app:quitRequested" question: stop the runs and quit;
+// release. ShowInTerminal brings forward the tab a run going in the terminal runs in, in the
+// terminal it opened in (the run's terminal); OpenInTerminal opens a new one in its folder.
+// QuitAnyway answers the "app:quitRequested" question: stop the runs and quit;
 // LetThemFinish quits and lets the agents' runs that can outlive the quit go on
 // (outlivesQuit), stopping every other run; KeepRunning its last answer, which also forgets
 // the copy a move asked to open at the quit.
@@ -1195,6 +1197,7 @@ export const {
   Stop: stopScriptRun,
   RunAgain: runScriptAgain,
   OpenInTerminal: openScriptRunInTerminal,
+  ShowInTerminal: showScriptRunInTerminal,
   ShowLog: showScriptRunLog,
   MarkSeen: markScriptRunSeen,
   ClearHistory: clearScriptRunHistory,

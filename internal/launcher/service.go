@@ -353,8 +353,13 @@ type Preview struct {
 	Command string `json:"command"`
 
 	// Env lists the environment changes, such as "CODEX_HOME=~/.codex_work" or
-	// "unset CLAUDE_CONFIG_DIR".
+	// "unset CLAUDE_CONFIG_DIR", apart from Inherited's.
 	Env []string `json:"env"`
+
+	// Inherited names the variables another agent session would hand down
+	// (agent.SessionEnv), which every launch unsets. They are listed apart from Env so the
+	// window can say them in one entry; the launch script unsets each.
+	Inherited []string `json:"inherited"`
 
 	// Permission summarizes the session's permissions.
 	Permission string `json:"permission"`
@@ -966,8 +971,17 @@ func (p planned) preview(home string) Preview {
 		args = append(args, tildeIn(arg, home))
 	}
 
+	markers := agent.SessionEnv()
 	env := make([]string, 0, len(p.plan.Unset)+len(p.plan.Env))
+	inherited := []string{}
+
 	for _, name := range p.plan.Unset {
+		if slices.Contains(markers, name) {
+			inherited = append(inherited, name)
+
+			continue
+		}
+
 		env = append(env, "unset "+name)
 	}
 
@@ -985,6 +999,7 @@ func (p planned) preview(home string) Preview {
 		Dir:        paths.Tilde(p.plan.Dir, home),
 		Command:    strings.Join(strings.Fields(command), " "),
 		Env:        env,
+		Inherited:  inherited,
 		Permission: p.plan.Permission,
 		Prompt:     p.prompt,
 	}

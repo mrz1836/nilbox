@@ -388,7 +388,8 @@ func addDirs(dirs []string) ([]string, error) {
 
 // AgentEnv returns the environment variables a session of agent a on profile p sets, and
 // those it unsets, over the environment it starts in. It is the one rule for every way the
-// app starts an agent: a launch in the terminal, a resume, and a run in the background.
+// app starts an agent: a launch in the terminal, a resume, a take-over, a routine's run in
+// the terminal, and a run in the background.
 //
 //   - A profile with a config directory sets the agent's config variable
 //     (CLAUDE_CONFIG_DIR, CODEX_HOME) to it, overriding any value in the profile's env; the
@@ -399,6 +400,15 @@ func addDirs(dirs []string) ([]string, error) {
 //     CODEX_ACCESS_TOKEN) are unset, and left out of the profile's env, so the profile's
 //     sign-in is the one used. With useKey, a key in the environment passes through, as
 //     the user's setting asked.
+//   - The variables a running session of any agent sets for the processes it starts
+//     (agent.SessionEnv: Claude Code's CLAUDECODE, CLAUDE_CODE_CHILD_SESSION, and the like,
+//     Codex's CODEX_SANDBOX and CODEX_THREAD_ID) are unset, and left out of the profile's
+//     env, every agent's whichever one starts: a session the app starts is never another's
+//     child, even when the app, or the terminal it opens, was started from inside one. The
+//     user's own settings beside them, such as CLAUDE_CODE_MAX_OUTPUT_TOKENS, pass through.
+//
+// The unset list is in that order: the config variable, the keys, then the sessions'
+// variables, each agent's in its spec's order.
 func AgentEnv(a agent.Agent, p profiles.Profile, useKey bool) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
 	for key, value := range p.Env {
@@ -409,26 +419,29 @@ func AgentEnv(a agent.Agent, p profiles.Profile, useKey bool) (map[string]string
 		env[key] = value
 	}
 
-	var unset []string
-
-	if !useKey {
-		for _, key := range a.KeyEnv {
-			delete(env, key)
-			unset = append(unset, key)
-		}
-	}
-
-	if p.ConfigDir == "" {
-		delete(env, a.ConfigEnv)
-
-		return env, append([]string{a.ConfigEnv}, unset...), nil
-	}
-
-	if !filepath.IsAbs(p.ConfigDir) {
+	if p.ConfigDir != "" && !filepath.IsAbs(p.ConfigDir) {
 		return nil, nil, fmt.Errorf("%w: profile config directory %q", ErrRelativePath, p.ConfigDir)
 	}
 
-	env[a.ConfigEnv] = p.ConfigDir
+	var unset []string
+
+	if p.ConfigDir == "" {
+		unset = append(unset, a.ConfigEnv)
+	}
+
+	if !useKey {
+		unset = append(unset, a.KeyEnv...)
+	}
+
+	unset = append(unset, agent.SessionEnv()...)
+
+	for _, key := range unset {
+		delete(env, key)
+	}
+
+	if p.ConfigDir != "" {
+		env[a.ConfigEnv] = p.ConfigDir
+	}
 
 	return env, unset, nil
 }

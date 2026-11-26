@@ -67,6 +67,74 @@ func ParseProcArgs(buf []byte) []string {
 	return out
 }
 
+// ParseProcEnv reads one environment variable, name, from macOS's kern.procargs2 for a
+// process, laid out as ParseProcArgs reads it: it skips the argument count, the path the
+// process was executed from and its NUL padding, and that many arguments, then looks for
+// name among the environment's NAME=value strings, each ending in a NUL, which end at an
+// empty one. It returns name's value alone, copied out, and reports false for a name that
+// isn't set there (one only among the arguments included), for a buffer it can't read, and
+// for an empty name or one holding '=' or a NUL. The environment holds the process's
+// secrets, so it keeps nothing else of it.
+func ParseProcEnv(buf []byte, name string) (string, bool) {
+	const countSize = 4
+	if !envName(name) || len(buf) < countSize {
+		return "", false
+	}
+
+	argc := binary.NativeEndian.Uint32(buf[:countSize])
+
+	path := bytes.IndexByte(buf[countSize:], 0)
+	if path < 0 {
+		return "", false
+	}
+
+	rest := bytes.TrimLeft(buf[countSize+path:], "\x00")
+
+	for ; argc > 0; argc-- {
+		end := bytes.IndexByte(rest, 0)
+		if end < 0 {
+			return "", false
+		}
+
+		rest = rest[end+1:]
+	}
+
+	// The buffer is the process's memory as it is now, not as it was at exec: a process that
+	// renamed itself, as node does for process.title, wrote the new name over its arguments
+	// and NULs over the rest of them, so after argc strings the read can still be among
+	// those NULs. An environment string is never empty, so skipping them can't make an
+	// argument read as a variable.
+	rest = bytes.TrimLeft(rest, "\x00")
+
+	return envValue(rest, name)
+}
+
+// envName reports whether name can be an environment variable's name: not empty, and
+// holding neither the '=' that ends one nor the NUL that ends the string.
+func envName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, "=\x00")
+}
+
+// envValue returns the value of name among env's NAME=value strings, each ending in a NUL,
+// which end at an empty one or the buffer's end; a string the buffer cuts short, with no
+// NUL, is not one. The first one set wins, as getenv's does.
+func envValue(env []byte, name string) (string, bool) {
+	prefix := []byte(name + "=")
+
+	for {
+		end := bytes.IndexByte(env, 0)
+		if end <= 0 {
+			return "", false
+		}
+
+		if value, ok := bytes.CutPrefix(env[:end], prefix); ok {
+			return string(value), true
+		}
+
+		env = env[end+1:]
+	}
+}
+
 // ByPID returns list's processes by PID.
 func ByPID(list []Process) map[int]Process {
 	out := make(map[int]Process, len(list))

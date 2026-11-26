@@ -48,6 +48,32 @@ func detailIn(root string, pid int) (Detail, bool) {
 	return d, true
 }
 
+// EnvOf returns the value of one environment variable, name, of the process with pid, as
+// the process started with it, from /proc, and reports whether it could. It returns that
+// one variable and keeps nothing else: the environment holds the process's secrets, so
+// what was read is cleared before EnvOf returns, and a caller never logs or stores any
+// more of it. Another user's process hides its environment, and reports false.
+func EnvOf(pid int, name string) (string, bool) {
+	return envIn(procRoot, pid, name)
+}
+
+// envIn reads name's value from <root>/<pid>/environ, the process's environment as NUL
+// ending NAME=value strings.
+func envIn(root string, pid int, name string) (string, bool) {
+	if !ValidPID(pid) || !envName(name) {
+		return "", false
+	}
+
+	env, err := os.ReadFile(filepath.Join(root, strconv.Itoa(pid), "environ")) //nolint:gosec // the kernel's process table
+	if err != nil {
+		return "", false
+	}
+
+	defer clear(env)
+
+	return envValue(env, name)
+}
+
 // statField reads the numeric field at position from a /proc/<pid>/stat line, counted from
 // 1 as proc(5) numbers them, from the third on. The command name, the second field, is in
 // parentheses and may hold spaces and parentheses itself, so the fields are counted from

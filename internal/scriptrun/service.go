@@ -16,8 +16,8 @@ import (
 )
 
 // Service is the runs as the window sees them: the history, a run's output, Stop, Run
-// again, and the quit guard's answer. The window binds it; it starts nothing new itself
-// but Run again.
+// again, Show in terminal, and the quit guard's answer. The window binds it; it starts
+// nothing new itself but Run again.
 type Service struct {
 	e *Engine
 }
@@ -74,6 +74,12 @@ type Run struct {
 
 	RunsIn RunsIn `json:"runsIn"`
 	Status Status `json:"status"`
+
+	// Terminal is the settings ID of the terminal app a run in the terminal opened in, such
+	// as "iterm2", which the window names it by ("In iTerm2"), or "" for a run in the app
+	// and one recorded before runs recorded it, which the window names by the terminal
+	// chosen now.
+	Terminal string `json:"terminal"`
 
 	// ExitCode is the program's exit status, or null when unknown or still running.
 	ExitCode *int `json:"exitCode"`
@@ -215,6 +221,34 @@ func (s *Service) OpenInTerminal(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ShowInTerminal brings forward the terminal tab a run going in the terminal runs in, with
+// its window, in the terminal it opened in, so the user can watch it, answer it, or stop
+// it there. It reads the terminal device of the shell the run's script recorded first,
+// which shows the run still runs in a terminal (iTerm2 and Terminal.app find its tab by
+// it), and the focus link the script recorded (Warp finds its tab by that), then hands
+// them to the engine's TabFocuser, which words what the terminal says. A run that has
+// ended is refused with ErrNotRunning, one in the app with ErrNotInTerminal, and one whose
+// shell isn't recorded yet, or is gone, with ErrNoTab.
+func (s *Service) ShowInTerminal(ctx context.Context, id int64) error {
+	rec, err := s.e.store.get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err = s.e.showable(rec); err != nil {
+		return err
+	}
+
+	tty, err := shellTTY(ctx, s.e.ps, rec.PID)
+	if err != nil {
+		return uierr.New(lostTab, err)
+	}
+
+	return s.e.tabs.FocusRun(ctx, TerminalTab{
+		Terminal: rec.Terminal, TTY: tty, PID: rec.PID, Link: s.e.files.readLink(id),
+	})
+}
+
 // ShowLog shows a run's log file in Finder.
 func (s *Service) ShowLog(ctx context.Context, id int64) error {
 	if _, err := s.e.store.get(ctx, id); err != nil {
@@ -295,8 +329,9 @@ func (s *Service) view(rec Record) Run {
 	run := Run{
 		ID: rec.ID, Kind: rec.Kind, Title: rec.Title, Source: rec.Source, Repo: repoText(rec.Repo),
 		Dir: paths.Tilde(rec.Dir, s.e.home), Argv: rec.Argv, Command: rec.Command, RunsIn: rec.RunsIn,
-		Status: rec.Status, ExitCode: rec.ExitCode, Summary: rec.Summary, Result: rec.Result, LogBytes: rec.LogBytes,
-		Seen: !rec.SeenAt.IsZero(), StartedAt: clock.Format(rec.StartedAt), FinishedAt: formatTime(rec.FinishedAt),
+		Status: rec.Status, Terminal: rec.Terminal, ExitCode: rec.ExitCode, Summary: rec.Summary, Result: rec.Result,
+		LogBytes: rec.LogBytes,
+		Seen:     !rec.SeenAt.IsZero(), StartedAt: clock.Format(rec.StartedAt), FinishedAt: formatTime(rec.FinishedAt),
 		CanRunAgain: rec.Kind != KindRelease && s.e.rerunner(rec.Kind) != nil,
 	}
 

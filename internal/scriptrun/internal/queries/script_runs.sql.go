@@ -56,7 +56,7 @@ func (q *Queries) DeleteRuns(ctx context.Context, ids []int64) error {
 
 const endedRunsOfKind = `-- name: EndedRunsOfKind :many
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE kind = ?1 AND status NOT IN ('running', 'orphaned')
 ORDER BY started_at, id
@@ -94,6 +94,7 @@ func (q *Queries) EndedRunsOfKind(ctx context.Context, kind string) ([]ScriptRun
 			&i.SeenAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Terminal,
 		); err != nil {
 			return nil, err
 		}
@@ -149,7 +150,7 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (int64, er
 
 const getRun = `-- name: GetRun :one
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE id = ?1
 `
@@ -180,6 +181,7 @@ func (q *Queries) GetRun(ctx context.Context, id int64) (ScriptRun, error) {
 		&i.SeenAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.Terminal,
 	)
 	return i, err
 }
@@ -232,7 +234,7 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (int64, er
 
 const listRuns = `-- name: ListRuns :many
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 ORDER BY started_at DESC, id DESC
 `
@@ -269,6 +271,7 @@ func (q *Queries) ListRuns(ctx context.Context) ([]ScriptRun, error) {
 			&i.SeenAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Terminal,
 		); err != nil {
 			return nil, err
 		}
@@ -285,7 +288,7 @@ func (q *Queries) ListRuns(ctx context.Context) ([]ScriptRun, error) {
 
 const liveRuns = `-- name: LiveRuns :many
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE status IN ('running', 'orphaned')
 ORDER BY id
@@ -323,6 +326,7 @@ func (q *Queries) LiveRuns(ctx context.Context) ([]ScriptRun, error) {
 			&i.SeenAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+			&i.Terminal,
 		); err != nil {
 			return nil, err
 		}
@@ -430,4 +434,20 @@ func (q *Queries) SetRunStatus(ctx context.Context, arg SetRunStatusParams) (int
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setRunTerminal = `-- name: SetRunTerminal :exec
+UPDATE script_runs SET terminal = ?1 WHERE id = ?2
+`
+
+type SetRunTerminalParams struct {
+	Terminal string
+	ID       int64
+}
+
+// SetRunTerminal records the terminal app a run in the terminal opened in, by its settings
+// ID, once the terminal has opened it.
+func (q *Queries) SetRunTerminal(ctx context.Context, arg SetRunTerminalParams) error {
+	_, err := q.db.ExecContext(ctx, setRunTerminal, arg.Terminal, arg.ID)
+	return err
 }

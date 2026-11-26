@@ -2,6 +2,7 @@ package sessions_test
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -22,11 +23,11 @@ type fakeFocuser struct {
 	err   error
 }
 
-func (f *fakeFocuser) Focus(_ context.Context, terminal, tty string) error {
+func (f *fakeFocuser) Focus(_ context.Context, terminal, tty string, pid int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.asked = append(f.asked, terminal+" "+tty)
+	f.asked = append(f.asked, terminal+" "+tty+" "+strconv.Itoa(pid))
 
 	return f.err
 }
@@ -97,7 +98,8 @@ func TestFocus(t *testing.T) {
 	svc := newService(t, ps, focus)
 
 	require.NoError(t, svc.Focus(t.Context(), "s1"))
-	assert.Equal(t, []string{"iterm2 /dev/ttys004"}, focus.asked)
+	assert.Equal(t, []string{"iterm2 /dev/ttys004 4100"}, focus.asked,
+		"its tty, and its process, whose environment Warp's driver reads")
 	assert.Equal(t, [][]string{{"/bin/ps", "-o", "tty=", "-p", "4100"}}, ps.Calls())
 
 	err := svc.Focus(t.Context(), "s2")
@@ -208,6 +210,67 @@ func TestListOffersNoResumeForAConversationStillRunning(t *testing.T) {
 
 	for _, s := range got.Sessions {
 		assert.False(t, s.CanResume, "%s: its conversation runs on in the session resumed from it", s.ID)
+	}
+}
+
+func TestListNamesTheSessionThatCarriesAConversationOn(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	at := launched()
+
+	// A background run, taken over: its session ended, and its conversation carries on in
+	// the terminal, resumed from it, then again in a newer session once that one ended.
+	run := record("run", 12)
+	run.RunID, run.Terminal = 7, ""
+	first, newest, alone := record("first", 12), record("newest", 12), record("alone", 13)
+	first.AgentSessionID, first.ResumedFrom, first.LaunchedAt = "run", "run", at.Add(time.Minute)
+	newest.AgentSessionID, newest.ResumedFrom, newest.LaunchedAt = "run", "first", at.Add(2*time.Minute)
+	unlinked := record("unlinked", 13)
+	unlinked.AgentSessionID = ""
+
+	for _, r := range []sessions.Record{run, first, newest, alone, unlinked} {
+		require.NoError(t, store.Insert(t.Context(), r))
+	}
+
+	_, _, err := store.SetRunState(t.Context(), "run", sessions.RunUpdate{State: sessions.StateEnded}, at)
+	require.NoError(t, err)
+	_, err = store.Apply(t.Context(), at.Add(3*time.Minute), []sessions.Observation{
+		{ID: "first", State: sessions.StateEnded},
+		{ID: "newest", State: sessions.StateWorking, PID: 4100},
+		{ID: "alone", State: sessions.StateEnded},
+	})
+	require.NoError(t, err)
+
+	svc := sessions.NewService(sessions.Config{Store: store, Clock: testutil.NewClock(at.Add(time.Hour))})
+
+	got, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	byID := map[string]sessions.Session{}
+	for _, s := range got.Sessions {
+		byID[s.ID] = s
+	}
+
+	assert.Equal(t, "newest", byID["run"].CarriedBy, "the run taken over names the session that carries it on")
+	assert.Equal(t, "newest", byID["first"].CarriedBy)
+	assert.False(t, byID["first"].CanResume)
+	assert.Empty(t, byID["newest"].CarriedBy, "the session carrying it on names none")
+	assert.True(t, byID["newest"].CanFocus, "and its terminal can be shown")
+	assert.Empty(t, byID["alone"].CarriedBy, "a conversation nothing carries on names none")
+	assert.True(t, byID["alone"].CanResume)
+	assert.Empty(t, byID["unlinked"].CarriedBy, "nor one the agent never named")
+
+	_, err = store.Apply(t.Context(), at.Add(4*time.Minute), []sessions.Observation{
+		{ID: "newest", State: sessions.StateEnded},
+	})
+	require.NoError(t, err)
+
+	got, err = svc.List(t.Context())
+	require.NoError(t, err)
+
+	for _, s := range got.Sessions {
+		assert.Empty(t, s.CarriedBy, "%s: once the conversation ended everywhere, nothing carries it on", s.ID)
 	}
 }
 

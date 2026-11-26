@@ -51,18 +51,66 @@ over a ChatGPT sign-in), which a profile's own environment can't set either; the
 Preview lists them (`unset ANTHROPIC_API_KEY`). **Use an API key for Claude Code when one is set**
 and **Use an API key for Codex when one is set**, under **Settings → Launching**, off at first,
 each lets a key from your shell through for that
-agent's launches, billed to that key. The same rule decides the environment of every launch: from
-the launch menu, a resume, and an Autopilot routine's. Nothing logs a variable's value.
+agent's launches, billed to that key.
+
+## Another session's variables
+
+A running agent session sets variables for the programs it starts, which tell them they run
+inside it: Claude Code's `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_EFFORT`, `CLAUDE_PID`, and the like, and Codex's
+`CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, and `CODEX_THREAD_ID`. macOS's `open` hands an
+app it starts the whole environment of whoever started it, so a terminal started from a shell inside
+such a session (or started by the app while the app itself was) carries them into every tab, and an
+agent started there takes itself for that session's child: Claude Code then saves no transcript
+("inherited CLAUDE_CODE_CHILD_SESSION marker"), and its card reads *status unavailable*. So every
+launch unsets every agent's, whichever agent it starts, and the app starts your terminal without
+them. Only those names go: your own settings beside them, such as
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, still reach the
+session. The launch menu's Preview folds them into one entry after the keys, *unset 15 inherited
+session variables*, whose tooltip names each one; the launch script unsets each.
+
+The same rules decide the environment of every launch: from the launch menu, a resume, a Take
+over, and an Autopilot routine's. Nothing logs a variable's value.
+
+## The terminal
 
 The terminal then runs the script:
 
 - **iTerm2** (the default) opens a new tab in the frontmost window, or a new window when none is
   open.
+- **Warp** opens a new tab in its frontmost window, or a new window when none is open. When Warp
+  is quit, it starts, restores its last window, and adds the tab there. What differs in Warp is
+  [below](#warp).
 - **Terminal.app** opens a new window (`open -a Terminal`).
 
-Choose the terminal under **Settings → Launching**, and the clone root (the directory whose
-children are your clones, initially `~/projects`) under **Settings → Repositories**. A launch
-whose agent isn't installed says so, as in "Codex isn't installed (codex wasn't found)."
+**Resume**, **Take over**, an Autopilot routine's run in your terminal, and a [run](runs.md)
+that goes in your terminal open the same way.
+
+The first-run setup picks the first one installed, in that order: iTerm2, then Warp, then
+Terminal, and says so, as in *iTerm2 isn't installed, so launches open in Warp.* A terminal you
+choose in the setup never moves. iTerm2 and Warp count as installed when `iTerm.app` or
+`Warp.app` is in `/Applications` or `~/Applications`, and Terminal.app always is; Autopilot's
+[This Mac](autopilot/this-mac.md) checks the terminal the same way.
+
+Choose the terminal under **Settings → Launching**, which lists the three in that order
+(searching Settings for *Warp* finds it) and, as the setup does, says under the choice what it
+needs before your first launch there: for iTerm2, *Your first launch asks to let Nilbox control
+iTerm2. Choose Allow.* ([below](#macoss-automation-permission)); for Warp, *Open Warp once and
+finish its welcome before your first launch.* ([below](#warps-welcome-comes-first)); for
+Terminal.app, nothing. Choose the clone root (the directory whose children are your clones,
+initially `~/projects`) under **Settings → Repositories**. A launch whose agent isn't installed
+says so, as in "Codex isn't installed (codex wasn't found)."
+
+### Open in terminal
+
+**Open in terminal** (on the [Worktrees view](worktrees-view.md)'s rows, drawer, and ⋯ menu, a
+[run](runs.md)'s panel, [Hooks](hooks.md), [Release](release.md), and [Deps](deps.md)) opens the
+chosen terminal in a folder and runs nothing there. In iTerm2 and Terminal.app, a small script
+in the launch folder changes into the folder and starts your login shell. In Warp, nothing runs
+and no script is written: Warp opens the folder itself, in a new tab whose own shell starts
+there, with Warp's input editor and blocks. Warp would run that script's shell as one long
+command, with no blocks. With any terminal, a folder gone since the page listed it is refused,
+as in *~/projects/example-repo isn't there anymore.*
 
 ## Repository locations
 
@@ -285,10 +333,45 @@ The first launch in iTerm2 makes macOS ask once whether the app may control iTer
 Automation permission, which has nothing to do with [Autopilot](autopilot/README.md)): "“Nilbox”
 wants access to control “iTerm”", followed by the app's reason: Nilbox opens your terminal app
 (such as iTerm2) to start coding sessions in your local clones, and asks Finder to move a copy of
-a tool to the Trash when you choose to. Choose **Allow**. Terminal.app
-launches never ask. An Autopilot routine's run in your terminal, and **Take over**, open
+a tool to the Trash when you choose to. Choose **Allow**. Warp and Terminal.app launches never
+ask. An Autopilot routine's run in your terminal, and **Take over**, open
 iTerm2 the same way, so allow it before you leave a routine to run while you're away.
+[Show in terminal](following-a-session.md#show-in-terminal) uses the same permission in iTerm2,
+asks for its own the first time in Terminal.app, and needs none in Warp.
 
 If you chose **Don't Allow**, the launch fails with a message that says so. Change it in
 **System Settings → Privacy & Security → Automation**, under Nilbox. A build from source asks,
 and is listed there, as Nilbox Dev, apart from the release.
+
+## Warp
+
+Nilbox supports Warp Stable on macOS, and opens it by its bundle ID
+(`open -b dev.warp.Warp-Stable <script>`), so Warp Preview never answers. Warp asks for no macOS
+permission, for a launch or anything else.
+
+- **Which Warp.** Warp v0.2026.05.13 or newer runs a launch's script; an older Warp opens the
+  script in its editor instead, and nothing runs. [Show in
+  terminal](following-a-session.md#show-in-terminal) needs v0.2026.05.27 or newer, and a session
+  started in such a Warp, whether launched there or resumed there yourself.
+- **The tab's folder.** Warp starts the tab in the launch script's folder, which the script then
+  leaves for the worktree, so the tab's title, and its prompt once the agent exits, show the
+  app's launch folder rather than the worktree: `cd` there, or use [Open in
+  terminal](#open-in-terminal), to keep working.
+- **A closed tab lives on for about a minute.** Warp keeps a closed tab about 60 seconds, so ⇧⌘T
+  can reopen it, and what ran in it keeps running until then. A followed run whose Warp tab you
+  close reads *The terminal closed while this was running.* that much later, and in that minute
+  Show in terminal only brings Warp forward.
+
+### Warp's welcome comes first
+
+Until Warp's first-run welcome is finished, Warp quietly drops every script, folder, or link it
+is asked to open, and macOS still reports the open as done, so Nilbox can't tell: a launch says
+it opened, but no tab appears. Open Warp once and finish the welcome (it needs no sign-in)
+before your first launch; the setup and **Settings → Launching** say so when you choose Warp:
+*Open Warp once and finish its welcome before your first launch.* An Autopilot routine's run in
+your terminal is dropped the same way, so finish it before you leave a routine to run while
+you're away.
+
+Nothing dropped is opened later. The session's card shows it starting, then, a minute or so
+later, ended, and a run in your terminal holds its clone until, two minutes on, it reads *The
+terminal didn't start the run.* Finish the welcome, then launch or run it again.

@@ -29,19 +29,38 @@ var (
 // ttyPattern is what a terminal device path looks like: /dev/ttys004, /dev/pts/3.
 var ttyPattern = regexp.MustCompile(`^/dev/[A-Za-z0-9]+(/[0-9]+)?$`)
 
+// Tab is what tells the tab a session or a followed run runs in: its terminal device,
+// which iTerm2 and Terminal.app find the tab by, and the focus link Warp gave the tab's
+// shell, which Warp finds it by: the link a followed run's script recorded, or else the
+// one in its process's environment, which a session's agent inherits from its tab.
+type Tab struct {
+	// TTY is the terminal device it runs on, such as /dev/ttys004.
+	TTY string
+
+	// PID is the session's agent process, or the shell that runs a followed run's script.
+	PID int
+
+	// Link is the Warp focus link a followed run's script recorded for its tab
+	// (Recording.LinkFile), or "". Warp's Focus opens it when it is exactly a focus link
+	// (warpFocusLink), and reads the PID's environment otherwise; the other terminals
+	// ignore it.
+	Link string
+}
+
 // Focuser is a Driver that can also bring forward the tab a session runs in.
 type Focuser interface {
 	Driver
 
-	// Focus selects the tab whose terminal device is tty, such as /dev/ttys004, brings
-	// its window forward, and activates the terminal. It returns ErrNoSuchTab when no tab
-	// runs on tty.
-	Focus(ctx context.Context, tty string) error
+	// Focus selects the tab that tab tells, brings its window forward, and activates the
+	// terminal. A driver that finds the tab by its tty returns ErrNoSuchTab when no tab
+	// runs on it; Warp's returns ErrNoFocusLink when neither the tab's recorded link nor
+	// its process carries a link to it.
+	Focus(ctx context.Context, tab Tab) error
 }
 
-// Focus brings forward the tab that runs on tty in the terminal registered under id. It
+// Focus brings forward the tab that tab tells in the terminal registered under id. It
 // returns ErrNoFocus for a terminal whose driver cannot.
-func (r Registry) Focus(ctx context.Context, id ID, tty string) error {
+func (r Registry) Focus(ctx context.Context, id ID, tab Tab) error {
 	d, err := r.Get(id)
 	if err != nil {
 		return err
@@ -52,7 +71,7 @@ func (r Registry) Focus(ctx context.Context, id ID, tty string) error {
 		return fmt.Errorf("%w: %s", ErrNoFocus, id)
 	}
 
-	return f.Focus(ctx, tty)
+	return f.Focus(ctx, tab)
 }
 
 // validateTTY checks that tty is a terminal device path, so it can be written into a

@@ -79,11 +79,11 @@ export function fileKey(file: WorktreeFile): string {
 }
 
 // RestInTerminal says where the rest of a list are when it holds only the first listed of
-// count: in Terminal, through command.
+// count: in the user's terminal, through command.
 export function RestInTerminal({ listed, count, command }: { listed: number; count: number; command: string }) {
   return (
     <>
-      {`Only the first ${formatCount(listed)} are listed here; ${formatCount(count - listed)} more are in Terminal (`}
+      {`Only the first ${formatCount(listed)} are listed here; ${formatCount(count - listed)} more are in your terminal (`}
       <code className="font-mono">{command}</code>)
     </>
   )

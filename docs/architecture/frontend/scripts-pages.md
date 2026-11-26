@@ -87,12 +87,22 @@ the row's empty space, unfolds `DepsDrawer.tsx`. The notes are the upgrade an ag
 (`upgradeSessions`, the sessions of number 0 and kind '' in `useSessions`' `byItem`, the one shown
 picked as a card's is, `cardSession`), then when the user marked it (`checkedAgo`, *checked 3d ago*,
 as of the clock, `checkedTitle` in its tooltip), then `cloneNotes` (none counted, or age unknown,
-read at HEAD, shallow, not all read).
+read at HEAD, shallow, not all read). The upgrade's tag, `UpgradeTag`, is a button while the
+session is `showable` (`lib/sessions`: not ended, and `canFocus`, the field a card's Show terminal
+waits on), which calls the page's `onShowTerminal`: `DepsPage` holds one `useMutation` over
+`focusSession` for every row's tag and shows its error in the head, beside `markError`, until the
+next try. Its focus ring is drawn inside it (`-outline-offset-2`), since the notes' cell clips
+what overflows it. Otherwise, or with no `onShowTerminal`, the tag is words alone.
 
 The drawer lists the modules a line each, those that count first, a module that doesn't marked *not
 counted* after its path (`uncountedTitle` says why), each with its own Reveal in Finder, so Finder
-shows the file its line names, then the workspace files, with Open in Terminal, Mark up to date (or
-Unmark up to date), and Upgrade dependencies… at its foot; it reads nothing more. A mark calls
+shows the file its line names, then the workspace files, with Show terminal, Open in terminal, Mark
+up to date (or Unmark up to date), and Upgrade dependencies… at its foot; it reads nothing more.
+The row hands it the upgrade its tag follows, and Show terminal shows only while that session is
+`showable`. The drawer's one `useMutation` opens what an `Opening` names, one at a time: the clone
+in the terminal (`OpenTerminal`, which opens the clone itself, never the upgrade's worktree), a
+manifest in Finder (`Reveal`), or the session's tab (`focusSession`); while one runs every one of
+them waits, and the drawer shows the latest one's worded error until the next try. A mark calls
 `MarkChecked` or `ClearChecked` through `useManifests`' `mark`, which shows the page the service
 returns in place of the one shown, so the clone moves group at once without a read of the clones;
 one under way holds every mark back (`marking`), and one that fails says why in the head

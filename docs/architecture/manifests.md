@@ -137,15 +137,17 @@ returns once they have, so the shell never leaves one reading behind it.
 
 A row's **Open in terminal** (`OpenTerminal(dir)`) opens the terminal chosen for launches in a clone
 the repository locations hold (`localrepos.ByFolder`, the clone named by its folder with `~`),
-through its `FolderOpener` (core's `worktreeTerminal`), running nothing there, or fails with
-`ErrNoTerminal` without one. A module's **Reveal in Finder** (`Reveal(dir, path)`) shows a clone's
-manifest or lockfile in Finder through its `Revealer` (core's `open -R`; off macOS there is none,
-and it fails with `ErrNoFinder`): the path must pass `ValidManifestPath` or `ValidLockfilePath`,
-checked before anything is read, and the file must be in the clone's checkout now and inside the
-clone once its links are resolved; Finder only shows it, so nothing reads or runs it, and a named
-pipe there is shown, never opened. A row's Upgrade is a repository's launch
-([internal/launcher](launcher.md)). The repoguard boundary test keeps the package off the store, the
-GitHub client, settings, the inbox, core, scriptrun, the launcher, the worktrees, release, hooks,
+through its `FolderOpener` (core's `worktreeTerminal`, which opens Warp in the folder itself and
+any other terminal through a script; see [internal/launcher](launcher.md)), running nothing
+there, or fails with `ErrNoTerminal` without one. A module's **Reveal in Finder**
+(`Reveal(dir, path)`) shows a clone's manifest or lockfile in Finder through its `Revealer`
+(core's `open -R`; off macOS there is none, and it fails with `ErrNoFinder`): the path must pass
+`ValidManifestPath` or `ValidLockfilePath`, checked before anything is read, and the file must be
+in the clone's checkout now and inside the clone once its links are resolved; Finder only shows
+it, so nothing reads or runs it, and a named pipe there is shown, never opened. A row's Upgrade
+is a repository's launch ([internal/launcher](launcher.md)). The repoguard boundary test keeps
+the package off the store, the GitHub client, settings, the inbox, core, scriptrun, the launcher,
+the worktrees, release, hooks,
 scripts, setup, integrations, the desktop shell, and notify: it reads the clones through gitread and
 its own interfaces, which core adapts, keeps its marks through its own queries rather than the
 store, starts no run, and asks nothing of GitHub or a registry.

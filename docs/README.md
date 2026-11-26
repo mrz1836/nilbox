@@ -71,11 +71,11 @@ How the app behaves on your Mac, feature by feature, grouped as the README's Fea
 
 | Page                                                 | What's in it                                                                                  |
 |------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| [Launching a session](guide/launching-a-session.md)  | What a launch does: repository locations, worktrees, a clone's own config, workspace trust     |
+| [Launching a session](guide/launching-a-session.md)  | What a launch does: the terminal, Warp, locations, worktrees, a clone's own config, trust     |
 | [Coding agents and profiles](guide/agents-and-profiles.md) | How the app finds Claude Code, Codex, and their profiles, and picks one                 |
 | [Launch defaults](guide/launch-defaults.md)          | What launches use for an org or a repository, and the order the defaults resolve in           |
 | [Prompts](guide/prompts.md)                          | The prompt library: starters, writing and checking a prompt, review replies, keeping them     |
-| [Following a session](guide/following-a-session.md)  | What the app reads of each session it starts, and where it shows it                           |
+| [Following a session](guide/following-a-session.md)  | What the app reads of each session it starts, where it shows it, and Show in terminal         |
 | [Outside contributors](guide/outside-contributors.md) | When an item is trusted, and what a launch may do on one that isn't                          |
 | [Sensitive files](guide/sensitive-files.md)          | Which changed files count as sensitive, where they show, and what the prompt says             |
 
@@ -201,7 +201,7 @@ before changing it.
 
 | Notes                                                | What's in them                                                                                |
 |------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| [`internal/launcher`](architecture/launcher.md)      | Resolves, plans, and opens a launch in the user's terminal; holds, trust, and `workspacetrust` |
+| [`internal/launcher`](architecture/launcher.md)      | Resolves, plans, and opens a launch; the terminal drivers, holds, trust, and `workspacetrust` |
 | [`internal/sessions`](architecture/sessions.md)      | Follows the agent sessions launches start                                                     |
 | [`internal/prompts`](architecture/prompts.md)        | The prompt library and review replies: starters, templates and their checks, defaults, and the copy beside the database |
 | [`internal/launchdefaults`](architecture/launchdefaults.md) | The org and repository launch defaults, how they resolve, and the copy beside the database |

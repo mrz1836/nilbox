@@ -998,7 +998,11 @@ describe('LaunchControls', () => {
       menu.getByText(`Creates ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 from the pull request’s head`),
     ).toBeInTheDocument()
     expect(menu.getByText(`~/projects/.${brand.slug}/worktrees/example-repo/pr-7`)).toBeInTheDocument()
-    expect(menu.getByText('unset CLAUDE_CONFIG_DIR')).toBeInTheDocument()
+    expect(menu.getByText(/^unset CLAUDE_CONFIG_DIR ·/)).toBeInTheDocument()
+    expect(menu.getByText('unset 2 inherited session variables')).toHaveAttribute(
+      'title',
+      'unset CLAUDECODE\nunset CLAUDE_CODE_CHILD_SESSION',
+    )
     expect(menu.getByText(/claude <prompt> --dangerously-skip-permissions/)).toBeInTheDocument()
 
     platform.previewLaunch.mockRejectedValue(new Error('no local clone of acme-org/example-repo under ~/projects'))
@@ -1448,7 +1452,7 @@ describe('LaunchControls with more than one agent', () => {
     expect(
       await menu.findByText(`Resumes ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 · 2 uncommitted files`),
     ).toBeInTheDocument()
-    expect(menu.getByText('export CODEX_HOME=~/.codex_alt')).toBeInTheDocument()
+    expect(menu.getByText(/^export CODEX_HOME=~\/\.codex_alt ·/)).toBeInTheDocument()
     expect(menu.getByText('codex --sandbox read-only --ask-for-approval on-request -- <prompt>')).toBeInTheDocument()
     expect(platform.previewLaunch).toHaveBeenLastCalledWith({ ...defaultRequest, agent: 'codex' })
   })

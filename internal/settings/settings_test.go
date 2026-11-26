@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -208,16 +209,24 @@ func TestTrustedBots(t *testing.T) {
 func TestTerminalPrefPersists(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "app.db")
-	home := t.TempDir()
+	for _, id := range []terminal.ID{TerminalApp, TerminalWarp, TerminalITerm2} {
+		t.Run(string(id), func(t *testing.T) {
+			t.Parallel()
 
-	db := testutil.DBAt(t, path)
-	require.NoError(t, testutil.ErrOf(serviceOver(t, db, home).SetTerminal(t.Context(), TerminalApp)))
-	require.NoError(t, db.Close())
+			path := filepath.Join(t.TempDir(), "app.db")
+			home := t.TempDir()
 
-	got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, TerminalApp, got.Terminal)
+			db := testutil.DBAt(t, path)
+			set, err := serviceOver(t, db, home).SetTerminal(t.Context(), id)
+			require.NoError(t, err)
+			assert.Equal(t, id, set.Terminal)
+			require.NoError(t, db.Close())
+
+			got, err := serviceOver(t, testutil.DBAt(t, path), home).Get(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, id, got.Terminal)
+		})
+	}
 }
 
 func TestWithClockStampsTheStoredSettings(t *testing.T) {
@@ -378,7 +387,8 @@ func TestSetRejectsInvalid(t *testing.T) {
 		wantErr error
 		wantMsg string
 	}{
-		{name: "unknown terminal", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "warp")) }, wantErr: ErrInvalidTerminal, wantMsg: `"warp"`},
+		{name: "unknown terminal", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "no-such-terminal")) }, wantErr: ErrInvalidTerminal, wantMsg: `"no-such-terminal": choose one of "iterm2", "warp", "terminal"`},
+		{name: "Warp Preview", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "warp-preview")) }, wantErr: ErrInvalidTerminal},
 		{name: "empty terminal", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "")) }, wantErr: ErrInvalidTerminal},
 		{name: "terminal in the wrong case", set: func() error { return testutil.ErrOf(svc.SetTerminal(t.Context(), "ITERM2")) }, wantErr: ErrInvalidTerminal},
 		{name: "unknown profile", set: func() error { return testutil.ErrOf(svc.SetDefaultProfile(t.Context(), agent.Claude, "missing")) }, wantErr: ErrUnknownProfile, wantMsg: `"missing"`},
@@ -445,7 +455,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyDefaultAgent, "example-agent")
 	setPref(t, db, KeyWorktreeDefault, "maybe")
 	setPref(t, db, KeyWorktreeAutoCleanup, "sometimes")
-	setPref(t, db, KeyTerminal, "warp")
+	setPref(t, db, KeyTerminal, "no-such-terminal")
 	setPref(t, db, KeyCloneRoot, "   ")
 	setPref(t, db, KeySnoozeDays, "-2")
 	setPref(t, db, KeyToastSeconds, "61")

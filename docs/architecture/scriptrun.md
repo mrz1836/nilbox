@@ -75,3 +75,38 @@ in one transaction with the read its change is given, as a release's follow of i
 and `Ended` lists a kind's ended runs, from which that follow resumes. The history keeps 200 runs
 and 512 MB of logs, and cuts a long log to its head and tail; Run again works the command out afresh
 from its source, never for a release or a tool's update.
+
+`OpenInTerminal` opens the folder through the engine's `TerminalOpener` (its
+`OpenFolder(ctx, name, dir)`, core's `terminalRuns`), as the package's `OpenFolder` does for
+Hooks' and Release's clone, under `FolderScript`: Warp opens the folder itself and no script is
+written, and any other terminal gets the script `name` names ([internal/launcher](launcher.md)).
+A run in the terminal is followed the same in every terminal, but a closed Warp tab keeps its
+shell about 60 seconds, so such a run ends as "The terminal closed while this was running."
+that much later; one whose script the terminal never ran (Warp before its welcome is finished)
+ends after `pidWait` (2 minutes) as "The terminal didn't start the run."
+
+A run in the terminal records the terminal it opened in: the `TerminalOpener`'s
+`OpenRun(ctx, run) (terminal string, err error)` returns that terminal's settings ID (core's
+`terminalRuns`, through `launcher.CommandOpener.Open`), which the engine writes into
+`script_runs.terminal` (`SetRunTerminal`, added by `0117_run_terminals`) once the terminal
+opened the run, so `Record.Terminal` and the bound `Run.Terminal` name it whatever is chosen
+later. It is `""` for a run in the app, one whose terminal never opened, and every run recorded
+before the column, which the window names by the terminal chosen now; a record that fails is only
+logged. The `TerminalRun` carries a `LinkFile`, `<id>.link` beside the PID file, which the script
+fills with `WARP_FOCUS_URL` when its shell has one (`terminal.Recording.LinkFile`); it is cleared
+with the run's other files, a forgotten run's included, before a new run opens.
+
+The Service's `ShowInTerminal(ctx, id)` (the window's Show in terminal) brings forward the tab of
+a run going in the terminal. It refuses a run in the app (`ErrNotInTerminal`, "This run goes in
+Nilbox, not in your terminal."), one that has ended or is only being settled after a restart
+(`ErrNotRunning`, "The run has ended."), and one whose shell isn't recorded yet, is gone (by its
+recorded start time), or runs on no terminal (`ErrNoTab`, "Couldn't find the run's terminal tab.
+The run may have just ended."). It reads the shell's tty with `/bin/ps -o tty= -p <pid>`
+through `Config.PS` (`shellTTY`, as the sessions' `TTY` reads an agent's) and the link file
+through `paths.ReadHead`, at most 512 bytes, without its newline and never checked here, then
+hands a `TerminalTab{Terminal, TTY, PID, Link}` to `Config.Tabs`, a `TabFocuser` (core's
+`terminalRuns.FocusRun`, over `CommandOpener.Focus`), which falls back to the terminal chosen now
+for a run that recorded none, lets Warp's driver check the link (`^warp://session/[0-9a-f]{32}$`),
+and words what the terminal says: no tab on the tty, no Warp focus link (a run started before
+scripts recorded it, or in a Warp older than v0.2026.05.27), and a terminal that can't show a tab.
+Without `Tabs` or `PS`, it fails as unsupported.

@@ -499,7 +499,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
   ],
   launching: [
-    { label: 'Terminal', keywords: ['iTerm2', 'terminal app', 'open sessions in'] },
+    { label: 'Terminal', keywords: ['iTerm2', 'Warp', 'terminal app', 'open sessions in'] },
     { label: 'Default agent', keywords: ['coding agent', ...agentNames] },
     {
       label: 'Agent profile',
@@ -664,7 +664,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
     {
       label: 'Runs in',
-      keywords: ['runs', 'scripts', 'terminal', 'iTerm2', 'where runs go', 'passphrase', 'ssh', brand.name],
+      keywords: ['runs', 'scripts', 'terminal', 'iTerm2', 'Warp', 'where runs go', 'passphrase', 'ssh', brand.name],
     },
     {
       label: 'Offer a release after you merge a pull request',

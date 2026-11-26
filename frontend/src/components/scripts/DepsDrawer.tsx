@@ -1,9 +1,12 @@
 import { canMark, depsText, markTitle, moduleTitle, uncountedTitle, versionText } from '../../lib/manifests'
+import { showable, tabWords } from '../../lib/sessions'
 import { formatAgo, formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import {
+  focusSession,
   openManifestsTerminal,
   revealManifest,
+  type AgentSession,
   type ManifestKind,
   type ManifestsClone,
   type ManifestsModule,
@@ -38,10 +41,26 @@ const kindBadges: Readonly<Record<ManifestKind, { className: string; title: stri
 const upgradeButtonClass =
   'ml-1 inline-flex h-6 items-center gap-1.25 rounded-md border border-accent/45 bg-accent/14 px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:border-accent/60 hover:bg-accent/22'
 
+// Opening is what the drawer opens, one at a time: the clone in the terminal, a module's
+// manifest in Finder, by its path, or the upgrade's own terminal tab, by its session's ID.
+type Opening = { kind: 'clone' } | { kind: 'manifest'; path: string } | { kind: 'session'; id: string }
+
+// openIn opens what o names, for the clone in dir.
+function openIn(dir: string, o: Opening): Promise<void> {
+  switch (o.kind) {
+    case 'clone':
+      return openManifestsTerminal(dir)
+    case 'manifest':
+      return revealManifest(dir, o.path)
+    case 'session':
+      return focusSession(o.id)
+  }
+}
+
 interface ModuleLineProps {
   module: ManifestsModule
-  // opening reports Terminal or Finder being opened on the clone, and onReveal shows the
-  // module's manifest in Finder.
+  // opening reports the terminal or Finder being opened on the clone, or the upgrade's tab
+  // being shown, and onReveal shows the module's manifest in Finder.
   opening: boolean
   onReveal: () => void
 }
@@ -114,6 +133,9 @@ export interface DepsDrawerProps {
   // id is the drawer's, which its row's chevron controls.
   id: string
   clone: ManifestsClone
+  // session is the upgrade its row follows (UpgradeTag), if any: while it runs and its tab
+  // can be shown (showable), the drawer offers Show terminal.
+  session?: AgentSession | undefined
   // onUpgrade opens the clone's upgrade sheet.
   onUpgrade: () => void
   // onMark marks the clone's repository up to date (checked) or unmarks it, and marking
@@ -123,18 +145,19 @@ export interface DepsDrawerProps {
 }
 
 // DepsDrawer is a row's drawer: a line for each module (ModuleLine), stalest first, as the
-// page lists them, or why none was read; the clone's workspace files; why Terminal or
-// Finder couldn't open, until the next try; and its actions in words: Open in Terminal,
-// in the clone, Mark up to date (or Unmark up to date, while it is marked), and Upgrade
-// dependencies…, which opens the clone's upgrade sheet. Each module reveals its own
-// manifest in Finder, so the file Finder shows is the one its line names. None runs
-// anything in the clone.
-export function DepsDrawer({ id, clone, onUpgrade, onMark, marking = false }: DepsDrawerProps) {
-  // opener opens the clone in the terminal (a path of null) or reveals a manifest in
-  // Finder, one at a time.
-  const opener = useMutation((path: string | null) =>
-    path === null ? openManifestsTerminal(clone.dir) : revealManifest(clone.dir, path),
-  )
+// page lists them, or why none was read; the clone's workspace files; why the terminal or
+// Finder couldn't open, or the upgrade's tab couldn't be shown, until the next try; and its
+// actions in words: Show terminal, while the upgrade its row follows runs in a tab that can
+// be shown, which brings that tab forward, Open in terminal, in the clone itself, Mark up
+// to date (or Unmark up to date, while it is marked), and Upgrade dependencies…, which
+// opens the clone's upgrade sheet. Each module reveals its own manifest in Finder, so the
+// file Finder shows is the one its line names. None runs anything in the clone.
+export function DepsDrawer({ id, clone, session, onUpgrade, onMark, marking = false }: DepsDrawerProps) {
+  // opener opens the clone in the terminal, reveals a manifest in Finder, or shows the
+  // upgrade's tab, one at a time.
+  const opener = useMutation((o: Opening) => openIn(clone.dir, o))
+  // live is the upgrade whose tab Show terminal brings forward, or null while none can be.
+  const live = showable(session) ? session : null
 
   return (
     <li id={id} aria-label={`About ${clone.repo}`} className={drawerClass}>
@@ -146,7 +169,7 @@ export function DepsDrawer({ id, clone, onUpgrade, onMark, marking = false }: De
               module={m}
               opening={opener.pending}
               onReveal={() => {
-                void opener.run(m.path)
+                void opener.run({ kind: 'manifest', path: m.path })
               }}
             />
           ))}
@@ -168,16 +191,30 @@ export function DepsDrawer({ id, clone, onUpgrade, onMark, marking = false }: De
         </p>
       )}
       <div className={drawerFooterClass}>
+        {live !== null && (
+          <button
+            type="button"
+            disabled={opener.pending}
+            title={`Bring forward ${tabWords(live)} the upgrade runs in`}
+            onClick={() => {
+              void opener.run({ kind: 'session', id: live.id })
+            }}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Show terminal
+          </button>
+        )}
         <button
           type="button"
           disabled={opener.pending}
           onClick={() => {
-            void opener.run(null)
+            void opener.run({ kind: 'clone' })
           }}
           className={quietButtonClass}
         >
           <TerminalIcon className="size-3.5" />
-          Open in Terminal
+          Open in terminal
         </button>
         {onMark !== undefined && canMark(clone) && (
           <button

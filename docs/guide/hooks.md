@@ -31,9 +31,10 @@ change. The page never asks GitHub, so it works offline and signed out.
 - **Each row's ⋯ menu:** **Run checks on all files**, **Run checks on staged files**, **Run one
   check** (each check, *(off)* where the repository turns it off), **Reinstall the hook**,
   **Uninstall the hook…** (asks, naming the hook it puts back), **Open the config** (shows
-  `.github/env/`, or the older `.github/.env.base`, in Finder), and **Open in terminal** (your
-  terminal in the clone, running nothing). The menu says once that eof, fumpt, and whitespace fix files, and whitespace stages
-  its fixes.
+  `.github/env/`, or the older `.github/.env.base`, in Finder), and
+  [**Open in terminal**](launching-a-session.md#open-in-terminal) (your terminal in the clone,
+  running nothing). The menu says once that eof, fumpt, and whitespace fix files, and whitespace
+  stages its fixes.
 - **Install and update all** installs, updates, or reinstalls the hook in every row that needs
   it, one clone at a time, each its own run, and then lists what happened in each. It never
   replaces another tool's hook, never touches a shared hooks folder, and skips a busy clone.

@@ -2,14 +2,7 @@
 // it took, the Runs page's filters, and a run's whole log as text.
 
 import { brand } from '../generated/brand'
-import {
-  scriptRunOutput,
-  type RunsIn,
-  type ScriptRun,
-  type ScriptRunKind,
-  type ScriptRunStatus,
-  type TerminalID,
-} from '../platform'
+import { scriptRunOutput, type ScriptRun, type ScriptRunKind, type ScriptRunStatus, type TerminalID } from '../platform'
 import { plainText } from './ansi'
 import { terminalLabel } from './terminals'
 
@@ -37,14 +30,22 @@ export function isLive(status: ScriptRunStatus): boolean {
   return status === 'running' || status === 'orphaned'
 }
 
-// runPlace says where a run runs: in the app, or in the terminal chosen for launches,
-// named once the settings have loaded.
-export function runPlace(runsIn: RunsIn, terminal: TerminalID | null): string {
-  if (runsIn === 'app') {
+// runTerminalName names the terminal a run in the terminal runs in: the one it recorded it
+// opened in, or, for a run recorded before runs recorded theirs, chosen, the terminal
+// chosen for launches now, once the settings have loaded; "your terminal" until then, and
+// for a terminal this build doesn't name.
+export function runTerminalName(run: Pick<ScriptRun, 'terminal'>, chosen: TerminalID | null): string {
+  return terminalLabel(run.terminal === '' ? chosen : run.terminal, 'your terminal')
+}
+
+// runPlace says where a run runs: in the app, or in its terminal, as runTerminalName
+// names it.
+export function runPlace(run: Pick<ScriptRun, 'runsIn' | 'terminal'>, chosen: TerminalID | null): string {
+  if (run.runsIn === 'app') {
     return `In ${brand.name}`
   }
 
-  return `In ${terminalLabel(terminal, 'your terminal')}`
+  return `In ${runTerminalName(run, chosen)}`
 }
 
 // runWhere is what a run ran in: its repository, or its folder when that isn't one.

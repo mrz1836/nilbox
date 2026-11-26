@@ -40,13 +40,15 @@ export function placeOf(u: UserScript, setting: RunsIn): RunsIn {
   return u.runsIn === '' ? setting : u.runsIn
 }
 
-// runsInLabel names a script's own place as the editor offers it, '' being the setting's.
-export function runsInLabel(place: RunsIn | ''): string {
+// runsInLabel names a script's own place as the editor offers it, '' being the setting's,
+// and the terminal by terminal, the name of the one chosen for launches ("iTerm2"), or, ''
+// while it isn't known, as the user's own.
+export function runsInLabel(place: RunsIn | '', terminal: string): string {
   switch (place) {
     case 'app':
       return brand.name
     case 'terminal':
-      return 'Terminal'
+      return terminal === '' ? 'Your terminal' : terminal
     case '':
       return 'As set in Settings'
   }

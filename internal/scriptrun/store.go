@@ -64,6 +64,15 @@ func (s runStore) setProcess(ctx context.Context, id int64, pid, pgid int, start
 	return nil
 }
 
+// setTerminal records the settings ID of the terminal app a run in the terminal opened in.
+func (s runStore) setTerminal(ctx context.Context, id int64, terminal string) error {
+	if err := s.q.SetRunTerminal(ctx, queries.SetRunTerminalParams{ID: id, Terminal: terminal}); err != nil {
+		return fmt.Errorf("record the run's terminal: %w", err)
+	}
+
+	return nil
+}
+
 // setStatus changes the status and summary of a run that has not ended.
 func (s runStore) setStatus(ctx context.Context, id int64, status Status, summary string) error {
 	_, err := s.q.SetRunStatus(ctx, queries.SetRunStatusParams{ID: id, Status: string(status), Summary: summary})
@@ -285,8 +294,8 @@ func recordOf(row queries.ScriptRun) Record {
 	rec := Record{
 		ID: row.ID, Kind: Kind(row.Kind), Title: row.Title, Source: row.Source,
 		Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Dir: row.Dir, Argv: argv, Command: row.Command,
-		RunsIn: RunsIn(row.RunsIn), Status: Status(row.Status), PID: int(row.Pid), PGID: int(row.Pgid),
-		ProcStartedAt: timeOf(row.ProcStartedAt), Summary: row.Summary, Result: withLists(result),
+		RunsIn: RunsIn(row.RunsIn), Status: Status(row.Status), Terminal: row.Terminal, PID: int(row.Pid),
+		PGID: int(row.Pgid), ProcStartedAt: timeOf(row.ProcStartedAt), Summary: row.Summary, Result: withLists(result),
 		LogBytes: row.LogBytes, SeenAt: timeOf(row.SeenAt), StartedAt: row.StartedAt.UTC(),
 		FinishedAt: timeOf(row.FinishedAt),
 	}

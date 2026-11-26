@@ -1,9 +1,17 @@
 import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
+import { showable, tabWords } from '../../lib/sessions'
 import { asReadNow, type DetailsRead } from '../../lib/useWorktreeDetails'
 import { itemRef, uncommitted } from '../../lib/worktreeParts'
 import { removeWhy } from '../../lib/worktrees'
-import { copyText, openExternal, type AgentID, type Worktree, type WorktreeRepo } from '../../platform'
+import {
+  copyText,
+  openExternal,
+  type AgentID,
+  type AgentSession,
+  type Worktree,
+  type WorktreeRepo,
+} from '../../platform'
 import {
   CheckIcon,
   CopyIcon,
@@ -36,7 +44,7 @@ function why(reason: string): Pick<MenuItem, 'note' | 'title'> {
   return reason === '' ? {} : { note: reason, title: reason }
 }
 
-// goneWhy says why Open in Terminal and Reveal in Finder can't run on a worktree: its
+// goneWhy says why Open in terminal and Reveal in Finder can't run on a worktree: its
 // folder is gone, or git couldn't read it; '' when they can.
 export function goneWhy(wt: Worktree): string {
   if (wt.prunable) {
@@ -46,12 +54,13 @@ export function goneWhy(wt: Worktree): string {
   return wt.error === '' ? '' : 'git couldn’t read it'
 }
 
-// WorktreeRowActions are what a worktree's row, its drawer, and its ⋯ do: open it in
-// Terminal or reveal it in Finder, and hand the page a change to make to it, or a prune
-// of its clone.
+// WorktreeRowActions are what a worktree's row, its drawer, and its ⋯ do: open it in the
+// terminal or reveal it in Finder, bring forward the terminal tab of the session at work in
+// it, and hand the page a change to make to it, or a prune of its clone.
 export interface WorktreeRowActions {
   onTerminal: () => void
   onReveal: () => void
+  onShowTerminal: () => void
   onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
   onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
   onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
@@ -65,23 +74,37 @@ export interface RowMenuOptions extends WorktreeRowActions {
   // read is what the window has read of the worktree's details for this listing, or
   // undefined before anything asked: the removals are counted by it, as its drawer's are.
   read: DetailsRead | undefined
+  // session is the session the app follows in the worktree (liveSessions), if any, whose
+  // terminal tab Show terminal brings forward while it can be shown (showable).
+  session: AgentSession | undefined
   // disabled holds every change while one, or a listing, runs.
   disabled: boolean
   agentName: (id: AgentID) => string
 }
 
-// rowMenuItems are a row's ⋯: Open in Terminal, Reveal in Finder, Copy path, Copy branch,
-// Open the item on GitHub, Unlock for a lock an ended session left, Prune for a folder
-// that's gone, then Clean up… for a finished worktree, Remove…, and Force remove… for one
-// with uncommitted files, in red. The removals count its files as its details last did
+// rowMenuItems are a row's ⋯: Show terminal while a session the app follows runs there in
+// a tab that can be shown, Open in terminal, Reveal in Finder, Copy path, Copy branch, Open
+// the item on GitHub, Unlock for a lock an ended session left, Prune for a folder that's
+// gone, then Clean up… for a finished worktree, Remove…, and Force remove… for one with
+// uncommitted files, in red. The removals count its files as its details last did
 // (asReadNow), as its drawer does, so a read can hold one back but never allow one the
 // backend refused.
 export function rowMenuItems(o: RowMenuOptions): MenuItem[] {
-  const { repo, worktree: wt, disabled } = o
+  const { repo, worktree: wt, session, disabled } = o
   const gone = goneWhy(wt)
   const items: MenuItem[] = [
+    ...(showable(session)
+      ? [
+          {
+            label: 'Show terminal',
+            icon: <TerminalIcon className={icon} />,
+            title: `Bring forward ${tabWords(session)} ${o.agentName(session.agent)} runs in`,
+            onSelect: o.onShowTerminal,
+          },
+        ]
+      : []),
     {
-      label: 'Open in Terminal',
+      label: 'Open in terminal',
       icon: <TerminalIcon className={icon} />,
       disabled: gone !== '',
       ...why(gone),

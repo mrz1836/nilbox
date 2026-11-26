@@ -98,6 +98,9 @@ const (
 	// TerminalITerm2 opens launches in a new iTerm2 tab or window.
 	TerminalITerm2 = terminal.ITerm2
 
+	// TerminalWarp opens launches in a new tab of Warp's frontmost window, or a new window.
+	TerminalWarp = terminal.Warp
+
 	// TerminalApp opens launches in a new Terminal.app window.
 	TerminalApp = terminal.TerminalApp
 )
@@ -144,7 +147,7 @@ type Settings struct {
 	// merges or its issue closes.
 	WorktreeAutoCleanup bool `json:"worktreeAutoCleanup"`
 
-	// Terminal is TerminalITerm2 or TerminalApp.
+	// Terminal is TerminalITerm2, TerminalWarp, or TerminalApp.
 	Terminal terminal.ID `json:"terminal"`
 
 	// FollowSessions follows each agent session a launch starts from its item: what it
@@ -432,8 +435,8 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	return out, nil
 }
 
-// SetTerminal stores the terminal launches open in, TerminalITerm2 or TerminalApp, and
-// returns the settings with it.
+// SetTerminal stores the terminal launches open in, TerminalITerm2, TerminalWarp, or
+// TerminalApp, and returns the settings with it.
 func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, error) {
 	values, err := checkTerminal(id)
 	if err != nil {
@@ -445,8 +448,8 @@ func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, er
 
 // checkTerminal refuses a terminal that is not one of the choices, and returns its write.
 func checkTerminal(id terminal.ID) (map[string]string, error) {
-	if !validTerminal(id) {
-		return nil, fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, id, TerminalITerm2, TerminalApp)
+	if !terminal.Valid(id) {
+		return nil, fmt.Errorf("%w %q: choose one of %s", ErrInvalidTerminal, id, quotedTerminals())
 	}
 
 	return map[string]string{KeyTerminal: string(id)}, nil
@@ -875,7 +878,7 @@ func fromStored(stored map[string]string) Settings {
 		}
 	}
 
-	if v := terminal.ID(stored[KeyTerminal]); validTerminal(v) {
+	if v := terminal.ID(stored[KeyTerminal]); terminal.Valid(v) {
 		out.Terminal = v
 	}
 
@@ -886,9 +889,17 @@ func fromStored(stored map[string]string) Settings {
 	return out
 }
 
-// validTerminal reports whether id is one of the choices.
-func validTerminal(id terminal.ID) bool {
-	return id == TerminalITerm2 || id == TerminalApp
+// quotedTerminals lists the terminal choices, each quoted, for an error: "iterm2", "warp",
+// "terminal".
+func quotedTerminals() string {
+	ids := terminal.All()
+	quoted := make([]string, len(ids))
+
+	for i, id := range ids {
+		quoted[i] = strconv.Quote(string(id))
+	}
+
+	return strings.Join(quoted, ", ")
 }
 
 // save runs write and reads every preference back in one transaction, and returns the

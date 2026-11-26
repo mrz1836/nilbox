@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
+import { showable, tabWords } from '../../lib/sessions'
 import { capitalize, formatAgo } from '../../lib/time'
 import { toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
@@ -389,7 +390,8 @@ export interface DrawerProps extends WorktreeRowActions {
   // read is what the window has read of the worktree's details for this listing, or
   // undefined before it asks.
   read: DetailsRead | undefined
-  // session is the session the app follows in the worktree, if any.
+  // session is the session the app follows in the worktree, if any: while its tab can be
+  // shown (showable), the footer offers Show terminal.
   session: AgentSession | undefined
   // facts are what the inbox read of the worktree's item, while it lists it.
   facts: ItemFacts | undefined
@@ -398,7 +400,8 @@ export interface DrawerProps extends WorktreeRowActions {
   // taking this worktree, whose verb waits for the list to be read again.
   disabled: boolean
   working: boolean
-  // opening reports Terminal or Finder being opened on the worktree.
+  // opening reports the terminal or Finder being opened on the worktree, or the session's
+  // tab being shown.
   opening: boolean
 }
 
@@ -406,14 +409,15 @@ export interface DrawerProps extends WorktreeRowActions {
 // counted as its details last counted it, as the lists under it are (asReadNow); then its
 // changes, its commits not on GitHub with its branch, and what's known about it, side by
 // side, or one above another when narrow; then what of its details couldn't be read; and
-// its actions in words: Open in Terminal, Reveal in Finder, and Copy path (or Prune, for a
-// folder that's gone), then Clean up or Unlock, and Remove… for a clean one, or one whose
-// only changes are files missing from its folder, or Force remove… for one with uncommitted
-// files, each saying why when it can't run. Which removal
-// it offers, and why one can't run, are counted as the sentence over them is, so they never
-// contradict it; whether one may run at all stays the backend's (its can* flags), which
-// checks again as it removes, so a read can only hold a removal back, never allow one the
-// listing refused.
+// its actions in words: Show terminal, while the session the app follows there runs in a tab
+// that can be shown, which brings that tab forward, Open in terminal, in the worktree
+// itself, Reveal in Finder, and Copy path (or Prune, for a folder that's gone), then Clean
+// up or Unlock, and Remove… for a clean one, or one whose only changes are files missing
+// from its folder, or Force remove… for one with uncommitted files, each saying why when it
+// can't run. Which removal it offers, and why one can't run, are counted as the sentence
+// over them is, so they never contradict it; whether one may run at all stays the
+// backend's (its can* flags), which checks again as it removes, so a read can only hold a
+// removal back, never allow one the listing refused.
 export function Drawer({
   id,
   repo,
@@ -427,6 +431,7 @@ export function Drawer({
   opening,
   onTerminal,
   onReveal,
+  onShowTerminal,
   onCleanUp,
   onUnlock,
   onRemove,
@@ -484,11 +489,23 @@ export function Drawer({
           </button>
         ) : (
           <>
+            {showable(session) && (
+              <button
+                type="button"
+                disabled={opening}
+                title={`Bring forward ${tabWords(session)} ${agentName(session.agent)} runs in`}
+                onClick={onShowTerminal}
+                className={quietButtonClass}
+              >
+                <TerminalIcon className="size-3.5" />
+                Show terminal
+              </button>
+            )}
             {readable(worktree) && (
               <>
                 <button type="button" disabled={opening} onClick={onTerminal} className={quietButtonClass}>
                   <TerminalIcon className="size-3.5" />
-                  Open in Terminal
+                  Open in terminal
                 </button>
                 <button type="button" disabled={opening} onClick={onReveal} className={quietButtonClass}>
                   <FolderIcon className="size-3.5" />

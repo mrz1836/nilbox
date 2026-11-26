@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentInfo, Profile, Settings, TerminalChoice } from '../../platform'
+import { nextTask } from '../../test/async'
 import { agents, agentVersions, profile, settings, terminalChoices } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { AgentsStep } from './AgentsStep'
@@ -85,13 +86,81 @@ describe('AgentsStep', () => {
     expect(platform.setDefaultAgent).toHaveBeenCalledExactlyOnceWith('codex')
   })
 
-  it('moves launches to Terminal when iTerm2 isn’t installed, saying so', async () => {
+  it('offers iTerm2, Warp, then Terminal, and keeps iTerm2 when it’s installed', async () => {
+    render(<Rig />)
+    await nextTask()
+
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Terminal' }))
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value')),
+    ).toEqual(['iterm2', 'warp', 'terminal'])
+    expect(screen.getByRole('radio', { name: /iTerm2/ })).toBeChecked()
+    expect(platform.setTerminal).not.toHaveBeenCalled()
+    expect(screen.queryByText(/isn’t installed, so launches open in/)).not.toBeInTheDocument()
+  })
+
+  it('moves launches to Warp when only Warp is installed, saying so', async () => {
     render(<Rig terminals={terminalChoices({ iterm: false })} />)
 
-    expect(await screen.findByText('iTerm2 isn’t installed, so launches open in Terminal.')).toBeInTheDocument()
-    expect(platform.setTerminal).toHaveBeenCalledWith('terminal')
+    expect(await screen.findByText('iTerm2 isn’t installed, so launches open in Warp.')).toBeInTheDocument()
+    expect(platform.setTerminal).toHaveBeenCalledExactlyOnceWith('warp')
     expect(screen.getByRole('radio', { name: /iTerm2/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Warp/ })).toBeChecked()
+    expect(screen.getByText('Open Warp once and finish its welcome before your first launch.')).toBeInTheDocument()
+  })
+
+  it('moves launches to Terminal when neither iTerm2 nor Warp is installed, saying so', async () => {
+    render(<Rig terminals={terminalChoices({ iterm: false, warp: false })} />)
+
+    expect(await screen.findByText('iTerm2 isn’t installed, so launches open in Terminal.')).toBeInTheDocument()
+    expect(platform.setTerminal).toHaveBeenCalledExactlyOnceWith('terminal')
+    expect(screen.getByRole('radio', { name: /iTerm2/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Warp/ })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /Terminal/ })).toBeChecked()
+  })
+
+  it('moves Warp, gone since it was chosen, to the first terminal installed', async () => {
+    render(<Rig stored={settings({ terminal: 'warp' })} terminals={terminalChoices({ warp: false })} />)
+
+    expect(await screen.findByText('Warp isn’t installed, so launches open in iTerm2.')).toBeInTheDocument()
+    expect(platform.setTerminal).toHaveBeenCalledExactlyOnceWith('iterm2')
+  })
+
+  it('never moves a terminal that is installed, even one later in the order', async () => {
+    render(<Rig stored={settings({ terminal: 'terminal' })} />)
+    await nextTask()
+
+    expect(screen.getByRole('radio', { name: /Terminal/ })).toBeChecked()
+    expect(platform.setTerminal).not.toHaveBeenCalled()
+  })
+
+  it('never moves the terminal the user chose here', async () => {
+    const { rerender } = render(<Rig />)
+
+    await userEvent.click(screen.getByRole('radio', { name: /Warp/ }))
+    expect(platform.setTerminal).toHaveBeenCalledExactlyOnceWith('warp')
+
+    rerender(<Rig terminals={terminalChoices({ warp: false })} />)
+    await nextTask()
+
+    expect(platform.setTerminal).toHaveBeenCalledOnce()
+    expect(screen.getByRole('radio', { name: /Warp/ })).toBeChecked()
+    expect(screen.queryByText(/isn’t installed, so launches open in/)).not.toBeInTheDocument()
+  })
+
+  it('says Warp’s welcome comes first when Warp is chosen', async () => {
+    render(<Rig />)
+
+    expect(screen.queryByText(/finish its welcome/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: /Warp/ }))
+
+    expect(platform.setTerminal).toHaveBeenCalledWith('warp')
+    expect(
+      await screen.findByText('Open Warp once and finish its welcome before your first launch.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Choose Allow/)).not.toBeInTheDocument()
   })
 
   it('chooses the terminal, and says iTerm2 asks to be controlled', async () => {

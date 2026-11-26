@@ -1670,11 +1670,14 @@ export interface RunPreview {
     "worktree": RunWorktree | null;
 
     /**
-     * Command is the agent's command line, the prompt shown as <prompt>, and Env the
-     * changes to its environment ("unset ANTHROPIC_API_KEY").
+     * Command is the agent's command line, the prompt shown as <prompt>, Env the changes
+     * to its environment ("unset ANTHROPIC_API_KEY"), and Inherited the variables another
+     * agent session would hand down, which it unsets too, apart so the window can say them
+     * in one entry.
      */
     "command": string;
     "env": string[] | null;
+    "inherited": string[] | null;
 
     /**
      * Permission summarizes its permissions, Prompt is the filled-in prompt, and Terminal
@@ -1709,7 +1712,10 @@ export interface RunView {
 
     /**
      * CanTakeOver reports a run in the background whose agent resumes its conversation in
-     * the terminal, by its session: the run view's Take over.
+     * the terminal, by its session: the run view's Take over. It says nothing of whether a
+     * session carries that conversation on already, as one that took the run over does,
+     * which the window reads from the sessions it follows: while one does, the view offers
+     * Show in terminal for that session in Take over's place.
      */
     "canTakeOver": boolean;
 }

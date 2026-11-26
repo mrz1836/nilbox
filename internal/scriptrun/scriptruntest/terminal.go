@@ -35,6 +35,10 @@ type Terminal struct {
 	// as a fake tool's entry. Set it before the first run opens.
 	Env []string
 
+	// ID is the terminal's settings ID, which OpenRun reports it opened each run in, such
+	// as "iterm2"; "" reports none. Set it before the first run opens.
+	ID string
+
 	t      testing.TB
 	mu     sync.Mutex
 	opened []scriptrun.TerminalRun
@@ -49,8 +53,8 @@ func NewTerminal(t testing.TB) *Terminal {
 }
 
 // OpenRun starts the run's command in a shell that outlives the call, as a terminal's
-// does.
-func (term *Terminal) OpenRun(ctx context.Context, run scriptrun.TerminalRun) error {
+// does, and reports ID as the terminal it opened in.
+func (term *Terminal) OpenRun(ctx context.Context, run scriptrun.TerminalRun) (string, error) {
 	term.mu.Lock()
 	defer term.mu.Unlock()
 
@@ -63,7 +67,7 @@ func (term *Terminal) OpenRun(ctx context.Context, run scriptrun.TerminalRun) er
 		Path: "/bin/sh", Args: append([]string{"-c", testutil.TerminalScript, "sh"}, run.Argv...), Dir: run.Dir, Env: env,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	term.procs = append(term.procs, proc)
@@ -74,7 +78,7 @@ func (term *Terminal) OpenRun(ctx context.Context, run scriptrun.TerminalRun) er
 		_, _ = proc.Wait()
 	})
 
-	return nil
+	return term.ID, nil
 }
 
 // OpenFolder opens nothing: no test of a run asks for the terminal in its folder.

@@ -28,3 +28,25 @@ func DetailOf(pid int) (Detail, bool) {
 
 	return d, true
 }
+
+// EnvOf returns the value of one environment variable, name, of the process with pid, as
+// the process started with it, from the kernel's process table (kern.procargs2), starting
+// nothing, and reports whether it could. It returns that one variable and keeps nothing
+// else: the environment holds the process's secrets, so its buffer is cleared before
+// EnvOf returns, and a caller never logs or stores any more of it. macOS hides the
+// environment of its own platform binaries, such as /bin/zsh, from a caller that isn't
+// root, and of another user's processes, so those report false.
+func EnvOf(pid int, name string) (string, bool) {
+	if !ValidPID(pid) || !envName(name) {
+		return "", false
+	}
+
+	raw, err := unix.SysctlRaw("kern.procargs2", pid)
+	if err != nil {
+		return "", false
+	}
+
+	defer clear(raw)
+
+	return ParseProcEnv(raw, name)
+}

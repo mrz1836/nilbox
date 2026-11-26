@@ -13,6 +13,7 @@ import {
   runFilters,
   runPlace,
   runStatusLabels,
+  runTerminalName,
   runWhere,
 } from './scriptRuns'
 
@@ -37,11 +38,20 @@ describe('the runsâ words', () => {
     expect(isLive('interrupted')).toBe(false)
   })
 
-  it('says where a run runs, naming the terminal chosen for launches', () => {
-    expect(runPlace('app', 'iterm2')).toBe(`In ${brand.name}`)
-    expect(runPlace('terminal', 'iterm2')).toBe('In iTerm2')
-    expect(runPlace('terminal', 'terminal')).toBe('In Terminal')
-    expect(runPlace('terminal', null)).toBe('In your terminal')
+  it('says where a run runs, naming the terminal it opened in', () => {
+    expect(runPlace({ runsIn: 'app', terminal: '' }, 'iterm2')).toBe(`In ${brand.name}`)
+    expect(runPlace({ runsIn: 'terminal', terminal: 'warp' }, 'iterm2')).toBe('In Warp')
+    expect(runPlace({ runsIn: 'terminal', terminal: 'iterm2' }, 'warp')).toBe('In iTerm2')
+    expect(runPlace({ runsIn: 'terminal', terminal: 'iterm2' }, null)).toBe('In iTerm2')
+    expect(runPlace({ runsIn: 'terminal', terminal: 'hyper' }, 'iterm2')).toBe('In your terminal')
+  })
+
+  it('names the terminal chosen for launches for a run that recorded none', () => {
+    expect(runPlace({ runsIn: 'terminal', terminal: '' }, 'iterm2')).toBe('In iTerm2')
+    expect(runPlace({ runsIn: 'terminal', terminal: '' }, 'terminal')).toBe('In Terminal')
+    expect(runPlace({ runsIn: 'terminal', terminal: '' }, null)).toBe('In your terminal')
+    expect(runTerminalName({ terminal: '' }, 'warp')).toBe('Warp')
+    expect(runTerminalName({ terminal: 'terminal' }, 'warp')).toBe('Terminal')
   })
 
   it('names what a run ran in: its repository, or its folder', () => {

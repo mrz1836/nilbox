@@ -227,6 +227,13 @@ type Session struct {
 	CanFocus  bool `json:"canFocus"`
 	CanResume bool `json:"canResume"`
 
+	// CarriedBy is the ID of the session that has not ended and carries this one's
+	// conversation on, as one resumed from it does, a take over of a background run's
+	// included, or "" for none. A session carried on offers neither Resume nor Take over,
+	// and a background run's offers Show in terminal for that session in Take over's place.
+	// Service.List sets it; a session read alone carries "".
+	CarriedBy string `json:"carriedBy"`
+
 	// RunID is the run of an agent working in the background, whose session this is, or 0
 	// for a session in the terminal: it has no terminal to show, and stops from Autopilot.
 	RunID int64 `json:"runId"`

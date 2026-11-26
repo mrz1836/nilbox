@@ -90,6 +90,7 @@ function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
   const handlers = {
     onTerminal: vi.fn<() => void>(),
     onReveal: vi.fn<() => void>(),
+    onShowTerminal: vi.fn<() => void>(),
     onCleanUp: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
     onUnlock: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
     onRemove: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
@@ -418,7 +419,7 @@ describe('Drawer changes', () => {
 
     expect(changes.getAllByRole('listitem')).toHaveLength(200)
     expect(changes.getByText(/^Only the first 200 are listed here/).parentElement).toHaveTextContent(
-      'Only the first 200 are listed here; 1,004 more are in Terminal (git status)',
+      'Only the first 200 are listed here; 1,004 more are in your terminal (git status)',
     )
   })
 
@@ -431,7 +432,7 @@ describe('Drawer changes', () => {
     const changes = column('Changes')
     expect(changes.getAllByRole('listitem')).toHaveLength(12)
     expect(changes.getByText(/^Only the first 12/).parentElement).toHaveTextContent(
-      'Only the first 12 are listed here; 18 more are in Terminal (git status)',
+      'Only the first 12 are listed here; 18 more are in your terminal (git status)',
     )
     expect(changes.getByRole('button', { name: 'Copy list' })).toBeEnabled()
     expect(screen.getByText('Couldn’t read the worktree: it is busy.')).toBeInTheDocument()
@@ -507,7 +508,7 @@ describe('Drawer commits', () => {
     expect(notOnGitHub.getByRole('heading')).toHaveTextContent('Not on GitHub350')
     expect(notOnGitHub.getAllByRole('listitem')).toHaveLength(200)
     expect(notOnGitHub.getByText(/^Only the first 200 are listed here/)).toHaveTextContent(
-      'Only the first 200 are listed here; 150 more are in Terminal (git log)',
+      'Only the first 200 are listed here; 150 more are in your terminal (git log)',
     )
   })
 
@@ -637,7 +638,7 @@ describe('Drawer copies', () => {
     })
 
     expect(column('Copied to PR #42').getByText(/^Only the first 1 are listed here/)).toHaveTextContent(
-      'Only the first 1 are listed here; 9 more are in Terminal (git log)',
+      'Only the first 1 are listed here; 9 more are in your terminal (git log)',
     )
   })
 
@@ -1178,7 +1179,7 @@ describe('Drawer errors', () => {
 })
 
 describe('Drawer footer', () => {
-  it('opens the worktree in Terminal or Finder, and copies its path, then Remove…', async () => {
+  it('opens the worktree in the terminal or Finder, and copies its path, then Remove…', async () => {
     const wt = row()
     const { drawer, onTerminal, onReveal, onRemove } = renderDrawer(wt)
 
@@ -1186,9 +1187,9 @@ describe('Drawer footer', () => {
       .getAllByRole('button')
       .slice(-4)
       .map((b) => b.textContent)
-    expect(buttons).toEqual(['Open in Terminal', 'Reveal in Finder', 'Copy path', 'Remove…'])
+    expect(buttons).toEqual(['Open in terminal', 'Reveal in Finder', 'Copy path', 'Remove…'])
 
-    await userEvent.click(drawer.getByRole('button', { name: 'Open in Terminal' }))
+    await userEvent.click(drawer.getByRole('button', { name: 'Open in terminal' }))
     await userEvent.click(drawer.getByRole('button', { name: 'Reveal in Finder' }))
     await userEvent.click(drawer.getByRole('button', { name: 'Copy path' }))
 
@@ -1205,14 +1206,60 @@ describe('Drawer footer', () => {
   it('waits while Terminal or Finder opens', () => {
     const { drawer } = renderDrawer(row(), { opening: true })
 
-    expect(drawer.getByRole('button', { name: 'Open in Terminal' })).toBeDisabled()
+    expect(drawer.getByRole('button', { name: 'Open in terminal' })).toBeDisabled()
     expect(drawer.getByRole('button', { name: 'Reveal in Finder' })).toBeDisabled()
+  })
+
+  it('shows the terminal tab of the session at work in it, before Open in terminal', async () => {
+    const { drawer, onShowTerminal, onTerminal } = renderDrawer(running, { session: working })
+
+    const buttons = drawer
+      .getAllByRole('button')
+      .slice(-5)
+      .map((b) => b.textContent)
+    expect(buttons).toEqual(['Show terminal', 'Open in terminal', 'Reveal in Finder', 'Copy path', 'Force remove…'])
+
+    const show = drawer.getByRole('button', { name: 'Show terminal' })
+    expect(show).toHaveAttribute('title', 'Bring forward the iTerm2 tab Claude runs in')
+
+    await userEvent.click(show)
+    expect(onShowTerminal).toHaveBeenCalledOnce()
+    expect(onTerminal).not.toHaveBeenCalled()
+
+    await userEvent.click(drawer.getByRole('button', { name: 'Open in terminal' }))
+    expect(onTerminal).toHaveBeenCalledOnce()
+    expect(onShowTerminal).toHaveBeenCalledOnce()
+  })
+
+  it('waits while the session’s tab is shown too', () => {
+    const { drawer } = renderDrawer(running, { session: working, opening: true })
+
+    expect(drawer.getByRole('button', { name: 'Show terminal' })).toBeDisabled()
+  })
+
+  it.each<[string, AgentSession | undefined]>([
+    ['no session', undefined],
+    ['a session whose tab can’t be shown yet', agentSession({ state: 'starting', canFocus: false })],
+    ['an agent’s run in the background', agentSession({ state: 'working', canFocus: false, runId: 4 })],
+    ['a session that ended', agentSession({ state: 'ended', endedAt: isoAgo({ s: minute }) })],
+  ])('offers no Show terminal for %s', (_label, session) => {
+    const { drawer } = renderDrawer(running, { session })
+
+    expect(drawer.queryByRole('button', { name: 'Show terminal' })).not.toBeInTheDocument()
+    expect(drawer.getByRole('button', { name: 'Open in terminal' })).toBeInTheDocument()
+  })
+
+  it('shows the session’s tab even when git couldn’t read the worktree', () => {
+    const { drawer } = renderDrawer(row({ error: 'git status failed', canRemove: false }), { session: working })
+
+    expect(drawer.getByRole('button', { name: 'Show terminal' })).toBeInTheDocument()
+    expect(drawer.queryByRole('button', { name: 'Open in terminal' })).not.toBeInTheDocument()
   })
 
   it('offers no Terminal or Finder for one git couldn’t read', () => {
     const { drawer } = renderDrawer(row({ error: 'git status failed', canRemove: false }))
 
-    expect(drawer.queryByRole('button', { name: 'Open in Terminal' })).not.toBeInTheDocument()
+    expect(drawer.queryByRole('button', { name: 'Open in terminal' })).not.toBeInTheDocument()
     expect(drawer.getByRole('button', { name: 'Copy path' })).toBeInTheDocument()
     expect(drawer.getByRole('button', { name: 'Remove…' })).toHaveAttribute('title', 'git couldn’t read it')
     expect(drawer.getByRole('button', { name: 'Remove…' })).toBeDisabled()
@@ -1221,7 +1268,7 @@ describe('Drawer footer', () => {
   it('offers Prune for a folder that’s gone, in place of everything else', async () => {
     const { drawer, onPrune } = renderDrawer(row({ prunable: true, canRemove: false }))
 
-    expect(drawer.queryByRole('button', { name: 'Open in Terminal' })).not.toBeInTheDocument()
+    expect(drawer.queryByRole('button', { name: 'Open in terminal' })).not.toBeInTheDocument()
     expect(drawer.queryByRole('button', { name: 'Copy path' })).not.toBeInTheDocument()
     expect(drawer.queryByRole('button', { name: /Remove…$/ })).not.toBeInTheDocument()
 

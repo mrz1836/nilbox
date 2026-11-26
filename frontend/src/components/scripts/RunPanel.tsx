@@ -5,7 +5,7 @@ import { plainText } from '../../lib/ansi'
 import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { isBumpResult } from '../../lib/release'
-import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
+import { formatDuration, isLive, readLog, runDuration, runPlace, runTerminalName } from '../../lib/scriptRuns'
 import { copyLabel, useCopy } from '../../lib/useCopy'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
@@ -16,13 +16,13 @@ import {
   markScriptRunSeen,
   openScriptRunInTerminal,
   runScriptAgain,
+  showScriptRunInTerminal,
   showScriptRunLog,
   stopScriptRun,
   type ScriptRun,
   type ScriptRunResult,
   type TerminalID,
 } from '../../platform'
-import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { ErrorText, iconButtonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
@@ -123,13 +123,14 @@ function RunResult({ exitCode, result }: { exitCode: number | null; result: Scri
 }
 
 // Action is one of the panel's buttons.
-type Action = 'stop' | 'again' | 'terminal' | 'copy' | 'reveal'
+type Action = 'stop' | 'again' | 'terminal' | 'tab' | 'copy' | 'reveal'
 
 export interface RunPanelProps {
   // id is the run shown.
   id: number
-  // terminal is the terminal chosen for launches, which a run in the terminal runs in, or
-  // null until the settings have loaded.
+  // terminal is the terminal chosen for launches, which names the terminal of a run in the
+  // terminal that didn't record the one it opened in, or null until the settings have
+  // loaded.
   terminal: TerminalID | null
   // onSelect shows another run, as Run again starts one.
   onSelect: (id: number) => void
@@ -139,14 +140,14 @@ export interface RunPanelProps {
 }
 
 // StopNote says why Stop is off, or how to stop a run in the terminal, which only the
-// terminal can.
+// terminal it opened in can.
 function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal: TerminalID | null }) {
   if (!isLive(run.status)) {
     return null
   }
 
   if (run.runsIn === 'terminal') {
-    const where = terminalLabel(terminal, 'your terminal')
+    const where = runTerminalName(run, terminal)
 
     return (
       <p id={id} className="text-xs text-muted">
@@ -166,7 +167,9 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
 // RunPanel is one run, live or ended, in the app or in the terminal: what it is and where
 // it ran, its status (announced as it changes, and only it), how long it took, what can
 // be done with it, what it left to look at (a hooks action's or a checks run's result,
-// typed, once it ended), and its log. It reads the run again whenever the shell says the
+// typed, once it ended), and its log. A run going in the terminal offers Show in terminal,
+// which brings its own tab forward in the terminal it opened in; any other offers Open in
+// terminal, a new one in its folder. It reads the run again whenever the shell says the
 // runs changed or this run's progress moved, and marks an ended run seen once it shows,
 // which clears the tab's red dot.
 export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
@@ -175,9 +178,10 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const stop = useMutation(() => stopScriptRun(id))
   const again = useMutation(() => runScriptAgain(id))
   const openTerminal = useMutation(() => openScriptRunInTerminal(id))
+  const showTab = useMutation(() => showScriptRunInTerminal(id))
   const { copy, onCopy } = useCopy('log')
   const reveal = useMutation(() => showScriptRunLog(id))
-  const actions = { stop, again, terminal: openTerminal, reveal }
+  const actions = { stop, again, terminal: openTerminal, tab: showTab, reveal }
   // last is the button pressed last: only its failure shows, so one that works clears
   // what an earlier one said went wrong. Copy log says how its copy went itself, in its
   // words and to a screen reader.
@@ -284,6 +288,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   // ended reports a run that has ended, whose typed result a hooks action or a checks run
   // shows above the rest.
   const ended = !isLive(run.status)
+  // inTerminal reports a run going in the terminal now, whose own tab Show in terminal
+  // brings forward.
+  const inTerminal = !ended && run.runsIn === 'terminal'
 
   return (
     <section aria-labelledby={headingId} className="flex h-full min-h-0 flex-col gap-3 p-4">
@@ -306,7 +313,7 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
             {run.summary !== '' && <span className="text-text">{run.summary}</span>}
           </div>
           <span aria-hidden="true">·</span>
-          <span>{runPlace(run.runsIn, terminal)}</span>
+          <span>{runPlace(run, terminal)}</span>
           <Elapsed run={run} />
         </div>
         {run.command !== '' && run.command !== run.title && (
@@ -343,18 +350,33 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
             Run again
           </button>
         )}
-        <button
-          type="button"
-          disabled={openTerminal.pending}
-          onClick={() => {
-            press('terminal')
-            void openTerminal.run()
-          }}
-          className={quietButtonClass}
-        >
-          <TerminalIcon className="size-3.5" />
-          Open in terminal
-        </button>
+        {inTerminal ? (
+          <button
+            type="button"
+            disabled={showTab.pending}
+            onClick={() => {
+              press('tab')
+              void showTab.run()
+            }}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Show in terminal
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={openTerminal.pending}
+            onClick={() => {
+              press('terminal')
+              void openTerminal.run()
+            }}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Open in terminal
+          </button>
+        )}
         <button type="button" disabled={copy === 'copying'} onClick={copyLog} className={quietButtonClass}>
           {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
           {copy === 'idle' ? 'Copy log' : copyLabel[copy]}

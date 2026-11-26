@@ -600,6 +600,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     stopScriptRun: done,
     runScriptAgain: (id) => Promise.resolve(id + 1),
     openScriptRunInTerminal: done,
+    showScriptRunInTerminal: done,
     showScriptRunLog: done,
     markScriptRunSeen: done,
     clearScriptRunHistory: done,

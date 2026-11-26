@@ -6,9 +6,11 @@
 // Each agent is a backend spec: its command, the environment variable that points it at
 // a profile's config directory, the entries that mark such a directory, its effort levels,
 // model suggestions, and permission modes, the flags the launcher sets itself (and so may
-// not be added by hand), and how a launch's model, effort, access, extra directories, and
-// session name become its command-line flags. Adding a backend adds a spec here; the
-// launcher, the profiles, and the editors read everything else from it.
+// not be added by hand), how a launch's model, effort, access, extra directories, and
+// session name become its command-line flags, and the variables its running sessions set
+// for the programs they start, which no start of any agent carries (SessionEnv). Adding a
+// backend adds a spec here; the launcher, the profiles, and the editors read everything
+// else from it.
 //
 // It also reads extra flags typed on one line, quoted the way a shell would, into one
 // argument each. CheckOverrides and CheckSettings check a model, an effort level, and

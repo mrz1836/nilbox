@@ -50,6 +50,7 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	t.Parallel()
 
 	term := newFakeTerminal(t)
+	term.id = "warp"
 	h := terminalHarness(t, term)
 	out := &collector{}
 
@@ -70,6 +71,13 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	assert.Equal(t, h.e.files.log(id), opened[0].Log)
 	assert.Equal(t, h.e.files.pid(id), opened[0].PIDFile)
 	assert.Equal(t, h.e.files.exit(id), opened[0].ExitFile)
+	assert.Equal(t, h.e.files.link(id), opened[0].LinkFile)
+
+	assert.Equal(t, "warp", h.record(id).Terminal, "the run records the terminal it opened in")
+
+	run, err := h.s.Run(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, "warp", run.Terminal, "and the window names it")
 
 	holder, held := h.locks.Holder(spec.Dir)
 	require.True(t, held, "the clone is held while the terminal runs it")
@@ -83,13 +91,14 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	assert.False(t, rec.ProcStartedAt.IsZero(), "with its start time")
 	assert.Equal(t, StatusRunning, rec.Status)
 
-	err := h.s.Stop(t.Context(), id)
+	err = h.s.Stop(t.Context(), id)
 	require.ErrorIs(t, err, ErrNoStop, "a run in the terminal stops there")
 
 	testutil.WriteFile(t, proceed, "") // the tool ends, as the user's command would
 
 	rec = h.ended(id)
 	assert.Equal(t, StatusFailed, rec.Status)
+	assert.Equal(t, "warp", rec.Terminal, "its end keeps the terminal it ran in")
 	require.NotNil(t, rec.ExitCode)
 	assert.Equal(t, 3, *rec.ExitCode, "the exit file's status")
 	assert.Equal(t, "in the terminal\n", out.String(), "its log was tailed into the reader")
@@ -108,6 +117,7 @@ func TestATerminalRunThatSucceeds(t *testing.T) {
 
 	assert.Equal(t, StatusSucceeded, rec.Status)
 	assert.Equal(t, RunsInTerminal, rec.RunsIn)
+	assert.Empty(t, rec.Terminal, "a terminal that says nothing of itself records none")
 }
 
 func TestATerminalClosedMidRunIsInterrupted(t *testing.T) {
@@ -169,6 +179,7 @@ func TestATerminalThatCantOpenFailsTheRunCleanly(t *testing.T) {
 	rec := h.ended(id)
 	assert.Equal(t, StatusFailed, rec.Status)
 	assert.Equal(t, "Runs in your terminal need macOS.", rec.Summary)
+	assert.Empty(t, rec.Terminal, "a run that never opened records no terminal")
 
 	_, held := h.locks.Holder(spec.Dir)
 	assert.False(t, held)
@@ -210,9 +221,11 @@ func TestATerminalRunClearsAForgottenRunsFiles(t *testing.T) {
 	require.NoError(t, h.e.files.ensureDir())
 	testutil.WriteFile(t, h.e.files.exit(1), "0\n")
 	testutil.WriteFile(t, h.e.files.pid(1), "1\n")
+	testutil.WriteFile(t, h.e.files.link(1), "warp://session/0123456789abcdef0123456789abcdef\n")
 
 	id := h.start(h.terminalSpec(testutil.FakeRun{Stdout: "fresh\n", Exit: 5}))
 	require.Equal(t, int64(1), id)
+	assert.NoFileExists(t, h.e.files.link(id), "a stale link never brings forward another run's tab")
 
 	rec := h.ended(id)
 	require.NotNil(t, rec.ExitCode)

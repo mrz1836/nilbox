@@ -124,22 +124,54 @@ func (s ShellSessions) Focus(ctx context.Context, id string) error {
 // a session's tab forward. It implements sessions.Focuser.
 type terminalFocuser struct {
 	registry terminal.Registry
+
+	// env reads one environment variable of a running process, as procs.EnvOf does, for the
+	// terminal the session's agent runs in (terminal.TermProgramEnv); nil reads none, and
+	// the session's recorded terminal is the one.
+	env func(pid int, name string) (string, bool)
 }
 
-// Focus brings forward the tab that runs on tty in the terminal named by its settings ID.
-// A terminal that cannot is told in words.
-func (f terminalFocuser) Focus(ctx context.Context, id, tty string) error {
-	err := f.registry.Focus(ctx, terminal.ID(id), tty)
+// Focus brings forward the tab that the session whose process is pid runs in on tty, in
+// the terminal its process names (runsIn), or else the one recorded, named by its
+// settings ID. A terminal that cannot is told in words.
+func (f terminalFocuser) Focus(ctx context.Context, recorded, tty string, pid int) error {
+	err := f.registry.Focus(ctx, f.runsIn(terminal.ID(recorded), pid), terminal.Tab{TTY: tty, PID: pid})
 
 	switch {
 	case errors.Is(err, terminal.ErrNoSuchTab):
 		return uierr.New("Couldn't find the session's tab. It may have been closed, or moved to another app.", err)
+	case errors.Is(err, terminal.ErrNoFocusLink):
+		return uierr.New("Couldn't tell which Warp tab runs this session. Warp v0.2026.05.27 or newer can; "+
+			"update Warp, and sessions launched afterwards can be shown.", err)
 	case errors.Is(err, terminal.ErrNoFocus), errors.Is(err, terminal.ErrUnknownTerminal),
 		errors.Is(err, terminal.ErrUnsupportedOS):
 		return uierr.New("This terminal can't show a session's tab.", err)
 	default:
 		return err
 	}
+}
+
+// runsIn returns the terminal the session whose agent is pid runs in now: the one its
+// process's TERM_PROGRAM names, read at the click and that variable alone, or recorded,
+// the terminal its launch recorded, when the variable can't be read or names none of the
+// terminals, as tmux's own does. A session the user resumed themselves, as with claude
+// --resume, carries the record of the session it resumed, whose terminal may be another
+// one. Nothing read is kept or logged.
+func (f terminalFocuser) runsIn(recorded terminal.ID, pid int) terminal.ID {
+	if f.env == nil {
+		return recorded
+	}
+
+	value, ok := f.env(pid, terminal.TermProgramEnv)
+	if !ok {
+		return recorded
+	}
+
+	if id, known := terminal.FromTermProgram(value); known {
+		return id
+	}
+
+	return recorded
 }
 
 // sessionOutcomes records on the agent sessions what the inbox learned came of their items

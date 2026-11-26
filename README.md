@@ -187,7 +187,7 @@ prompt to click through.
 
 Nilbox borrows the [GitHub CLI](https://cli.github.com)'s sign-in (the `repo` and `read:org`
 scopes, plus the optional `read:project` to see the projects your issues are in), and launches the
-Claude Code CLI (`claude`), the Codex CLI (`codex`), or both, in iTerm2 or Terminal.app. Its
+Claude Code CLI (`claude`), the Codex CLI (`codex`), or both, in iTerm2, Warp, or Terminal.app. Its
 first-run setup checks each one and gives the command for anything missing.
 
 <br>
@@ -705,9 +705,9 @@ More in [Reviewing a pull request](docs/guide/reviewing-a-pull-request.md) and
 <br/>
 
 - **Two agents, one button:** **Open in Claude** or **Open in Codex** starts the agent in a new
-  iTerm2 tab (the default) or Terminal.app window, with the item's prompt, profile, model, and
-  permissions already worked out. The button shows those settings first, in its launch
-  options, so you see what will run before it starts.
+  iTerm2 tab (the default), Warp tab, or Terminal.app window, with the item's prompt, profile,
+  model, and permissions already worked out. The button shows those settings first, in its
+  launch options, so you see what will run before it starts.
 - **The item's clone,** found by matching git remotes one level under your clone root
   (`~/projects` by default) and your other repository locations: folders anywhere else, each
   looked into one level deep, or single clones, added in **Settings → Repositories**. No clone
@@ -967,7 +967,7 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
   ready to clean up, and filter by them. While it lists, the head shows how far it has got.
 - **What removing it would cost:** a row unfolds into a drawer that says so in one sentence, then
   lists its changed files, its commits not on GitHub, its branch and how far behind it is, and
-  where it came from, with **Open in Terminal** and **Reveal in Finder**.
+  where it came from, with **Open in terminal** and **Reveal in Finder**.
 - **Kept track of:** Nilbox records each worktree it makes, with the agent and time of its latest
   session, and checks every record against git each time it lists or sweeps: a worktree moved is
   followed, one removed outside the app is forgotten, and one on an item's `worktree-<item>`
@@ -1025,10 +1025,10 @@ More in [The Worktrees view](docs/guide/worktrees-view.md) and
   version typed to confirm, and, for a Go module whose `go.mod` doesn't name the new major, a box
   ticked on purpose.
 - **Runs in Nilbox or your terminal.** In Nilbox, the sheet ticks off magex's steps with the live
-  log; in iTerm2 or Terminal.app, a signing passphrase can be typed, and Nilbox still follows the
-  run. Either way, the result is what GitHub and your clone say once magex ends: the tag on
-  GitHub, the branch your clone is back on, or, if the push didn't land, the commands to finish or
-  undo it.
+  log; in iTerm2, Warp, or Terminal.app, a signing passphrase can be typed, and Nilbox still
+  follows the run. Either way, the result is what GitHub and your clone say once magex ends: the
+  tag on GitHub, the branch your clone is back on, or, if the push didn't land, the commands to
+  finish or undo it.
 - **Followed to published.** Once the tag is on GitHub, Nilbox follows the tag's release workflow,
   at most 20 checks over 45 minutes, and says when the release is published, when one of the
   tag's workflows failed, or why it stopped following, with a banner for the first two. It picks
@@ -1131,8 +1131,8 @@ More in [Repo scripts](docs/guide/repo-scripts.md).
   **Copy log**, **Show the log file**, **Open in terminal**, and **Run again** where it makes
   sense. The Scripts tab counts the runs going, with a red dot after one fails.
 - **In Nilbox or your terminal:** **Runs in** under **Settings → Integrations** picks. A run in
-  iTerm2 or Terminal.app gets a real terminal (colors, a passphrase prompt), and Nilbox still
-  follows its output and exit status.
+  iTerm2, Warp, or Terminal.app gets a real terminal (colors, a passphrase prompt), and Nilbox
+  still follows its output and exit status.
 - **One run per clone, none queued:** a second run there, or a launch that needs a new worktree,
   fails at once and names the run. Up to four run in Nilbox at once. A release, hook change,
   check, pull, or tool update in Nilbox has a time limit; a script, and any run in your terminal,
@@ -1282,14 +1282,14 @@ More in [The window](docs/guide/window.md).
 | ✅ macOS 13.3+                        | **Supported** | Native desktop app with a menu bar icon and notification banners    |
 | ✅ Claude Code                        | **Supported** | Your own profiles, models, effort, and flags                        |
 | ✅ OpenAI Codex                       | **Supported** | The same, with a switch on each launch and defaults per repo or org |
-| ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
+| ✅ iTerm2, Warp, and Terminal.app     | **Supported** | iTerm2 by default, or the first one installed                       |
 | ✅ mage-x and go-pre-commit           | **Supported** | Releases, Git hooks, and repository scripts in the Scripts tab      |
 | ✅ Mute or pin repositories and orgs  | **Supported** | Hide or raise everything from a repository or org at once           |
 | ✅ First-run setup                    | **Supported** | GitHub, clones, agent, terminal, notifications, and tools, in steps |
 | 🧪 Autopilot                         | **Beta**      | Routines that triage, fix, and merge, off until turned on in Labs   |
 | 🧪 Describe it                       | **Beta**      | Say what you want, and Claude Code proposes the routines to apply   |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
-| 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
+| 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, Warp, and Terminal.app           |
 | 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |
 | 🚧 Linux and Windows                 | **Planned**   | The core is plain Go and already builds and tests on Linux          |
 

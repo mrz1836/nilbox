@@ -41,7 +41,7 @@ function RunRow({
   onOpen: () => void
 }) {
   const took = runDuration(run)
-  const details = [runWhere(run), runPlace(run.runsIn, terminal), ...(took === '' ? [] : [took])]
+  const details = [runWhere(run), runPlace(run, terminal), ...(took === '' ? [] : [took])]
 
   return (
     <li>
@@ -66,9 +66,10 @@ function RunRow({
 }
 
 // RunsPageProps are every run, as the tab lists them (runs, error, and reload, from
-// useScriptRuns), the terminal chosen for launches, which a run in the terminal runs in,
-// or null until the settings have loaded, and the run open in the panel, which the tab
-// holds, so another page can open one here (as Recent on Release does).
+// useScriptRuns), the terminal chosen for launches, which names the terminal of a run in
+// the terminal that didn't record its own, or null until the settings have loaded, and the
+// run open in the panel, which the tab holds, so another page can open one here (as Recent
+// on Release does).
 export interface RunsPageProps extends ScriptRunsState {
   terminal: TerminalID | null
   selected: number | null

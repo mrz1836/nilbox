@@ -339,8 +339,9 @@ func previewOf(got launcher.Preview) autopilot.RunPreview {
 	res := got.Resolution
 	out := autopilot.RunPreview{
 		Agent: res.Agent.Name, Profile: res.Profile.Value, Model: res.Model.Value, Effort: res.Effort.Value,
-		PromptName: res.Prompt.Nickname, Dir: got.Dir, Command: got.Command, Env: got.Env, Permission: got.Permission,
-		Prompt: got.Prompt, Terminal: terminal.Name(got.Terminal), Warnings: res.Warnings,
+		PromptName: res.Prompt.Nickname, Dir: got.Dir, Command: got.Command, Env: got.Env, Inherited: got.Inherited,
+		Permission: got.Permission,
+		Prompt:     got.Prompt, Terminal: terminal.Name(got.Terminal), Warnings: res.Warnings,
 		Sources: map[string]string{
 			"agent": routineSource(res.AgentSource), "profile": routineSource(res.Profile.Source),
 			"model": routineSource(res.Model.Source), "effort": routineSource(res.Effort.Source),
@@ -905,7 +906,8 @@ func signInCheck(label string, in agent.SignIn, fix string) autopilot.ReadyCheck
 	return warn(label, "is there, but its sign-in couldn't be read", fix, true)
 }
 
-// terminalCheck checks the terminal launches open in.
+// terminalCheck checks the terminal launches open in: Terminal is always installed, and
+// iTerm2 and Warp are when their bundles are in /Applications or ~/Applications.
 func (r *readyChecks) terminalCheck(s settings.Settings) autopilot.ReadyCheck {
 	apps := []string{"/Applications", filepath.Join(r.deps.home, "Applications")}
 

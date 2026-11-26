@@ -16,6 +16,11 @@ UPDATE script_runs SET
     proc_started_at = sqlc.arg(proc_started_at)
 WHERE id = sqlc.arg(id);
 
+-- name: SetRunTerminal :exec
+-- SetRunTerminal records the terminal app a run in the terminal opened in, by its settings
+-- ID, once the terminal has opened it.
+UPDATE script_runs SET terminal = sqlc.arg(terminal) WHERE id = sqlc.arg(id);
+
 -- name: SetRunStatus :execrows
 -- SetRunStatus changes the status and summary of a run that has not finished, as reconcile
 -- does for a run from before the app restarted that is still going.
@@ -39,21 +44,21 @@ WHERE id = sqlc.arg(id) AND status IN ('running', 'orphaned');
 -- name: GetRun :one
 -- GetRun returns one run.
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE id = sqlc.arg(id);
 
 -- name: ListRuns :many
 -- ListRuns returns every run, newest first.
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 ORDER BY started_at DESC, id DESC;
 
 -- name: LiveRuns :many
 -- LiveRuns returns every run that has not finished, oldest first.
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE status IN ('running', 'orphaned')
 ORDER BY id;
@@ -61,7 +66,7 @@ ORDER BY id;
 -- name: EndedRunsOfKind :many
 -- EndedRunsOfKind returns the runs of a kind that have finished, oldest first.
 SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
-       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at, terminal
 FROM script_runs
 WHERE kind = sqlc.arg(kind) AND status NOT IN ('running', 'orphaned')
 ORDER BY started_at, id;

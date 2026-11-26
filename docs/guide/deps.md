@@ -83,10 +83,12 @@ line under the name, and narrower still the counts and the tools join them there
 - **Its stalest manifest,** the counted one whose dependencies changed longest ago (none when
   none counts), or, in amber, why the clone couldn't be read.
 - **Its notes:** an upgrade an agent works on there, as in *Claude · working · 4m* (its prompt
-  and worktree in its tooltip), then *checked 3d ago* while you have marked it up to date (when,
-  and what the mark does now, in its tooltip), then how the clone was read: *none counted* (none
-  of its modules counts toward its age), *age unknown* (no commit that changed its counted
-  manifests was found, or why not), *read at HEAD* (and why), *shallow* (its history
+  and worktree in its tooltip); while the upgrade still runs in a tab that can be shown, a click
+  on it brings that tab forward, as [Show in terminal](following-a-session.md#show-in-terminal)
+  does, and the head says why when it can't. Then *checked 3d ago* while you have marked it up
+  to date (when, and what the mark does now, in its tooltip), then how the clone was read: *none
+  counted* (none of its modules counts toward its age), *age unknown* (no commit that changed its
+  counted manifests was found, or why not), *read at HEAD* (and why), *shallow* (its history
   stops at its shallow commits, so its dependencies may be older than shown), and *not all read*
   (it holds more manifests than Deps reads, 200, and those nearest its top were read). Each says
   more in its tooltip.
@@ -110,9 +112,12 @@ indirect*, or *48 deps · 12 dev*, with any peer and optional ones), the subject
 last changed it and its age, and a **Reveal in Finder** button that shows that manifest. A manifest over 1 MiB,
 one that doesn't parse, or one whose history couldn't be read says so in amber under its line.
 The clone's workspace files follow (*Workspaces: go.work · pnpm-workspace.yaml*), and at its foot
-**Open in Terminal** opens your terminal in the clone, running nothing, **Mark up to date** (or
-**Unmark up to date**) marks it as its row's check does, and **Upgrade dependencies…** opens the
-Upgrade dialog.
+**Show terminal**, while the row's upgrade still runs in a tab that can be shown, brings that tab
+forward ([Show in terminal](following-a-session.md#show-in-terminal)), saying in the drawer why
+when it can't; [**Open in terminal**](launching-a-session.md#open-in-terminal) opens a new
+terminal in the clone itself, never the upgrade's worktree, running nothing; **Mark up to date**
+(or **Unmark up to date**) marks it as its row's check does; and **Upgrade dependencies…** opens
+the Upgrade dialog.
 
 **The Upgrade dialog** starts a coding agent on the repository itself rather than on a pull
 request or an issue. It is the launch options' own dialog, as an item's **Launch options…** opens
@@ -176,8 +181,9 @@ run it shows you, takes the Upgrade dialog's place.
 
 The session is followed like any other ([Following a session](following-a-session.md)): the
 clone's row shows how it stands (the newest still running, or one that ended in the last day),
-and the menu bar and the banners name it by its repository and prompt, as in **example-repo ·
-Upgrade dependencies**; with no pull request or issue to start on, it can't be resumed from the
-app. A `git fetch --prune` of your own that drops the branch's remote-tracking copy (as it does
-once GitHub deletes the merged branch) before the cleanup sees the merge leaves the worktree
-linked to nothing: remove it by hand on the Worktrees tab.
+and its tag, or **Show terminal** in its drawer, takes you back to its tab while it runs; the
+menu bar and the banners name it by its repository and prompt, as in **example-repo · Upgrade
+dependencies**; with no pull request or issue to start on, it can't be resumed from the app. A
+`git fetch --prune` of your own that drops the branch's remote-tracking copy (as it does once
+GitHub deletes the merged branch) before the cleanup sees the merge leaves the worktree linked to
+nothing: remove it by hand on the Worktrees tab.

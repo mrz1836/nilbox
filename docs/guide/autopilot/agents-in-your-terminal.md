@@ -10,8 +10,14 @@ follows it as any session. The prompt can name the routine too: **.Routine**, **
 made it run, *Checks fail*), **.Attempt** (which of its tries this is), and **.Unattended**
 (false here: you are there to answer), beside the rest, and **.FailedChecks** names the checks
 that failed on the head commit, from the last read of them. A terminal run has no end Nilbox can
-see, so nothing follows it but a notice, and the step ends as the terminal opens. Ask first suits
-it best: on Autopilot, the builder warns, it opens a terminal tab while you work.
+see, so nothing follows it but a notice, and the step ends as the terminal opens. Its run view
+offers **Show in terminal** while its session runs, or while one you resumed it in does, beside
+**Show the worktree**. Ask first suits it best: on Autopilot, the builder warns, it opens a
+terminal tab while you work. It opens in
+[the terminal](../launching-a-session.md#the-terminal) your launches use: before you leave a
+routine to run, allow iTerm2's
+[Automation permission](../launching-a-session.md#macoss-automation-permission), or finish
+[Warp's welcome](../launching-a-session.md#warps-welcome-comes-first).
 
 Right before each start, in this order: an [outside contributor](../outside-contributors.md)'s
 item takes an agent only where its org or repository allows it, planning only; this Mac must be

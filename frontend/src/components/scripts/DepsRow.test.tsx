@@ -323,6 +323,46 @@ describe('DepsRow', () => {
       expect(row()).toHaveTextContent('Upgrade: codex · working')
       expect(row()).not.toHaveTextContent('working ·')
     })
+
+    it('brings the upgrade’s terminal tab forward from its tag, leaving the row folded', async () => {
+      const onShowTerminal = vi.fn<(sessionId: string) => void>()
+      const { row, onToggle } = renderRow(manifestsClone(), {
+        sessions: [upgrade()],
+        agents: agents(),
+        onShowTerminal,
+      })
+      const tag = within(row()).getByRole('button', { name: 'Upgrade: Claude working. Show terminal' })
+
+      expect(tag).toHaveTextContent('Upgrade: Claude · working · 4m')
+      expect(tag).toHaveAttribute(
+        'title',
+        `Upgrade dependencies: Claude working\nIn ${upgradeDir}\nClick to bring forward the iTerm2 tab it runs in`,
+      )
+
+      await userEvent.click(tag)
+
+      expect(onShowTerminal).toHaveBeenCalledExactlyOnceWith('u1')
+      expect(onToggle).not.toHaveBeenCalled()
+    })
+
+    it.each<[string, Partial<AgentSession>]>([
+      ['ended', { state: 'ended', stateAt: isoAgo({ h: 2 }), endedAt: isoAgo({ h: 2 }) }],
+      ['still starting', { state: 'starting', canFocus: false }],
+      ['in the background', { canFocus: false, runId: 4 }],
+    ])('keeps the tag of an upgrade %s to words alone', (_label, change) => {
+      const onShowTerminal = vi.fn<(sessionId: string) => void>()
+      const { row } = renderRow(manifestsClone(), { sessions: [upgrade(change)], agents: agents(), onShowTerminal })
+
+      expect(row()).toHaveTextContent('Upgrade: Claude')
+      expect(within(row()).queryByRole('button', { name: /Show terminal/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps the tag to words alone without a way to show the terminal', () => {
+      const { row } = renderRow(manifestsClone(), { sessions: [upgrade()], agents: agents() })
+
+      expect(row()).toHaveTextContent('Upgrade: Claude · working · 4m')
+      expect(within(row()).queryByRole('button', { name: /Show terminal/ })).not.toBeInTheDocument()
+    })
   })
 
   describe('folding', () => {
@@ -508,7 +548,7 @@ describe('DepsDrawer', () => {
   it('opens the clone in the terminal, and shows a module’s manifest in Finder', async () => {
     renderRow(manifestsClone(), { open: true })
 
-    await userEvent.click(drawer().getByRole('button', { name: 'Open in Terminal' }))
+    await userEvent.click(drawer().getByRole('button', { name: 'Open in terminal' }))
     expect(platform.openManifestsTerminal).toHaveBeenCalledExactlyOnceWith('~/projects/api-server')
 
     await userEvent.click(drawer().getByRole('button', { name: 'Reveal web/package.json in Finder' }))
@@ -522,21 +562,92 @@ describe('DepsDrawer', () => {
     platform.openManifestsTerminal.mockReturnValue(opening.promise)
     renderRow(manifestsClone(), { open: true })
 
-    await userEvent.click(drawer().getByRole('button', { name: 'Open in Terminal' }))
+    await userEvent.click(drawer().getByRole('button', { name: 'Open in terminal' }))
 
-    expect(drawer().getByRole('button', { name: 'Open in Terminal' })).toBeDisabled()
+    expect(drawer().getByRole('button', { name: 'Open in terminal' })).toBeDisabled()
     expect(drawer().getByRole('button', { name: 'Reveal go.mod in Finder' })).toBeDisabled()
 
     await act(async () => {
       opening.resolve()
       await opening.promise
     })
-    expect(drawer().getByRole('button', { name: 'Open in Terminal' })).toBeEnabled()
+    expect(drawer().getByRole('button', { name: 'Open in terminal' })).toBeEnabled()
 
     platform.revealManifest.mockRejectedValue(new Error('Finder can’t show a file here.'))
     await userEvent.click(drawer().getByRole('button', { name: 'Reveal go.mod in Finder' }))
 
     expect(await drawer().findByRole('alert')).toHaveTextContent('Finder can’t show a file here.')
+  })
+
+  // footer is the words of the drawer's actions, at its foot, in order.
+  function footer(): (string | null)[] {
+    const upgradeButton = drawer().getByRole('button', { name: 'Upgrade dependencies…' })
+
+    return Array.from(upgradeButton.parentElement?.querySelectorAll('button') ?? [], (b) => b.textContent)
+  }
+
+  it('shows the upgrade’s terminal tab before Open in terminal, which still opens the clone', async () => {
+    renderRow(manifestsClone(), { open: true, sessions: [upgrade()], agents: agents() })
+
+    expect(footer()).toEqual(['Show terminal', 'Open in terminal', 'Upgrade dependencies…'])
+
+    const show = drawer().getByRole('button', { name: 'Show terminal' })
+
+    expect(show).toHaveAttribute('title', 'Bring forward the iTerm2 tab the upgrade runs in')
+
+    await userEvent.click(show)
+    expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith('u1')
+    expect(platform.openManifestsTerminal).not.toHaveBeenCalled()
+
+    await userEvent.click(drawer().getByRole('button', { name: 'Open in terminal' }))
+    expect(platform.openManifestsTerminal).toHaveBeenCalledExactlyOnceWith('~/projects/api-server')
+    expect(platform.focusSession).toHaveBeenCalledOnce()
+    expect(drawer().queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each<[string, AgentSession[]]>([
+    ['no upgrade', []],
+    ['an upgrade that ended', [upgrade({ state: 'ended', stateAt: isoAgo({ h: 2 }), endedAt: isoAgo({ h: 2 }) })]],
+    ['an upgrade whose tab can’t be shown yet', [upgrade({ state: 'starting', canFocus: false })]],
+  ])('offers no Show terminal for %s', (_label, sessions) => {
+    renderRow(manifestsClone(), { open: true, sessions, agents: agents() })
+
+    expect(footer()).toEqual(['Open in terminal', 'Upgrade dependencies…'])
+  })
+
+  it('names the terminal the upgrade runs in only when it knows it', () => {
+    renderRow(manifestsClone(), { open: true, sessions: [upgrade({ terminal: '' })], agents: agents() })
+
+    expect(drawer().getByRole('button', { name: 'Show terminal' })).toHaveAttribute(
+      'title',
+      'Bring forward the terminal tab the upgrade runs in',
+    )
+  })
+
+  it('holds its actions while the tab is shown, and says why it couldn’t be, until the next try', async () => {
+    const showing = deferred()
+
+    platform.focusSession.mockReturnValue(showing.promise)
+    renderRow(manifestsClone(), { open: true, sessions: [upgrade()], agents: agents() })
+
+    await userEvent.click(drawer().getByRole('button', { name: 'Show terminal' }))
+
+    expect(drawer().getByRole('button', { name: 'Show terminal' })).toBeDisabled()
+    expect(drawer().getByRole('button', { name: 'Open in terminal' })).toBeDisabled()
+    expect(drawer().getByRole('button', { name: 'Reveal go.mod in Finder' })).toBeDisabled()
+
+    await act(async () => {
+      showing.reject(new Error('Couldn’t find the session’s terminal. It may have just ended.'))
+      await showing.promise.catch(() => undefined)
+    })
+
+    expect(await drawer().findByRole('alert')).toHaveTextContent(
+      'Couldn’t find the session’s terminal. It may have just ended.',
+    )
+    expect(drawer().getByRole('button', { name: 'Show terminal' })).toBeEnabled()
+
+    await userEvent.click(drawer().getByRole('button', { name: 'Open in terminal' }))
+    expect(drawer().queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('marks a module that doesn’t count toward the clone’s age, saying why, and lists it after the rest', () => {

@@ -49,15 +49,17 @@ describe('worktreeLine', () => {
 
 describe('PlannedLaunch', () => {
   // planned is a launch planned in ~/projects/example-repo, opening in terminal.
-  function planned(terminal: string): Plan {
+  function planned(terminal: string, overrides: Partial<Plan> = {}): Plan {
     return {
       prompt: 'Review the pull request',
       worktree: null,
       dir: '~/projects/example-repo',
       permission: 'plan mode',
       env: [],
+      inherited: [],
       command: 'claude',
       terminal,
+      ...overrides,
     }
   }
 
@@ -71,6 +73,30 @@ describe('PlannedLaunch', () => {
 
     rerender(<PlannedLaunch plan={planned('')} />)
     expect(screen.queryByText(/opens in/)).not.toBeInTheDocument()
+  })
+
+  it('folds the variables another agent session would hand down into one entry, naming them in its tooltip', () => {
+    const { rerender } = render(
+      <PlannedLaunch
+        plan={planned('iterm2', {
+          env: ['unset CLAUDE_CONFIG_DIR', 'unset ANTHROPIC_API_KEY'],
+          inherited: ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION', 'CODEX_SANDBOX'],
+        })}
+      />,
+    )
+
+    expect(screen.getByText(/^unset CLAUDE_CONFIG_DIR · unset ANTHROPIC_API_KEY ·/)).toBeInTheDocument()
+    expect(screen.getByText('unset 3 inherited session variables')).toHaveAttribute(
+      'title',
+      'unset CLAUDECODE\nunset CLAUDE_CODE_CHILD_SESSION\nunset CODEX_SANDBOX',
+    )
+    expect(screen.queryByText(/unset CLAUDECODE/)).not.toBeInTheDocument()
+
+    rerender(<PlannedLaunch plan={planned('iterm2', { inherited: ['CLAUDECODE'] })} />)
+    expect(screen.getByText('unset 1 inherited session variable')).toBeInTheDocument()
+
+    rerender(<PlannedLaunch plan={planned('iterm2')} />)
+    expect(screen.queryByText(/inherited/)).not.toBeInTheDocument()
   })
 })
 

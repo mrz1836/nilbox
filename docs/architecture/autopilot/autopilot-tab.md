@@ -18,7 +18,14 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   sheets' line (`sheetLine`). `TakeOverDialog` is the one take over the run view, the session
   panel, and the launch button's hold dialog share (`takeOverRun`), its box the profile's
   permissions; a hold it meets asks as `LaunchHoldDialog` does. `LaunchHoldDialog` with a
-  background run offers **Watch it** and **Take over**, never Start another.
+  background run offers **Watch it** and **Take over**, never Start another. The run view takes
+  the item's sessions (`useSheetHost`'s `RowsKit.sessions`, App's `useSessions`) and finds the
+  run's session among them by `sessionId`, and the session that carries its conversation on by
+  its `carriedBy` (`lib/sessions.ts`'s `carrierOf`): it offers **Show in terminal**
+  (`focusSession`) for the run's own while it `canFocus` (a run in the terminal), else for the
+  carrier while that one does, and holds back the backend's `canTakeOver` while anything carries
+  the conversation on, as the session panel does; with no sessions followed, it offers what the
+  backend says.
 
 - **Autopilot (beta).** App reads the switch from the settings (`autopilotOn`, off until they
   load). Off, the window shows none of Autopilot: `AppHeader` gets `autopilot={null}` and

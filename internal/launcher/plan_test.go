@@ -42,6 +42,23 @@ func codexReadOnly() []string {
 	return []string{flagSandbox, "read-only", flagApprovals, "on-request"}
 }
 
+// sessionEnv is every agent's session variables, which every plan unsets after its own
+// (agent.SessionEnv), appended to unset.
+func sessionEnv(unset ...string) []string {
+	return slices.Concat(unset, agent.SessionEnv())
+}
+
+// unsetLines are a preview's lines that unset names; every agent's session variables are
+// the preview's Inherited, not lines.
+func unsetLines(names ...string) []string {
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, "unset "+name)
+	}
+
+	return lines
+}
+
 // absPath returns an absolute path under a fixed fake root.
 func absPath(parts ...string) string {
 	return filepath.Join(append([]string{"/", "tmp", "launcher-test"}, parts...)...)
@@ -536,13 +553,13 @@ func TestBuildPlanForCodex(t *testing.T) {
 	assert.True(t, got.PromptLast)
 	assert.Equal(t, agent.Codex, got.Agent)
 	assert.Equal(t, map[string]string{codexConfigEnv: absPath("home", ".codex_work")}, got.Env)
-	assert.Equal(t, []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
+	assert.Equal(t, sessionEnv("OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"), got.Unset,
 		"an API key in the environment never signs Codex in while the setting is off")
 
 	req.UseAPIKey = true
 	got, err = BuildPlan(req)
 	require.NoError(t, err)
-	assert.Empty(t, got.Unset, "with the setting on, a key passes through")
+	assert.Equal(t, sessionEnv(), got.Unset, "with the setting on, a key passes through")
 
 	req.UseAPIKey = false
 
@@ -555,7 +572,7 @@ func TestBuildPlanForCodex(t *testing.T) {
 
 	got, err = BuildPlan(req)
 	require.NoError(t, err)
-	assert.Equal(t, []string{codexConfigEnv, "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
+	assert.Equal(t, sessionEnv(codexConfigEnv, "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"), got.Unset,
 		"the default profile runs without CODEX_HOME")
 
 	req.Profile.ExtraArgs = []string{"-c", "sandbox_mode=danger-full-access"}
@@ -644,6 +661,7 @@ func TestEnvHandling(t *testing.T) {
 	workDir := absPath("home", ".claude_work")
 
 	keys := []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
+	defaultUnset := slices.Concat([]string{claudeConfigEnv}, keys)
 
 	tests := []struct {
 		name      string
@@ -654,36 +672,45 @@ func TestEnvHandling(t *testing.T) {
 		wantUnset []string
 	}{
 		{
-			name: "default profile unsets the config dir and the keys", env: map[string]string{},
-			wantEnv: map[string]string{}, wantUnset: append([]string{claudeConfigEnv}, keys...),
+			name: "default profile unsets the config dir, the keys, and every session's variables",
+			env:  map[string]string{}, wantEnv: map[string]string{}, wantUnset: sessionEnv(defaultUnset...),
 		},
 		{
 			name:    "default profile drops a config dir from its env",
 			env:     map[string]string{claudeConfigEnv: absPath("elsewhere"), "EDITOR": "vi"},
-			wantEnv: map[string]string{"EDITOR": "vi"}, wantUnset: append([]string{claudeConfigEnv}, keys...),
+			wantEnv: map[string]string{"EDITOR": "vi"}, wantUnset: sessionEnv(defaultUnset...),
 		},
 		{
 			name: "named profile sets the config dir", configDir: workDir, env: nil,
-			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: keys,
+			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: sessionEnv(keys...),
 		},
 		{
 			name: "the config dir wins over the profile env", configDir: workDir,
-			env:     map[string]string{claudeConfigEnv: absPath("elsewhere"), "_PRIVATE_1": "a b 'c'"},
-			wantEnv: map[string]string{claudeConfigEnv: workDir, "_PRIVATE_1": "a b 'c'"}, wantUnset: keys,
+			env:       map[string]string{claudeConfigEnv: absPath("elsewhere"), "_PRIVATE_1": "a b 'c'"},
+			wantEnv:   map[string]string{claudeConfigEnv: workDir, "_PRIVATE_1": "a b 'c'"},
+			wantUnset: sessionEnv(keys...),
 		},
 		{
 			name: "a key in the profile's env never reaches the agent with the setting off", configDir: workDir,
 			env:     map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
-			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: keys,
+			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: sessionEnv(keys...),
 		},
 		{
 			name: "with the setting on, a key passes through", configDir: workDir, useKey: true,
-			env:     map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
-			wantEnv: map[string]string{claudeConfigEnv: workDir, "ANTHROPIC_API_KEY": "sk-test"},
+			env:       map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
+			wantEnv:   map[string]string{claudeConfigEnv: workDir, "ANTHROPIC_API_KEY": "sk-test"},
+			wantUnset: sessionEnv(),
 		},
 		{
-			name: "with the setting on, the default profile unsets only the config dir", useKey: true,
-			wantEnv: map[string]string{}, wantUnset: []string{claudeConfigEnv},
+			name:   "with the setting on, the default profile unsets the config dir and the sessions' variables",
+			useKey: true, wantEnv: map[string]string{}, wantUnset: sessionEnv(claudeConfigEnv),
+		},
+		{
+			name: "no session's variable in the profile's env reaches the agent, a setting beside one does",
+			env: map[string]string{
+				"CLAUDECODE": "1", "CLAUDE_CODE_CHILD_SESSION": "1", "CODEX_THREAD_ID": "x", "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000",
+			},
+			wantEnv: map[string]string{"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"}, wantUnset: sessionEnv(defaultUnset...),
 		},
 	}
 
@@ -713,6 +740,21 @@ func TestEnvHandling(t *testing.T) {
 			_, err := BuildPlan(req)
 			require.ErrorIs(t, err, ErrInvalidEnvKey)
 		})
+	}
+}
+
+func TestAgentEnvUnsetsEveryAgentsSessionVariablesWhicheverStarts(t *testing.T) {
+	t.Parallel()
+
+	for _, a := range agent.All() {
+		env, unset, err := AgentEnv(a, profiles.Profile{Agent: a.ID, Name: profiles.DefaultName}, false)
+		require.NoError(t, err)
+		assert.Empty(t, env)
+		assert.Equal(t, slices.Concat([]string{a.ConfigEnv}, a.KeyEnv, agent.SessionEnv()), unset,
+			"%s: the config variable, the keys, then the sessions' variables", a.ID)
+		assert.Contains(t, unset, "CLAUDE_CODE_CHILD_SESSION", "%s never starts as a Claude Code session's child", a.ID)
+		assert.Contains(t, unset, "CODEX_SANDBOX", "%s never starts as a Codex session's child", a.ID)
+		assert.NotContains(t, unset, "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "%s: the user's own setting passes through", a.ID)
 	}
 }
 

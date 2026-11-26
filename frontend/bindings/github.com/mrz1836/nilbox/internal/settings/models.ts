@@ -390,7 +390,7 @@ export interface Settings {
     "worktreeAutoCleanup": boolean;
 
     /**
-     * Terminal is TerminalITerm2 or TerminalApp.
+     * Terminal is TerminalITerm2, TerminalWarp, or TerminalApp.
      */
     "terminal": terminal$0.ID;
 

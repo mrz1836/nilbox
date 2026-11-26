@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // The files of a run, under the log folder: <id> and one of these.
@@ -24,16 +25,21 @@ const (
 	exitTmpSuffix = ".exit.tmp"
 	compactSuffix = ".log.compact"
 	keptSuffix    = ".kept"
+	linkSuffix    = ".link"
 )
 
 // readBlock is how much of a log one read takes.
 const readBlock = 64 << 10
 
+// linkLimit is how much of a link file is read: far more than a focus link, which is 47
+// bytes, so a longer value is read whole enough to be refused as one.
+const linkLimit = 512
+
 // cutWindow is how far around a compaction's cut a line break is looked for.
 const cutWindow = 64 << 10
 
 // runFile matches the name of a file of a run: its ID, then what the file is.
-var runFile = regexp.MustCompile(`^([0-9]+)(\.log|\.pid|\.exit|\.exit\.tmp|\.log\.compact|\.kept)$`)
+var runFile = regexp.MustCompile(`^([0-9]+)(\.log|\.pid|\.exit|\.exit\.tmp|\.log\.compact|\.kept|\.link)$`)
 
 // logFiles are where a run's files are.
 type logFiles struct {
@@ -51,6 +57,9 @@ func (f logFiles) exit(id int64) string { return f.path(id, exitSuffix) }
 
 // kept returns the path of the file of what a run keeps beside its record (Spec.Keep).
 func (f logFiles) kept(id int64) string { return f.path(id, keptSuffix) }
+
+// link returns the path of a terminal run's link file, its tab's focus link.
+func (f logFiles) link(id int64) string { return f.path(id, linkSuffix) }
 
 // path returns the path of a run's file with suffix.
 func (f logFiles) path(id int64, suffix string) string {
@@ -118,7 +127,9 @@ func (f logFiles) writeKept(id int64, data []byte) error {
 func (f logFiles) clear(id int64) error {
 	var errs []error
 
-	for _, suffix := range []string{logSuffix, pidSuffix, exitSuffix, exitTmpSuffix, compactSuffix, keptSuffix} {
+	suffixes := []string{logSuffix, pidSuffix, exitSuffix, exitTmpSuffix, compactSuffix, keptSuffix, linkSuffix}
+
+	for _, suffix := range suffixes {
 		if err := os.Remove(f.path(id, suffix)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, err)
 		}
@@ -182,6 +193,20 @@ func (f logFiles) readExit(id int64) (code int, known, ok bool) {
 	code, err = strconv.Atoi(strings.TrimSpace(string(body)))
 
 	return code, err == nil, true
+}
+
+// readLink reads what a terminal run's script recorded in its link file, without the
+// newline it ends with, or "" when it recorded nothing: its shell had no focus link, the
+// script came from before scripts recorded one, or the file isn't a regular file, which is
+// never read. It is the terminal's own value, whatever it holds, and is checked as a link
+// only by the terminal's driver.
+func (f logFiles) readLink(id int64) string {
+	body, err := paths.ReadHead(f.link(id), linkLimit)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSuffix(string(body), "\n")
 }
 
 // readPID reads the PID a terminal run's script recorded, or 0 while there is none.

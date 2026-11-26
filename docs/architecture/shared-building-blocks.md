@@ -14,7 +14,10 @@ Services share their building blocks rather than keep copies:
   the flags no background run's extras set; `KeepsPreset`, each spec's own: Codex keeps every preset
   but GitHub tasks only), its version, sign-in, and login commands with their parsers
   (`ParseVersion`, `ParseSignIn`, which keep no email), the API key variables a launch unsets unless
-  the user's setting lets a key through (`KeyEnv`), the status page part it depends on
+  the user's setting lets a key through (`KeyEnv`), the variables its running sessions set for
+  the programs they start, by whole name, which every agent start and the terminal drivers' own
+  programs leave out whichever agent it is (`SessionEnv`, every spec's `sessionEnv`, outside the
+  bound `Agent`), the status page part it depends on
   (`StatusPart`), the conversation half Describe it talks with Claude Code through
   (`conversation.go`, `claude_conversation.go`: a turn's flags, `ConversationArgs`, which take no
   extra arguments, its MCP config, `ConversationFiles`, the plugin's files and commands,
@@ -32,6 +35,11 @@ Services share their building blocks rather than keep copies:
 - `internal/procs` lists the running processes' working directories (`lsof` on macOS, `/proc` on
   Linux), which tell a worktree some session is in, reads one process's whole command line and
   whether it has a terminal (`DetailOf`, from the kernel's process table, never its environment),
+  reads one variable of a process's environment and nothing else of it (`EnvOf(pid, name)`, for
+  Warp's focus link: `kern.procargs2` on macOS, parsed by the pure, fuzzed `ParseProcEnv`, which
+  skips the arguments so a `NAME=value` among them never counts; `/proc/<pid>/environ` on Linux;
+  false elsewhere, and for a platform binary such as a shell, whose environment macOS hides; the
+  buffer read is cleared before it returns, since the environment holds the process's secrets),
   tells a process the process manager adopted (`Adopted`), reads a process's start time (`StartedAt`),
   which tells a process from a stranger that reused its PID, and probes a PID as running, gone, or
   unknown (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's

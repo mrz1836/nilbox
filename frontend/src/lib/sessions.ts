@@ -57,6 +57,13 @@ export function isLive(state: SessionState): boolean {
   return state !== 'ended'
 }
 
+// showable reports a session whose terminal tab Show terminal can bring forward: it has not
+// ended, and its tab can be shown (canFocus), which a session still starting, or an agent's
+// run in the background, can't.
+export function showable(s: AgentSession | null | undefined): s is AgentSession {
+  return s !== null && s !== undefined && isLive(s.state) && s.canFocus
+}
+
 // needsYou reports a session waiting for the user.
 export function needsYou(state: SessionState): boolean {
   return state === 'needs_approval' || state === 'needs_input'
@@ -67,9 +74,24 @@ export function runningSession(sessions: readonly AgentSession[] | undefined): A
   return sessions?.find((s) => isLive(s.state)) ?? null
 }
 
+// carrierOf is the session among sessions that carries s's conversation on, as the
+// backend names it (carriedBy): one resumed from it, or a background run's take over, still
+// running. It is undefined when none does, or when that session isn't among them.
+export function carrierOf(s: AgentSession, sessions: readonly AgentSession[]): AgentSession | undefined {
+  return s.carriedBy === '' ? undefined : sessions.find((o) => o.id === s.carriedBy)
+}
+
+// silent reports a session that ended with nothing to read: the agent said nothing and left
+// no review, merge, or close on GitHub, as when the user quits it before its first answer.
+// Its card claims no Findings; a session that failed still shows what happened.
+export function silent(session: AgentSession): boolean {
+  return session.state === 'ended' && session.lastMessage.trim() === '' && session.githubEvent === ''
+}
+
 // cardSession picks the session an item's card shows: the newest still running, else the
-// newest that ended in the last day, unless the item, when given, has moved past it
-// (superseded), else none.
+// newest that ended in the last day, unless it ended with nothing to read (silent) or the
+// item, when given, has moved past it (superseded), else none. The card then offers its own
+// next step, and the session stays in the agent's list.
 export function cardSession(
   sessions: readonly AgentSession[] | undefined,
   now: Date,
@@ -88,6 +110,7 @@ export function cardSession(
   if (
     ended === undefined ||
     now.getTime() - Date.parse(ended.endedAt) > endedShownMs ||
+    silent(ended) ||
     (item !== undefined && superseded(ended, item))
   ) {
     return null
@@ -256,6 +279,14 @@ export function githubEventTone(s: AgentSession): string {
 // build doesn't know.
 export function terminalName(s: AgentSession): string {
   return terminalLabel(s.terminal, '')
+}
+
+// tabWords names the tab a session runs in, for a tooltip of Show terminal's: "the iTerm2
+// tab", or "the terminal tab" in a terminal this build doesn't know.
+export function tabWords(s: AgentSession): string {
+  const terminal = terminalName(s)
+
+  return `the ${terminal === '' ? 'terminal' : terminal} tab`
 }
 
 const compactCounts = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })

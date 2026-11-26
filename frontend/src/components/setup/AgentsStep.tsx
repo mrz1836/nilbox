@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
-import { brand } from '../../generated/brand'
 import { useMutation } from '../../lib/useMutation'
 import { loginCommand } from '../../lib/profiles'
 import { agentRepos } from '../../lib/setup'
+import { terminalNote } from '../../lib/terminals'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   openExternal,
@@ -26,6 +26,11 @@ import { CircleCheckIcon, ExternalIcon, RefreshIcon, TerminalIcon } from '../ico
 // switchedAgent says the default agent moved to one that is installed, or ''.
 function switchedAgent(from: AgentInfo | undefined, to: AgentInfo): string {
   return `${from?.name ?? 'The default agent'} isn’t installed, so launches start ${to.name} instead.`
+}
+
+// switchedTerminal says the terminal moved to the first one installed.
+function switchedTerminal(from: TerminalChoice, to: TerminalChoice): string {
+  return `${from.name} isn’t installed, so launches open in ${to.name}.`
 }
 
 interface AgentCardProps {
@@ -152,7 +157,7 @@ function TerminalTiles({ terminals, chosen, onChoose }: TerminalTilesProps) {
   const name = useId()
 
   return (
-    <div role="radiogroup" aria-label="Terminal" className="grid grid-cols-2 gap-3">
+    <div role="radiogroup" aria-label="Terminal" className="grid grid-cols-3 gap-3">
       {terminals.map((t) => (
         <label
           key={t.id}
@@ -197,7 +202,9 @@ export interface AgentsStepProps {
 // it, its profiles, and the command that signs one in; the default, of the agents
 // installed; the profile a launch runs with; the terminal it opens in, of those installed;
 // and whether each session gets its own worktree. A default agent that isn't installed
-// moves to one that is, and iTerm2 chosen but missing moves to Terminal, each saying so.
+// moves to one that is, and a terminal that isn't installed moves to the first one that is
+// (the list arrives iTerm2, Warp, Terminal), each saying so; a terminal the user chose here
+// never moves.
 export function AgentsStep(props: AgentsStepProps) {
   const { agents, profiles, versions, terminals } = props
   const id = useId()
@@ -205,17 +212,19 @@ export function AgentsStep(props: AgentsStepProps) {
   const [notes, setNotes] = useState<string[]>([])
   const looker = useMutation(() => rediscoverProfiles())
 
+  // The settings a fresh install starts with may name what isn't here: each is moved, once,
+  // to what is, and a terminal the user chooses here is never moved.
+  const fixed = useRef({ agent: false, terminal: false })
+
   const chooseAgent = (agent: AgentInfo) => {
     void save({ defaultAgent: agent.id }, () => setDefaultAgent(agent.id))
   }
 
   const chooseTerminal = (terminal: TerminalID) => {
+    fixed.current.terminal = true
     void save({ terminal }, () => setTerminal(terminal))
   }
 
-  // The settings a fresh install starts with may name what isn't here: each is moved, once,
-  // to what is.
-  const fixed = useRef({ agent: false, terminal: false })
   const fixDefaults = useEffectEvent(() => {
     const current = agents.find((a) => a.id === settings.defaultAgent)
     const installed = agents.find((a) => a.installed)
@@ -229,13 +238,14 @@ export function AgentsStep(props: AgentsStepProps) {
       })
     }
 
-    const iterm = terminals?.find((t) => t.id === 'iterm2')
+    const chosen = terminals?.find((t) => t.id === settings.terminal)
+    const first = terminals?.find((t) => t.installed)
 
-    if (!fixed.current.terminal && settings.terminal === 'iterm2' && iterm?.installed === false) {
+    if (!fixed.current.terminal && chosen?.installed === false && first !== undefined) {
       fixed.current.terminal = true
-      void save({ terminal: 'terminal' }, () => setTerminal('terminal')).then((result) => {
+      void save({ terminal: first.id }, () => setTerminal(first.id)).then((result) => {
         if (result.ok) {
-          setNotes((was) => [...was, 'iTerm2 isn’t installed, so launches open in Terminal.'])
+          setNotes((was) => [...was, switchedTerminal(chosen, first)])
         }
       })
     }
@@ -252,6 +262,10 @@ export function AgentsStep(props: AgentsStepProps) {
       await props.onRediscovered()
     }
   }
+
+  // note is what the chosen terminal needs before the first launch, as Settings → Launching
+  // says it too, or ''.
+  const note = terminalNote(settings.terminal)
 
   return (
     <div className="flex flex-col gap-8">
@@ -303,9 +317,7 @@ export function AgentsStep(props: AgentsStepProps) {
         ) : (
           <TerminalTiles terminals={terminals} chosen={settings.terminal} onChoose={chooseTerminal} />
         )}
-        {settings.terminal === 'iterm2' && (
-          <p className="text-xs text-muted">Your first launch asks to let {brand.name} control iTerm2. Choose Allow.</p>
-        )}
+        {note !== '' && <p className="text-xs text-muted">{note}</p>}
       </section>
 
       <div className="flex items-start justify-between gap-6 rounded-lg border border-border bg-surface px-4 py-3.5">

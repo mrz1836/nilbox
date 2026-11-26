@@ -65,10 +65,13 @@ type RunPreview struct {
 	Dir      string       `json:"dir"`
 	Worktree *RunWorktree `json:"worktree"`
 
-	// Command is the agent's command line, the prompt shown as <prompt>, and Env the
-	// changes to its environment ("unset ANTHROPIC_API_KEY").
-	Command string   `json:"command"`
-	Env     []string `json:"env"`
+	// Command is the agent's command line, the prompt shown as <prompt>, Env the changes
+	// to its environment ("unset ANTHROPIC_API_KEY"), and Inherited the variables another
+	// agent session would hand down, which it unsets too, apart so the window can say them
+	// in one entry.
+	Command   string   `json:"command"`
+	Env       []string `json:"env"`
+	Inherited []string `json:"inherited"`
 
 	// Permission summarizes its permissions, Prompt is the filled-in prompt, and Terminal
 	// the terminal it opens in.
@@ -139,6 +142,7 @@ func emptyPreview() RunPreview {
 func nonNilPreview(p RunPreview) RunPreview {
 	p.Sources = textutil.NonNilMap(p.Sources)
 	p.Env = textutil.NonNil(p.Env)
+	p.Inherited = textutil.NonNil(p.Inherited)
 	p.Warnings = textutil.NonNil(p.Warnings)
 
 	return p

@@ -239,10 +239,12 @@ export function githubSignIn(overrides: Partial<GitHubSignIn> = {}): GitHubSignI
   }
 }
 
-// terminalChoices are the terminals launches can open in, both installed.
-export function terminalChoices(overrides: { iterm?: boolean } = {}): TerminalChoice[] {
+// terminalChoices are the terminals launches can open in, in the order setup prefers them,
+// each installed unless overrides says otherwise.
+export function terminalChoices(overrides: { iterm?: boolean; warp?: boolean } = {}): TerminalChoice[] {
   return [
     { id: 'iterm2', name: 'iTerm2', installed: overrides.iterm ?? true },
+    { id: 'warp', name: 'Warp', installed: overrides.warp ?? true },
     { id: 'terminal', name: 'Terminal', installed: true },
   ]
 }
@@ -608,6 +610,7 @@ export function runPreview(overrides: Partial<AutopilotRunPreview> = {}): Autopi
     },
     command: "claude <prompt> --model opus '--name=Fix checks · example-repo#7'",
     env: ['unset ANTHROPIC_API_KEY'],
+    inherited: [],
     permission: 'full access',
     prompt: 'Fix the failing checks of pull request #7 in acme-org/example-repo.\n',
     terminal: 'iterm2',
@@ -1476,6 +1479,7 @@ export function scriptRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
     command: 'magex lint',
     runsIn: 'app',
     status: 'succeeded',
+    terminal: '',
     exitCode: 0,
     summary: 'Finished.',
     result: { tool: 'mage-x', intent: null, warnings: [], unrecognized: [], unrecognizedCount: 0, outcome: null },
@@ -2146,6 +2150,7 @@ export function launchPreview(overrides: Partial<LaunchPreview> = {}): LaunchPre
     },
     command: "claude <prompt> --dangerously-skip-permissions '--name=Review · example-repo#7'",
     env: ['unset CLAUDE_CONFIG_DIR'],
+    inherited: ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION'],
     permission: 'full access',
     prompt: 'Review pull request #7 in acme-org/example-repo: Add the widget cache\n',
     terminal: 'iterm2',
@@ -3007,6 +3012,7 @@ export function agentSession(overrides: Partial<AgentSession> = {}): AgentSessio
     endedAt: '',
     canFocus: true,
     canResume: false,
+    carriedBy: '',
     runId: 0,
     githubEvent: '',
     githubEventCommit: '',

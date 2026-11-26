@@ -56,6 +56,37 @@ sessions that ran at its time, launched by then and not ended before, give or ta
 s), keeping a later event over an earlier one, and emits `event.SessionsUpdated` once when any
 changed.
 
+The bound `Focus` (Show in terminal) brings a running session's tab forward, for a session with a
+PID and no background run (`Session.CanFocus`). It reads the tty of the session's process first
+(`TTY`, `ps -o tty=`), which proves the session runs in a terminal, then hands its `Focuser`
+(core's `terminalFocuser` over the terminal registry) the terminal the session's record names,
+that tty, and the PID: `Focus(ctx, terminal, tty, pid)`. The record's terminal is only the
+likeliest: a session the user resumed themselves (below) carries the record of the one it
+resumed, and they may have resumed it in another terminal. So `terminalFocuser` reads, at the
+click, one variable of the PID's environment, `TERM_PROGRAM` (`terminal.TermProgramEnv`, through
+its `env`, `procs.EnvOf` as core wires it), and focuses in the terminal its value names
+(`terminal.FromTermProgram`: `iTerm.app`, `WarpTerminal`, `Apple_Terminal`, matched exactly),
+falling back to the record's when the variable can't be read or names anything else, as tmux's
+own; it keeps and logs nothing of what it read. iTerm2 and Terminal.app find the tab by its tty,
+Warp by the focus link in the PID's environment, `WARP_FOCUS_URL`, the one other variable read
+(see [internal/launcher](launcher.md)), and core words each failure for the window, Warp's
+`ErrNoFocusLink` naming the version that can, so a session launched in Warp and resumed in iTerm2
+is iTerm2's to find, never told to update Warp.
+
+`List` names, on each session, the session that has not ended and carries its conversation on
+(`Session.CarriedBy`, the newest such, by `AgentSessionID`; `shown`): one resumed from it, from the
+app or outside it, or a background run's Take over. A session carried on is never `CanResume`, and
+the window offers no Take over for a background run's that is (the session panel and Autopilot's
+run view, which find the carrier among the item's sessions), but Show in terminal for the carrier
+in its place, once its `CanFocus`. A session read alone (`Running`, `Waiting`) carries `""`.
+
+The `Watcher` follows a session the user resumed themselves (`claude --resume <id>`, within
+`ReviveWindow` of its end) as a new record resumed from the ended one (`reviveOne`): a copy of it
+under a new ID, with no prompt, no PID, and `RunID` 0, since the user resumed it in a terminal
+even when the ended one was a background run's, so the Watcher follows it from then on and
+`CanFocus` holds once its PID is known. Its `Terminal` is the ended one's, which Show in terminal
+checks against `TERM_PROGRAM` as above.
+
 `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer. The bound
 `Forget` deletes an ended session's record on the user's click (the panel's ×), refusing one still
 running (`ErrLive`; failed and unknown count as running) and counting one already gone as done, and

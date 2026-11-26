@@ -98,10 +98,11 @@ Unmute itself unmutes, never a click on the row.
   Mac, reaching origin with your git credentials, something to release, the checks on the newest
   commit, another run holding the clone, signed tags, your shell's environment, and your hooks.
   A ✗ blocks the release; a ⚠ makes the button read **Release v1.4.3 anyway**. Fixes sit beside
-  each: **Open Settings**, **Update magex in Settings**, **Open in terminal** (your terminal in
-  the clone, running nothing), **View on GitHub**, **Watch the run**, and **Copy** for a command
-  the app never runs itself. Under the checks, one **Check again** reads them all afresh,
-  whatever they say, with *Checking again…* beside it while it reads.
+  each: **Open Settings**, **Update magex in Settings**,
+  [**Open in terminal**](launching-a-session.md#open-in-terminal) (your terminal in the clone,
+  running nothing), **View on GitHub**, **Watch the run**, and **Copy** for a command the app
+  never runs itself. Under the checks, one **Check again** reads them all afresh, whatever they
+  say, with *Checking again…* beside it while it reads.
 - **The checks on the newest commit** are GitHub's own rollup of them, which counts commit
   statuses (a coverage service's, say) as well as Actions runs, so it can fail while every
   workflow passed. A failing line names what failed (*codecov/project is failing on 4ce994b*;

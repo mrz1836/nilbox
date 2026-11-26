@@ -105,3 +105,51 @@ func appleScriptEscape(body string, i int) (c byte, known bool) {
 		return 0, false
 	}
 }
+
+// FuzzWarpOpenArgs checks that any path reaches open as its last argument, untouched,
+// after Warp's bundle ID.
+func FuzzWarpOpenArgs(f *testing.F) {
+	for _, seed := range quotingSeeds() {
+		f.Add(seed)
+	}
+
+	f.Add(awkwardScriptPath)
+
+	f.Fuzz(func(t *testing.T, path string) {
+		assert.Equal(t, []string{"-b", warpBundleID, path}, warpOpenArgs(path))
+	})
+}
+
+// FuzzWarpFocusLink checks that the only values taken for a focus link are a session link
+// and 32 lowercase hex digits, returned untouched, so nothing else a process's environment
+// holds is ever opened in Warp.
+func FuzzWarpFocusLink(f *testing.F) {
+	for _, seed := range quotingSeeds() {
+		f.Add(seed)
+	}
+
+	f.Add(warpTestLink)
+	f.Add(warpTestLink + "\n")
+	f.Add("warp://action/new_tab?path=/tmp/launch/pr-7.command")
+	f.Add("warp://session/0123456789ABCDEF0123456789abcdef")
+
+	const prefix = "warp://session/"
+
+	f.Fuzz(func(t *testing.T, value string) {
+		link, err := warpFocusLink(value)
+		if err != nil {
+			require.ErrorIs(t, err, ErrNoFocusLink)
+			assert.Empty(t, link)
+
+			return
+		}
+
+		assert.Equal(t, value, link)
+
+		hex, ok := strings.CutPrefix(link, prefix)
+		require.True(t, ok, "%q", link)
+		assert.Len(t, hex, 32)
+		assert.Equal(t, -1, strings.IndexFunc(hex, func(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > 'f') }),
+			"%q holds only lowercase hex digits", hex)
+	})
+}

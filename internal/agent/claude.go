@@ -163,3 +163,28 @@ func (claude) promptLast() bool { return false }
 func (claude) modelHint() string {
 	return `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`
 }
+
+// sessionEnv names what a Claude Code session sets for the processes it starts, as found
+// in the environment of a terminal app started from a shell inside one: its markers
+// (CLAUDECODE, and CLAUDE_CODE_CHILD_SESSION: a session that inherits it saves no
+// transcript), its notes folder, entrypoint, program, messaging socket and token, session
+// ID, attendance, and effort, and its PID and temporary folder. Each is a whole name, never
+// CLAUDE_CODE_*: the user's own Claude Code settings (CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+// CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) share the prefix, and CLAUDE_CONFIG_DIR is the
+// profile's (ConfigEnv).
+func (claude) sessionEnv() []string {
+	return []string{
+		"CLAUDECODE",
+		"CLAUDE_CODE_CHILD_SESSION",
+		"CLAUDE_CODE_CHILD_NOTES_DIR",
+		"CLAUDE_CODE_ENTRYPOINT",
+		"CLAUDE_CODE_EXECPATH",
+		"CLAUDE_CODE_MESSAGING_SOCKET",
+		"CLAUDE_CODE_MESSAGING_TOKEN",
+		"CLAUDE_CODE_SESSION_ATTENDED",
+		"CLAUDE_CODE_SESSION_ID",
+		"CLAUDE_EFFORT",
+		"CLAUDE_PID",
+		"CLAUDE_TMPDIR",
+	}
+}

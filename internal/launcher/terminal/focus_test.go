@@ -9,14 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testTTY is a terminal device as macOS names a tab's: the tests' tty.
+const testTTY = "/dev/ttys004"
+
 func TestFocusScriptsFindTheTabByItsTTY(t *testing.T) {
 	t.Parallel()
 
 	for name, script := range map[string]string{
-		"iTerm2":       itermFocusScript("/dev/ttys004"),
-		"Terminal.app": terminalAppFocusScript("/dev/ttys004"),
+		"iTerm2":       itermFocusScript(testTTY),
+		"Terminal.app": terminalAppFocusScript(testTTY),
 	} {
-		assert.Contains(t, script, `is "/dev/ttys004" then`, name)
+		assert.Contains(t, script, `is "`+testTTY+`" then`, name)
 		assert.Contains(t, script, "activate", name)
 		assert.Contains(t, script, `return "found"`, name)
 		assert.True(t, strings.HasSuffix(script, "return \"missing\"\n"), name)
@@ -24,14 +27,14 @@ func TestFocusScriptsFindTheTabByItsTTY(t *testing.T) {
 		assert.NotContains(t, script, "do script", "%s only selects a tab: it runs nothing", name)
 	}
 
-	assert.Contains(t, itermFocusScript("/dev/ttys004"), "tell s to select")
-	assert.Contains(t, terminalAppFocusScript("/dev/ttys004"), "set selected of t to true")
+	assert.Contains(t, itermFocusScript(testTTY), "tell s to select")
+	assert.Contains(t, terminalAppFocusScript(testTTY), "set selected of t to true")
 }
 
 func TestValidateTTY(t *testing.T) {
 	t.Parallel()
 
-	for _, ok := range []string{"/dev/ttys004", "/dev/pts/3", "/dev/tty1"} {
+	for _, ok := range []string{testTTY, "/dev/pts/3", "/dev/tty1"} {
 		require.NoError(t, validateTTY(ok), ok)
 	}
 
@@ -62,8 +65,32 @@ func TestRegistryFocusNeedsAFocuser(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry(plainDriver{})
+	tab := Tab{TTY: testTTY, PID: 4100}
 
-	require.ErrorIs(t, r.Focus(t.Context(), "plain", "/dev/ttys004"), ErrNoFocus)
-	require.ErrorIs(t, r.Focus(t.Context(), "other", "/dev/ttys004"), ErrUnknownTerminal)
-	require.ErrorIs(t, NewRegistry().Focus(t.Context(), ITerm2, "/dev/ttys004"), ErrUnsupportedOS)
+	require.ErrorIs(t, r.Focus(t.Context(), "plain", tab), ErrNoFocus)
+	require.ErrorIs(t, r.Focus(t.Context(), "other", tab), ErrUnknownTerminal)
+	require.ErrorIs(t, NewRegistry().Focus(t.Context(), ITerm2, tab), ErrUnsupportedOS)
+}
+
+// tabDriver is a Focuser that records the tab it was asked to bring forward.
+type tabDriver struct {
+	plainDriver
+
+	asked *Tab
+}
+
+func (d tabDriver) Focus(_ context.Context, tab Tab) error {
+	*d.asked = tab
+
+	return nil
+}
+
+func TestRegistryFocusHandsTheDriverTheTab(t *testing.T) {
+	t.Parallel()
+
+	var asked Tab
+
+	tab := Tab{TTY: testTTY, PID: 4100}
+	require.NoError(t, NewRegistry(tabDriver{asked: &asked}).Focus(t.Context(), "plain", tab))
+	assert.Equal(t, tab, asked, "its tty and its process both")
 }

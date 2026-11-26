@@ -30,4 +30,5 @@ type ScriptRun struct {
 	SeenAt        *time.Time
 	StartedAt     time.Time
 	FinishedAt    *time.Time
+	Terminal      string
 }

@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -17,11 +15,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// psBin is ps's fixed path on macOS and Linux; it names the terminal a process runs in.
-const psBin = "/bin/ps"
 
 var (
 	// ErrEnded is returned by Focus for a session that has ended.
@@ -37,12 +33,16 @@ var (
 	ErrNoFinder = errors.New("no file manager to show the folder in")
 )
 
-// Focuser brings a terminal's tab that runs on a tty forward. The app adapts the
+// Focuser brings forward a terminal's tab that a session runs in. The app adapts the
 // launcher's terminal drivers to it.
 type Focuser interface {
-	// Focus selects the tab, in the terminal named by its settings ID, whose tty is
-	// tty, such as /dev/ttys004, and brings its window forward.
-	Focus(ctx context.Context, terminal, tty string) error
+	// Focus selects the tab that the session whose process is pid runs in on tty, such as
+	// /dev/ttys004, and brings its window forward: in the terminal the process's own
+	// environment names (TERM_PROGRAM), since a session the user resumed themselves may
+	// run in another terminal than its record's, or else in terminal, the settings ID its
+	// record names. iTerm2 and Terminal.app find the tab by its tty, Warp by the focus link
+	// in the process's environment.
+	Focus(ctx context.Context, terminal, tty string, pid int) error
 }
 
 // Revealer shows a file or a folder in Finder. Core adapts open -R, on macOS only.
@@ -144,15 +144,16 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 	return Snapshot{Following: following, Sessions: shown(records, s.home)}, nil
 }
 
-// shown is records as the window shows them, with home as ~. A conversation a running
-// session carries on, as one resumed does, is not offered for resuming again from a
-// session of it that ended.
+// shown is records, newest first, as the window shows them, with home as ~. A
+// conversation a running session carries on, as one resumed does, names that session on
+// every other session of it (CarriedBy), the newest running one's when two do, and is not
+// offered for resuming again from a session of it that ended.
 func shown(records []Record, home string) []Session {
-	carried := map[string]bool{}
+	carriers := map[string]string{}
 
 	for _, r := range records {
-		if r.State.Live() && r.AgentSessionID != "" {
-			carried[r.AgentSessionID] = true
+		if _, seen := carriers[r.AgentSessionID]; !seen && r.State.Live() && r.AgentSessionID != "" {
+			carriers[r.AgentSessionID] = r.ID
 		}
 	}
 
@@ -160,14 +161,21 @@ func shown(records []Record, home string) []Session {
 
 	for _, r := range records {
 		session := r.Session(home)
-		session.CanResume = session.CanResume && !carried[r.AgentSessionID]
+		if by := carriers[r.AgentSessionID]; by != r.ID {
+			session.CarriedBy = by
+		}
+
+		session.CanResume = session.CanResume && session.CarriedBy == ""
 		out = append(out, session)
 	}
 
 	return out
 }
 
-// Focus brings forward the terminal tab a running session is in.
+// Focus brings forward the terminal tab a running session is in. It reads the tty of the
+// session's process first, which proves the session runs in a terminal, whichever way
+// the terminal then finds the tab, and hands the Focuser the terminal the session's record
+// names, which the Focuser checks against the one the process runs in.
 func (s *Service) Focus(ctx context.Context, id string) error {
 	r, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -188,7 +196,7 @@ func (s *Service) Focus(ctx context.Context, id string) error {
 		return uierr.New("Couldn't find the session's terminal. It may have just ended.", err)
 	}
 
-	return s.focuser.Focus(ctx, r.Terminal, tty)
+	return s.focuser.Focus(ctx, r.Terminal, tty, r.PID)
 }
 
 // ShowFolder shows the folder a session runs in, its worktree or the clone, in Finder,
@@ -235,17 +243,12 @@ func (s *Service) Forget(ctx context.Context, id string) error {
 // TTY returns the terminal device the process pid runs on, such as /dev/ttys004, asking
 // ps through run. A process with no terminal, or none at all, is ErrNoTerminal.
 func TTY(ctx context.Context, run execpath.Runner, pid int) (string, error) {
-	out, _, err := run.Run(ctx, psBin, "-o", "tty=", "-p", strconv.Itoa(pid))
+	tty, err := procs.TTY(ctx, run, pid)
 	if err != nil {
-		return "", fmt.Errorf("%w: ps: %w", ErrNoTerminal, err)
+		return "", fmt.Errorf("%w: %w", ErrNoTerminal, err)
 	}
 
-	name := strings.TrimSpace(execpath.FirstLine(out))
-	if name == "" || strings.Trim(name, "?") == "" || strings.ContainsAny(name, " \t") {
-		return "", fmt.Errorf("%w: process %d has no terminal", ErrNoTerminal, pid)
-	}
-
-	return "/dev/" + strings.TrimPrefix(name, "/dev/"), nil
+	return tty, nil
 }
 
 // Ledger records the sessions launches start, and the background runs' sessions, and

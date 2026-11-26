@@ -365,6 +365,8 @@ type fakeTerminal struct {
 	err     error
 	noExit  bool
 	nothing bool
+	// id is the terminal OpenRun reports it opened each run in.
+	id      string
 	mu      sync.Mutex
 	opened  []TerminalRun
 	folders []string
@@ -390,16 +392,21 @@ func newFakeTerminal(t *testing.T) *fakeTerminal {
 	return f
 }
 
-// OpenRun starts the run's script with /bin/sh, unless told to fail or do nothing. The
-// shell outlives the call, as a terminal's does; the test's cleanup stops it.
-func (f *fakeTerminal) OpenRun(ctx context.Context, run TerminalRun) error {
+// OpenRun starts the run's script with /bin/sh, unless told to fail or do nothing, and
+// reports its id as the terminal it opened in. The shell outlives the call, as a
+// terminal's does; the test's cleanup stops it.
+func (f *fakeTerminal) OpenRun(ctx context.Context, run TerminalRun) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.opened = append(f.opened, run)
 
-	if f.err != nil || f.nothing {
-		return f.err
+	if f.err != nil {
+		return "", f.err
+	}
+
+	if f.nothing {
+		return f.id, nil
 	}
 
 	env := append(os.Environ(), run.Env...)
@@ -413,12 +420,12 @@ func (f *fakeTerminal) OpenRun(ctx context.Context, run TerminalRun) error {
 		Path: "/bin/sh", Args: append([]string{"-c", testutil.TerminalScript, "sh"}, run.Argv...), Dir: run.Dir, Env: env,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	f.procs = append(f.procs, proc)
 
-	return nil
+	return f.id, nil
 }
 
 // OpenFolder records the folder it was asked to open a terminal in, unless told to fail.

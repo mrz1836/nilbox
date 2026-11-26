@@ -635,6 +635,38 @@ func TestWatcherRevivesASessionLaunchedLongAgoThatEndedRecently(t *testing.T) {
 	})
 }
 
+func TestWatcherFollowsABackgroundRunResumedOutsideTheAppAsTheUsers(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w := newWatched(t, mintsResumed)
+
+		run := record("s1", 12)
+		run.RunID, run.Terminal, run.LaunchedAt = 7, "", time.Now().Add(-time.Hour)
+		require.NoError(t, w.store.Insert(t.Context(), run))
+
+		_, _, err := w.store.SetRunState(t.Context(), "s1", sessions.RunUpdate{State: sessions.StateEnded}, time.Now())
+		require.NoError(t, err)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.claude.list()
+		w.run(t)
+		synctest.Wait()
+
+		got, err := w.store.Get(t.Context(), "resumed")
+		require.NoError(t, err)
+		assert.Equal(t, "s1", got.ResumedFrom)
+		assert.Zero(t, got.RunID, "the user resumed it in a terminal: it is no background run's")
+		assert.Empty(t, got.Terminal, "its terminal is the run's, none, which Show in terminal asks the process for")
+		assert.True(t, got.Session("").CanFocus, "so its terminal can be shown")
+
+		w.claude.set("resumed", sessions.StateIdle)
+		time.Sleep(sessions.DefaultTick)
+		synctest.Wait()
+		assert.Equal(t, sessions.StateIdle, w.state(t, "resumed"), "and the Watcher follows it from then on")
+	})
+}
+
 func TestLedgerWaitingListsTheLongestWaitingFirst(t *testing.T) {
 	t.Parallel()
 

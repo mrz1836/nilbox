@@ -40,9 +40,11 @@ describe('places', () => {
     expect(placeOf(userScript(), 'terminal')).toBe('terminal')
     expect(placeOf(userScript({ runsIn: 'app' }), 'terminal')).toBe('app')
 
-    expect(runsInLabel('')).toBe('As set in Settings')
-    expect(runsInLabel('app')).toBe(brand.name)
-    expect(runsInLabel('terminal')).toBe('Terminal')
+    expect(runsInLabel('', 'iTerm2')).toBe('As set in Settings')
+    expect(runsInLabel('app', 'iTerm2')).toBe(brand.name)
+    expect(runsInLabel('terminal', 'iTerm2')).toBe('iTerm2')
+    expect(runsInLabel('terminal', 'Terminal')).toBe('Terminal')
+    expect(runsInLabel('terminal', '')).toBe('Your terminal')
   })
 })
 

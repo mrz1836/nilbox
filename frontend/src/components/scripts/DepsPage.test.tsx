@@ -569,6 +569,40 @@ describe('DepsPage', () => {
       expect(row).toHaveTextContent('Upgrade: Claude · working · 4m')
     })
 
+    it('shows an upgrade’s terminal tab from its row’s tag, saying in the head why it couldn’t', async () => {
+      platform.listSessions.mockResolvedValue(
+        sessionsSnapshot([
+          agentSession({
+            id: 'u1',
+            repo: 'acme-org/api-server',
+            itemId: 0,
+            kind: '',
+            number: 0,
+            title: 'Upgrade dependencies',
+            state: 'working',
+            detail: '',
+            stateAt: isoAgo({ m: 4 }),
+          }),
+        ]),
+      )
+      renderPage()
+
+      const tag = await screen.findByRole('button', { name: 'Upgrade: Claude working. Show terminal' })
+
+      await userEvent.click(tag)
+      expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith('u1')
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.queryByRole('listitem', { name: 'About acme-org/api-server' })).not.toBeInTheDocument()
+
+      platform.focusSession.mockRejectedValue(new Error('This session has ended.'))
+      await userEvent.click(tag)
+      expect(await screen.findByRole('alert')).toHaveTextContent('This session has ended.')
+
+      platform.focusSession.mockResolvedValue(undefined)
+      await userEvent.click(tag)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
     it('reads the upgrades again when the shell says a session changed', async () => {
       renderPage()
 

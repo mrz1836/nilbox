@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -624,7 +625,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// review, a comment, or a push the agent made shows at once.
 	rereads := inbox.NewRereads(inboxSvc, logger)
 
-	registry := terminal.DefaultRegistry(runner)
+	// The terminal drivers run open and osascript without any agent session's variables,
+	// so a terminal app they start never hands them to its tabs (terminalRunner).
+	registry := terminal.DefaultRegistry(terminalRunner(opts, search, os.Environ()))
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads,
 		backgroundTokens{engine: engine})
 	followed.watcher = follow.watcher
@@ -656,7 +659,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, touch: workLog, changes: inboxStore,
 	}, logger)
 
-	// A worktree's Open in Terminal goes through the terminal the runs open in, which is
+	// A worktree's Open in terminal goes through the terminal the runs open in, which is
 	// built once the launcher is, below.
 	worktreeTerm := &worktreeTerminal{}
 
@@ -1065,6 +1068,8 @@ func newRuns(
 		Progressed: func(id int64) { events.Emit(event.ScriptRunProgress{ID: id}) },
 		Failed:     runFailures{dispatcher: dispatcher}.Failed,
 		Terminal:   terminals,
+		Tabs:       terminals,
+		PS:         runner,
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
 		Kept:       func() { events.Emit(event.QuitKept{}) },
@@ -1212,8 +1217,8 @@ func followSessions(
 	})
 
 	cfg := sessions.Config{
-		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
-		Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry, env: procs.EnvOf},
+		PS: runner, Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 		Rereader: rereader,
 		Words: map[agent.ID]sessions.WordsReader{
 			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},

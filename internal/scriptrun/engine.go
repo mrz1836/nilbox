@@ -129,6 +129,12 @@ type Config struct {
 	// Without it, runs there fail to start, and Open in terminal fails.
 	Terminal TerminalOpener
 
+	// Tabs brings forward the terminal tab a run in the terminal goes in, for Show in
+	// terminal, and PS runs ps, which names the terminal device the run's shell runs on.
+	// Without either, Show in terminal fails.
+	Tabs TabFocuser
+	PS   execpath.Runner
+
 	// Reveal shows a run's log file in Finder. Without it, Show the log file fails.
 	Reveal Revealer
 
@@ -161,6 +167,8 @@ type Engine struct {
 	progressed func(id int64)
 	failed     func(ctx context.Context, f Failure)
 	terminal   TerminalOpener
+	tabs       TabFocuser
+	ps         execpath.Runner
 	reveal     Revealer
 	quit       func()
 	kept       func()
@@ -229,8 +237,8 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		store: runStore{db: cfg.DB, q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), timeLimit: timeLimit, logger: logging.Or(cfg.Logger), changed: cfg.Changed,
-		progressed: cfg.Progressed, failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit,
-		kept: cfg.Kept, folders: cfg.Folders, logsFor: cfg.AgentLogsFor,
+		progressed: cfg.Progressed, failed: cfg.Failed, terminal: cfg.Terminal, tabs: cfg.Tabs, ps: cfg.PS,
+		reveal: cfg.Reveal, quit: cfg.Quit, kept: cfg.Kept, folders: cfg.Folders, logsFor: cfg.AgentLogsFor,
 		slots:      make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		agentKeep:  retention{runs: KeepAgentRuns, bytes: KeepAgentLogBytes},
@@ -795,7 +803,9 @@ func (e *Engine) register(ctx context.Context, spec Spec, h holds) (*live, error
 }
 
 // open opens a run in the terminal, after clearing any file a run the history no longer
-// holds left at its names and keeping the run's state.
+// holds left at its names and keeping the run's state, and records the terminal it opened
+// in. A terminal that couldn't be recorded is only logged: the window then names the one
+// chosen now, and Show in terminal looks there.
 func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	if e.terminal == nil {
 		return uierr.New("Runs in your terminal aren't available here.", ErrNoTerminal)
@@ -811,12 +821,20 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 
 	e.keepState(ctx, l.id, spec.Keep)
 
-	err := e.terminal.OpenRun(ctx, TerminalRun{
+	terminal, err := e.terminal.OpenRun(ctx, TerminalRun{
 		Name: ScriptName(l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,
-		Log: e.files.log(l.id), PIDFile: e.files.pid(l.id), ExitFile: e.files.exit(l.id),
+		Log: e.files.log(l.id), PIDFile: e.files.pid(l.id), ExitFile: e.files.exit(l.id), LinkFile: e.files.link(l.id),
 	})
 	if err != nil {
 		return fmt.Errorf("open the run in the terminal: %w", err)
+	}
+
+	if terminal == "" {
+		return nil
+	}
+
+	if err = e.store.setTerminal(ctx, l.id, terminal); err != nil {
+		e.logger.WarnContext(ctx, "couldn't record the terminal a run opened in", "run", l.id, "error", err)
 	}
 
 	return nil

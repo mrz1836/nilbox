@@ -106,7 +106,14 @@ doesn't allow asks the user (`fenced: <preset>; asks you about the rest`); `prof
 the profile's own access, under the trust rule. A fence whose settings are gone from the run's
 folder is `ErrNoFence`. Background runs pass `--system-prompt-snapshot off`, so a resume replays no
 unattended note, and the resumed session is a terminal session like any (`ResumedFrom` the run's),
-which the launcher's running hold and the engine's busy check follow from there.
+which the launcher's running hold and the engine's busy check follow from there. While it runs,
+it carries the run's conversation on (`sessions.Session.CarriedBy` on the run's session), so
+`Resume` would refuse it (`Carried`), and the window offers no second Take over: the session
+panel and the run view hold back `RunView.CanTakeOver` (which says only that the run's agent
+resumes a conversation) and offer **Show in terminal** for the carrying session instead ([the
+Autopilot tab](autopilot-tab.md)). A run's session the user resumed with `claude --resume` is
+followed as theirs the same way, as a terminal session (`RunID` 0,
+[internal/sessions](../sessions.md)).
 
 ## The end
 

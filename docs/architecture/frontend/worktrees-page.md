@@ -51,7 +51,11 @@ A row's disclosure is its chevron, a `<button>` with `aria-expanded` and `aria-c
 unfold (→) and fold (←) it and move between rows (↑ ↓); the `<li>` takes a pointer's click as a
 shortcut for it, as a Release row does, and leaves alone a click that ends a text selection or lands
 on a control, a menu, or a dialog a control renders elsewhere, whose clicks still bubble through
-React. The page keeps the open drawers as a set of paths, which outlives a listing. App hands it
-`onQuery`, which a chip writes the toolbar's filter with, the sessions snapshot, the inbox's items,
-and `launchFor(item, place)`, `LaunchControls`' `row` variant placed in the row's cells
-(`LaunchPlace`).
+React. The page keeps the open drawers as a set of paths, which outlives a listing. A row opens its
+worktree in the terminal or Finder, and shows the terminal tab of the session `liveSessions` gives
+it, through one `useMutation` (an `Opening`), whose error the line under the row shows until the
+next try or listing; the drawer and ⋯ offer Show terminal (`onShowTerminal`, `focusSession`) before
+Open in terminal only while that session is `showable` (`lib/sessions`: not ended, and
+`canFocus`). App hands it `onQuery`, which a chip writes the toolbar's filter with, the sessions
+snapshot, the inbox's items, and `launchFor(item, place)`, `LaunchControls`' `row` variant placed
+in the row's cells (`LaunchPlace`).
