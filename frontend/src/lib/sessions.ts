@@ -57,6 +57,13 @@ export function isLive(state: SessionState): boolean {
   return state !== 'ended'
 }
 
+// showable reports a session whose terminal tab Show terminal can bring forward: it has not
+// ended, and its tab can be shown (canFocus), which a session still starting, or an agent's
+// run in the background, can't.
+export function showable(s: AgentSession | null | undefined): s is AgentSession {
+  return s !== null && s !== undefined && isLive(s.state) && s.canFocus
+}
+
 // needsYou reports a session waiting for the user.
 export function needsYou(state: SessionState): boolean {
   return state === 'needs_approval' || state === 'needs_input'
@@ -256,6 +263,14 @@ export function githubEventTone(s: AgentSession): string {
 // build doesn't know.
 export function terminalName(s: AgentSession): string {
   return terminalLabel(s.terminal, '')
+}
+
+// tabWords names the tab a session runs in, for a tooltip of Show terminal's: "the iTerm2
+// tab", or "the terminal tab" in a terminal this build doesn't know.
+export function tabWords(s: AgentSession): string {
+  const terminal = terminalName(s)
+
+  return `the ${terminal === '' ? 'terminal' : terminal} tab`
 }
 
 const compactCounts = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })

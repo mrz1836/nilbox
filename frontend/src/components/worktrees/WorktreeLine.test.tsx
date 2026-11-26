@@ -316,7 +316,7 @@ const dependabot = row('pr-260', {
 
 // GalleryCase is one of the mock's gallery's rows, with what its row should say: the
 // lane its edge colors, its state's words, its work, its agent, its verb, and whether ›_
-// opens it in Terminal.
+// opens it in the terminal.
 interface GalleryCase {
   wt: Worktree
   repo?: WorktreeRepo
@@ -690,7 +690,7 @@ describe('WorktreeLine gallery', () => {
     expect(verbs.filter((verb) => line.queryByRole('button', { name: verb }) !== null)).toEqual(
       c.verb === null ? [] : [c.verb],
     )
-    expect(line.queryAllByRole('button', { name: /^Open .+ in Terminal$/ })).toHaveLength(c.terminal ? 1 : 0)
+    expect(line.queryAllByRole('button', { name: /^Open .+ in terminal$/ })).toHaveLength(c.terminal ? 1 : 0)
   })
 
   it('marks the lane on the edge, saying why in its tooltip', () => {
@@ -734,7 +734,7 @@ describe('WorktreeLine gallery', () => {
     const cell = line.getByTitle('Detached HEAD at a1b2c3d4e5f60718293a4b5c6d7e8f9012345678')
     expect(cell).toHaveTextContent('detached at a1b2c3d')
     expect(line.getByRole('button', { name: 'Unfold detached dotfiles-experiment' })).toBeInTheDocument()
-    expect(line.getByRole('button', { name: 'Open dotfiles-experiment in Terminal' })).toBeInTheDocument()
+    expect(line.getByRole('button', { name: 'Open dotfiles-experiment in terminal' })).toBeInTheDocument()
   })
 
   it('shows the folder, and Claude Code’s tag on a worktree it made, with no item', () => {
@@ -1077,7 +1077,7 @@ describe('WorktreeLine disclosure', () => {
       ),
     })
 
-    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in Terminal' }))
+    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in terminal' }))
     await userEvent.click(line.getByRole('button', { name: 'More for worktree-pr-214' }))
     await userEvent.click(screen.getByRole('menu'))
     await userEvent.click(screen.getByText('The launch options'))
@@ -1255,19 +1255,56 @@ describe('WorktreeLine details', () => {
 })
 
 describe('WorktreeLine tools', () => {
-  it('opens the worktree in Terminal from ›_', async () => {
+  it('opens the worktree in the terminal from ›_', async () => {
     const { line } = renderLine(pr214)
 
-    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in Terminal' }))
+    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in terminal' }))
 
     expect(platform.openWorktreeTerminal).toHaveBeenCalledExactlyOnceWith(er.path, pr214.path)
+  })
+
+  it('shows the terminal tab of the session at work there from ⋯ and from the drawer', async () => {
+    const working = session('working', 12 * minute)
+
+    renderLine(inspect, { open: true, session: working })
+
+    await userEvent.click(screen.getByRole('button', { name: 'More for feat/inspect-point' }))
+    expect(screen.getAllByRole('menuitem')[0]).toHaveTextContent('Show terminal')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Show terminal' }))
+    expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith(working.id)
+
+    await userEvent.click(
+      within(screen.getByRole('listitem', { name: 'About feat/inspect-point' })).getByRole('button', {
+        name: 'Show terminal',
+      }),
+    )
+    expect(platform.focusSession).toHaveBeenCalledTimes(2)
+    expect(platform.openWorktreeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('says under the row why the session’s tab couldn’t be shown, until the next try', async () => {
+    platform.focusSession.mockRejectedValueOnce(
+      new Error('Couldn’t find the session’s terminal. It may have just ended.'),
+    )
+    renderLine(inspect, { open: true, session: session('working', 12 * minute) })
+
+    const drawer = within(screen.getByRole('listitem', { name: 'About feat/inspect-point' }))
+
+    await userEvent.click(drawer.getByRole('button', { name: 'Show terminal' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Couldn’t find the session’s terminal. It may have just ended.',
+    )
+
+    await userEvent.click(drawer.getByRole('button', { name: 'Open in terminal' }))
+    expect(platform.openWorktreeTerminal).toHaveBeenCalledExactlyOnceWith(er.path, inspect.path)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('says under the row why Terminal or Finder couldn’t open', async () => {
     platform.openWorktreeTerminal.mockRejectedValueOnce(new Error('no terminal is set up'))
     const { line } = renderLine(pr214)
 
-    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in Terminal' }))
+    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in terminal' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('no terminal is set up')
   })
@@ -1276,7 +1313,7 @@ describe('WorktreeLine tools', () => {
     platform.openWorktreeTerminal.mockRejectedValueOnce(new Error('no terminal is set up'))
     const { line, rerender, props } = renderLine(pr214)
 
-    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in Terminal' }))
+    await userEvent.click(line.getByRole('button', { name: 'Open worktree-pr-214 in terminal' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('no terminal is set up')
 
     rerender(
@@ -1302,7 +1339,7 @@ describe('WorktreeLine tools', () => {
     expect(gap).toHaveAttribute('data-tool-gap')
     expect(gap).toHaveAttribute('aria-hidden', 'true')
     expect(gap).toHaveClass('size-6')
-    expect(line.queryByRole('button', { name: /in Terminal$/ })).not.toBeInTheDocument()
+    expect(line.queryByRole('button', { name: /in terminal$/ })).not.toBeInTheDocument()
   })
 
   it('offers everything else in ⋯, and reveals the worktree in Finder from it', async () => {
@@ -1311,7 +1348,7 @@ describe('WorktreeLine tools', () => {
     await userEvent.click(line.getByRole('button', { name: 'More for worktree-pr-214' }))
 
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
-      'Open in Terminal',
+      'Open in terminal',
       'Reveal in Finder',
       'Copy path',
       'Copy branch',
@@ -1340,7 +1377,7 @@ describe('WorktreeLine tools', () => {
     renderLine(pr214, { open: true })
 
     await userEvent.click(screen.getByRole('button', { name: 'More for worktree-pr-214' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Terminal' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in terminal' }))
     await userEvent.click(
       within(screen.getByRole('listitem', { name: 'About worktree-pr-214' })).getByRole('button', {
         name: 'Reveal in Finder',

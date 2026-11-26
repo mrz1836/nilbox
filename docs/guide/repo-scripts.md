@@ -75,7 +75,8 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 - **New script** saves a command of your own: its name; the command, one line as you'd type it
   in a terminal; the repositories it shows in, **All repositories**, **Go repositories** (the
   clones with a `go.mod` at their root), or **Chosen…** from your clones' GitHub repositories;
-  where it runs, **As set in Settings**, Nilbox, or **Terminal**, for a command that asks you
+  where it runs, **As set in Settings**, Nilbox, or the terminal your launches open in, named as
+  in **iTerm2** (**Your terminal** until the settings load), for a command that asks you
   questions; **Ask before running**; and its icon.
 - **They show first**, in the order you put them in, in each clone their repositories include;
   a clone with none of yours says so. They never ask for trust, since you wrote them, and run

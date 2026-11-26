@@ -1,11 +1,13 @@
 import { useEffect, useEffectEvent, useId, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 
+import { showable } from '../../lib/sessions'
 import { useMutation } from '../../lib/useMutation'
 import { readable, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { RowWork } from '../../lib/useWorktrees'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import { verbOf } from '../../lib/worktrees'
 import {
+  focusSession,
   openWorktreeTerminal,
   revealWorktree,
   type AgentID,
@@ -78,8 +80,26 @@ function neighbor(from: HTMLElement, step: number): HTMLElement | undefined {
   return toggles[toggles.indexOf(from) + step]
 }
 
-// WorktreeLineProps are a row's, which opens Terminal and Finder on its worktree itself.
-export interface WorktreeLineProps extends Omit<WorktreeRowActions, 'onTerminal' | 'onReveal'> {
+// Opening is what a row opens: its worktree in the terminal or in Finder, or the terminal
+// tab of the session at work in it, by the session's ID.
+type Opening = 'terminal' | 'finder' | { session: string }
+
+// openIn opens what o names, for the worktree at path in the clone at clone.
+function openIn(clone: string, path: string, o: Opening): Promise<void> {
+  if (o === 'terminal') {
+    return openWorktreeTerminal(clone, path)
+  }
+
+  if (o === 'finder') {
+    return revealWorktree(clone, path)
+  }
+
+  return focusSession(o.session)
+}
+
+// WorktreeLineProps are a row's, which opens the terminal and Finder on its worktree, and
+// shows the terminal tab of the session at work in it, itself.
+export interface WorktreeLineProps extends Omit<WorktreeRowActions, 'onTerminal' | 'onReveal' | 'onShowTerminal'> {
   // repo is the clone the worktree belongs to.
   repo: WorktreeRepo
   worktree: Worktree
@@ -112,15 +132,15 @@ export interface WorktreeLineProps extends Omit<WorktreeRowActions, 'onTerminal'
 
 // WorktreeLine is one worktree on one line of the page's grid: its lane's edge, its state,
 // branch, item, work, agent, and age, then the one verb that fits it (Clean up, Unlock, a
-// launch on its item, or none), ›_ to open it in Terminal (its place kept empty where it
+// launch on its item, or none), ›_ to open it in the terminal (its place kept empty where it
 // can't), ⋯ with everything else, and the chevron that unfolds its drawer. A click on the
 // row's empty space unfolds it too, a pointer's shortcut for the chevron, which the keyboard
 // reaches: → unfolds, ← folds, and ↑ and ↓ move to the rows around it; the click that
 // closes an open menu doesn't. Under the row, a line says why a change left it in place or
-// failed, or, until the next listing, why Terminal or Finder couldn't open; under that,
-// while open, is its drawer, which reads the worktree's
-// details as it opens and again after each listing. While a change takes the worktree, the
-// row is dimmed and says what is happening in place of its verb and tools.
+// failed, or, until the next listing, why the terminal or Finder couldn't open or the
+// session's tab couldn't be shown; under that, while open, is its drawer, which reads the
+// worktree's details as it opens and again after each listing. While a change takes the
+// worktree, the row is dimmed and says what is happening in place of its verb and tools.
 export function WorktreeLine({
   repo,
   worktree,
@@ -142,9 +162,7 @@ export function WorktreeLine({
   onPrune,
 }: WorktreeLineProps) {
   const drawerId = useId()
-  const opener = useMutation((where: 'terminal' | 'finder') =>
-    where === 'terminal' ? openWorktreeTerminal(repo.path, worktree.path) : revealWorktree(repo.path, worktree.path),
-  )
+  const opener = useMutation((o: Opening) => openIn(repo.path, worktree.path, o))
   const verb = verbOf(worktree, facts !== undefined)
   const name = nameOf(worktree)
   const rowName = detachedOf(worktree) ? `detached ${name}` : name
@@ -164,8 +182,8 @@ export function WorktreeLine({
     }
   }, [open, listing])
 
-  // Why Terminal or Finder couldn't open is about the worktree as one listing found it, so
-  // the next listing puts it away.
+  // Why the terminal or Finder couldn't open, or the session's tab couldn't be shown, is
+  // about the worktree as one listing found it, so the next listing puts it away.
   const clearOpenError = useEffectEvent(() => {
     if (opener.error !== '') {
       opener.reset()
@@ -186,6 +204,14 @@ export function WorktreeLine({
 
   const onReveal = () => {
     void opener.run('finder')
+  }
+
+  // onShowTerminal brings forward the tab of the session the app follows here, while it
+  // can be shown; the drawer and ⋯ offer it only then.
+  const onShowTerminal = () => {
+    if (showable(session)) {
+      void opener.run({ session: session.id })
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -272,8 +298,8 @@ export function WorktreeLine({
               {readable(worktree) ? (
                 <button
                   type="button"
-                  title="Open in Terminal"
-                  aria-label={`Open ${name} in Terminal`}
+                  title="Open in terminal"
+                  aria-label={`Open ${name} in terminal`}
                   disabled={opener.pending}
                   onClick={onTerminal}
                   className={toolButtonClass}
@@ -292,10 +318,12 @@ export function WorktreeLine({
                     repo,
                     worktree,
                     read: details.of(worktree.path),
+                    session,
                     disabled,
                     agentName,
                     onTerminal,
                     onReveal,
+                    onShowTerminal,
                     onCleanUp,
                     onUnlock,
                     onRemove,
@@ -361,6 +389,7 @@ export function WorktreeLine({
           opening={opener.pending}
           onTerminal={onTerminal}
           onReveal={onReveal}
+          onShowTerminal={onShowTerminal}
           onCleanUp={onCleanUp}
           onUnlock={onUnlock}
           onRemove={onRemove}

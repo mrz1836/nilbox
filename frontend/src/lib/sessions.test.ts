@@ -12,6 +12,7 @@ import {
   needsYou,
   noSessions,
   sessionsOf,
+  showable,
   sinceWhen,
   stateDot,
   stateLabel,
@@ -54,6 +55,16 @@ describe('sessions', () => {
     expect(sessionsOf(byItem, item())?.map((s) => s.id)).toEqual(['b', 'a'])
     expect(sessionsOf(byItem, item({ number: 8 }))?.map((s) => s.id)).toEqual(['c'])
     expect(sessionsOf(byItem, item({ number: 9 }))).toBeUndefined()
+  })
+
+  it('shows the terminal of a session still running whose tab can be shown, alone', () => {
+    expect(showable(agentSession({ state: 'working' }))).toBe(true)
+    expect(showable(agentSession({ state: 'needs_input' }))).toBe(true)
+    expect(showable(agentSession({ state: 'starting', canFocus: false }))).toBe(false)
+    expect(showable(agentSession({ state: 'working', canFocus: false, runId: 4 }))).toBe(false)
+    expect(showable(agentSession({ state: 'ended', endedAt: '2026-06-15T11:58:00Z' }))).toBe(false)
+    expect(showable(undefined)).toBe(false)
+    expect(showable(null)).toBe(false)
   })
 
   it('holds nothing while the sessions are not followed, or not loaded', () => {

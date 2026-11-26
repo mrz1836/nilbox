@@ -341,8 +341,8 @@ describe('ConfirmationDialog for Force remove', () => {
 
     const files = dialog.getByRole('region', { name: 'Files it discards' })
     expect(
-      await within(files).findByText(/^Only the first 200 are listed here; 50 more are in Terminal/),
-    ).toHaveTextContent('Only the first 200 are listed here; 50 more are in Terminal (git status)')
+      await within(files).findByText(/^Only the first 200 are listed here; 50 more are in your terminal/),
+    ).toHaveTextContent('Only the first 200 are listed here; 50 more are in your terminal (git status)')
     expect(within(files).getAllByRole('listitem')).toHaveLength(200)
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
   })
@@ -356,8 +356,8 @@ describe('ConfirmationDialog for Force remove', () => {
 
     const listed = dialog.getByRole('region', { name: 'Commits not on GitHub' })
     expect(
-      await within(listed).findByText(/^Only the first 200 are listed here; 150 more are in Terminal/),
-    ).toHaveTextContent('Only the first 200 are listed here; 150 more are in Terminal (git log)')
+      await within(listed).findByText(/^Only the first 200 are listed here; 150 more are in your terminal/),
+    ).toHaveTextContent('Only the first 200 are listed here; 150 more are in your terminal (git log)')
     expect(within(listed).getByRole('heading')).toHaveTextContent('Keeps 350 not on GitHub')
     expect(within(listed).getAllByRole('listitem')).toHaveLength(200)
   })
@@ -483,7 +483,7 @@ describe('ConfirmationDialog for Force remove', () => {
 
     const files = dialog.getByRole('region', { name: 'Files it discards' })
     expect(
-      await within(files).findByText(/^Only the first 12 are listed here; 18 more are in Terminal/),
+      await within(files).findByText(/^Only the first 12 are listed here; 18 more are in your terminal/),
     ).toBeInTheDocument()
     expect(within(files).getByRole('heading')).toHaveTextContent('Discards 30 files')
 

@@ -20,11 +20,13 @@ import {
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { formatAge, formatAgo } from '../../lib/time'
 import type { ManifestsState } from '../../lib/useManifests'
+import { useMutation } from '../../lib/useMutation'
 import { useNowAs } from '../../lib/useNow'
 import { useQuery } from '../../lib/useQuery'
 import { useSections, type OnSection, type StoredSections } from '../../lib/useSections'
 import { useSessions } from '../../lib/useSessions'
 import {
+  focusSession,
   listAgents,
   type AgentInfo,
   type DepsSort,
@@ -108,7 +110,8 @@ export interface DepsPageProps {
 // first and open, then Aging and Fresh, folded, each heading's legend saying what its
 // rows' edges mean. A row unfolds to the clone's go.mod and package.json files, several at
 // once, and stays unfolded across reads; Upgrade… opens its upgrade sheet, and a row
-// shows the upgrade an agent works on there. A row's mark, or its drawer's, marks the
+// shows the upgrade an agent works on there, whose tag brings its terminal tab forward (one
+// that can't be shown says why in the head). A row's mark, or its drawer's, marks the
 // repository up to date, which moves it to Fresh at once, or unmarks it (a mark that fails
 // says why in the head). Its head says how many clones and modules it
 // lists and when it read them, or, in that place, how far the read under way has got, so
@@ -142,6 +145,9 @@ export function DepsPage({
   const folds = useSections(sections, onSection, groupsOpen())
   const { byItem } = useSessions()
   const agents = useQuery(() => listAgents(), [], { log: 'could not list the agents for Deps' }).data ?? noAgents
+  // shower brings an upgrade's terminal tab forward from its row's tag, and its error says
+  // in the head why it couldn't, until the next try.
+  const shower = useMutation((sessionId: string) => focusSession(sessionId))
   const { page, error, refreshing, refreshError, progress, refresh, mark, marking, markError } = manifests
   const clones = page?.clones ?? noClones
   // placed is each clone's group as the clock stands, in the clones' order (groupsAt): the
@@ -220,6 +226,9 @@ export function DepsPage({
                         }}
                         sessions={upgradeSessions(byItem, clone.repo)}
                         agents={agents}
+                        onShowTerminal={(sessionId) => {
+                          void shower.run(sessionId)
+                        }}
                         onUpgrade={() => {
                           onUpgrade(clone)
                         }}
@@ -275,6 +284,7 @@ export function DepsPage({
         {leftOut !== '' && <p className="text-xs text-muted">{leftOut}</p>}
         <ErrorText error={refreshError === '' ? '' : `Couldn’t read the clones again: ${refreshError}`} />
         <ErrorText error={markError} />
+        <ErrorText error={shower.error} />
         {page !== null && page.error !== '' && (
           <p role="note" className="flex items-center gap-1.5 text-xs text-warning" title={page.error}>
             <AlertIcon className="size-3.5 shrink-0" />

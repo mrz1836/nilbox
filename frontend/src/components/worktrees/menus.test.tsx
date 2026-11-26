@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Worktree, WorktreeRepo } from '../../platform'
 import {
   agentName,
+  agentSession,
   finishedWorktree,
   linkedItem,
   worktree,
@@ -24,10 +25,12 @@ function options(wt: Worktree, overrides: Partial<RowMenuOptions> = {}): RowMenu
     repo: er,
     worktree: wt,
     read: undefined,
+    session: undefined,
     disabled: false,
     agentName,
     onTerminal: vi.fn(),
     onReveal: vi.fn(),
+    onShowTerminal: vi.fn(),
     onCleanUp: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
     onUnlock: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
     onRemove: vi.fn<(repo: WorktreeRepo, wt: Worktree) => void>(),
@@ -60,13 +63,36 @@ const open = linkedItem({ state: 'open', closedAt: '' })
 describe('rowMenuItems', () => {
   it('offers a clean worktree’s every action, Remove… last', () => {
     expect(shown(rowMenuItems(options(worktree({ item: open }))))).toEqual([
-      'Open in Terminal',
+      'Open in terminal',
       'Reveal in Finder',
       'Copy path',
       'Copy branch',
       'Open PR #7 on GitHub',
       'Remove…',
     ])
+  })
+
+  it('offers Show terminal first while a session it can show works there', () => {
+    const o = options(worktree({ item: open }), { session: agentSession({ state: 'working' }) })
+    const items = rowMenuItems(o)
+
+    expect(shown(items).slice(0, 2)).toEqual(['Show terminal', 'Open in terminal'])
+    expect(pick(items, 'Show terminal').title).toBe('Bring forward the iTerm2 tab Claude runs in')
+
+    pick(items, 'Show terminal').onSelect?.()
+    expect(o.onShowTerminal).toHaveBeenCalledOnce()
+    expect(o.onTerminal).not.toHaveBeenCalled()
+
+    pick(items, 'Open in terminal').onSelect?.()
+    expect(o.onTerminal).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['a session still starting', agentSession({ state: 'starting', canFocus: false })],
+    ['an agent’s run in the background', agentSession({ state: 'working', canFocus: false, runId: 4 })],
+    ['a session that ended', agentSession({ state: 'ended', endedAt: '2026-06-15T11:58:00Z' })],
+  ])('offers no Show terminal for %s', (_label, session) => {
+    expect(shown(rowMenuItems(options(worktree(), { session })))).not.toContain('Show terminal')
   })
 
   it('sets the removals apart', () => {
@@ -142,7 +168,7 @@ describe('rowMenuItems', () => {
     const items = rowMenuItems(options(worktree({ prunable: true, canRemove: false })))
 
     expect(shown(items)).toEqual([
-      'Open in Terminal (off: Its folder is gone)',
+      'Open in terminal (off: Its folder is gone)',
       'Reveal in Finder (off: Its folder is gone)',
       'Copy path',
       'Copy branch',
@@ -157,10 +183,10 @@ describe('rowMenuItems', () => {
     const items = rowMenuItems(options(worktree({ error: 'git status failed', canRemove: false })))
 
     expect(shown(items).slice(0, 2)).toEqual([
-      'Open in Terminal (off: git couldn’t read it)',
+      'Open in terminal (off: git couldn’t read it)',
       'Reveal in Finder (off: git couldn’t read it)',
     ])
-    expect(pick(items, 'Open in Terminal').title).toBe('git couldn’t read it')
+    expect(pick(items, 'Open in terminal').title).toBe('git couldn’t read it')
   })
 
   it('offers no Copy branch for a detached worktree', () => {
@@ -210,7 +236,7 @@ describe('rowMenuItems', () => {
     const items = rowMenuItems(o)
 
     for (const label of [
-      'Open in Terminal',
+      'Open in terminal',
       'Reveal in Finder',
       'Open PR #7 on GitHub',
       'Unlock',

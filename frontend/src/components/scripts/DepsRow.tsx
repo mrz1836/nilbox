@@ -17,7 +17,7 @@ import {
   type DepsGroup,
   type DepsNote,
 } from '../../lib/manifests'
-import { cardSession, sinceWhen, stateLabel, stateText, stateTint } from '../../lib/sessions'
+import { cardSession, showable, sinceWhen, stateLabel, stateText, stateTint, tabWords } from '../../lib/sessions'
 import { formatAge, formatAgo } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import type { Tone } from '../../lib/worktreeParts'
@@ -174,21 +174,30 @@ function PathCell({ clone }: { clone: ManifestsClone }) {
   )
 }
 
+interface UpgradeTagProps {
+  session: AgentSession
+  agents: readonly AgentInfo[]
+  // onShow brings a session's terminal tab forward, by its ID; without it the tag only
+  // says how the upgrade stands.
+  onShow?: ((sessionId: string) => void) | undefined
+}
+
 // UpgradeTag follows an upgrade of the repository, as an inbox card's session tag does
-// (SessionTag), in words alone: a status dot and "Claude · working · 4m", on a faint
-// backing while it works, waits on the user, or failed. Its tooltip names the prompt, and
-// the worktree it works in.
-function UpgradeTag({ session, agents }: { session: AgentSession; agents: readonly AgentInfo[] }) {
+// (SessionTag): a status dot and "Claude · working · 4m", on a faint backing while it
+// works, waits on the user, or failed. Its tooltip names the prompt, and the worktree it
+// works in. While the session runs in a tab that can be shown, and the row is given
+// onShow, the tag is a button, as a card's is, that brings that tab forward; otherwise it
+// is words alone. The cell it sits in clips what overflows it, so its focus ring is drawn
+// inside it.
+function UpgradeTag({ session, agents, onShow }: UpgradeTagProps) {
   const name = agentName(agents, session.agent)
   const label = stateLabel(session.state)
   const since = sinceWhen(session)
   const what = session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`
-
-  return (
-    <span
-      title={`${session.title}: ${what}\nIn ${session.dir}`}
-      className={`inline-flex max-w-56 min-w-0 shrink-0 cursor-help items-center gap-1.5 rounded-full px-2 py-px text-caption leading-4 font-medium ${stateText[session.state]} ${stateTint[session.state]}`}
-    >
+  const title = `${session.title}: ${what}\nIn ${session.dir}`
+  const tagClass = `inline-flex max-w-56 min-w-0 shrink-0 items-center gap-1.5 rounded-full px-2 py-px text-caption leading-4 font-medium ${stateText[session.state]} ${stateTint[session.state]}`
+  const words = (
+    <>
       <SessionDot state={session.state} />
       <span className="sr-only">Upgrade: </span>
       <span className="truncate">
@@ -200,7 +209,29 @@ function UpgradeTag({ session, agents }: { session: AgentSession; agents: readon
           </>
         )}
       </span>
-    </span>
+    </>
+  )
+
+  if (onShow === undefined || !showable(session)) {
+    return (
+      <span title={title} className={`${tagClass} cursor-help`}>
+        {words}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Upgrade: ${name} ${label}. Show terminal`}
+      title={`${title}\nClick to bring forward ${tabWords(session)} it runs in`}
+      onClick={() => {
+        onShow(session.id)
+      }}
+      className={`${tagClass} transition-colors hover:bg-raised focus-visible:-outline-offset-2`}
+    >
+      {words}
+    </button>
   )
 }
 
@@ -228,14 +259,19 @@ interface NotesCellProps {
   session: AgentSession | undefined
   agents: readonly AgentInfo[]
   notes: readonly DepsNote[]
+  // onShowTerminal brings the upgrade's terminal tab forward from its tag.
+  onShowTerminal: ((sessionId: string) => void) | undefined
 }
 
-// NotesCell is what to know about a clone: the upgrade an agent works on in it, when the
+// NotesCell is what to know about a clone: the upgrade an agent works on in it, whose tag
+// brings its terminal tab forward with onShowTerminal while it can (UpgradeTag), when the
 // user marked it up to date, then how it was read (cloneNotes). A comma between them, for a
 // screen reader, keeps them apart when read as text; the gap does on screen.
-function NotesCell({ clone, session, agents, notes }: NotesCellProps) {
+function NotesCell({ clone, session, agents, notes, onShowTerminal }: NotesCellProps) {
   const parts: { key: string; node: ReactNode }[] = [
-    ...(session === undefined ? [] : [{ key: 'session', node: <UpgradeTag session={session} agents={agents} /> }]),
+    ...(session === undefined
+      ? []
+      : [{ key: 'session', node: <UpgradeTag session={session} agents={agents} onShow={onShowTerminal} /> }]),
     ...(clone.checkedAt === '' ? [] : [{ key: 'checked', node: <CheckedMark clone={clone} /> }]),
     ...notes.map((note) => ({ key: note.kind, node: <NoteMark note={note} /> })),
   ]
@@ -282,6 +318,10 @@ export interface DepsRowProps {
   // agents the coding agents, which name them; none by default.
   sessions?: readonly AgentSession[] | undefined
   agents?: readonly AgentInfo[]
+  // onShowTerminal brings an upgrade's terminal tab forward from the row's tag, by its
+  // session's ID, the page saying why it couldn't; without it the tag is words alone. The
+  // drawer's Show terminal shows the tab itself, saying why it couldn't in the drawer.
+  onShowTerminal?: ((sessionId: string) => void) | undefined
   // onUpgrade opens the clone's upgrade sheet.
   onUpgrade: () => void
   // onMark marks the clone's repository up to date (checked) or unmarks it, and marking
@@ -297,20 +337,22 @@ const noAgents: readonly AgentInfo[] = []
 // DepsRow is one clone on one line of its group's grid: an edge colored by how long ago
 // its dependencies last changed (staleTone), its repository and pin, how many modules of
 // each kind it holds, the tools it is set up for, its stalest manifest (or why it couldn't
-// be read), what to know about it (an upgrade an agent works on there, when the user marked
-// it up to date, then how it was read), that manifest's age, its mark up to date (a quiet
-// icon, green while it is marked), Upgrade…, quiet until the row is hovered, and the
-// chevron that unfolds its drawer. A click on the row's empty space unfolds it too, a
-// pointer's shortcut for the chevron, which the keyboard reaches: → unfolds, ← folds, and ↑
-// and ↓ move to the rows around it, across groups; a drag that selects the row's words
-// leaves it as it was, so they can still be copied. The edge, the mark's note, and the
-// upgrade read the clock, and the row renders again only when what they say changes.
+// be read), what to know about it (an upgrade an agent works on there, whose tag brings its
+// terminal tab forward while it can, when the user marked it up to date, then how it was
+// read), that manifest's age, its mark up to date (a quiet icon, green while it is marked),
+// Upgrade…, quiet until the row is hovered, and the chevron that unfolds its drawer, which
+// gets the upgrade too. A click on the row's empty space unfolds it too, a pointer's
+// shortcut for the chevron, which the keyboard reaches: → unfolds, ← folds, and ↑ and ↓
+// move to the rows around it, across groups; a drag that selects the row's words leaves it
+// as it was, so they can still be copied. The edge, the mark's note, and the upgrade read
+// the clock, and the row renders again only when what they say changes.
 export function DepsRow({
   clone,
   open,
   onToggle,
   sessions,
   agents = noAgents,
+  onShowTerminal,
   onUpgrade,
   onMark,
   marking = false,
@@ -370,7 +412,13 @@ export function DepsRow({
           </span>
           <span className="col-start-4 row-start-1 text-xs whitespace-nowrap text-muted">{toolsText(clone.tools)}</span>
           <PathCell clone={clone} />
-          <NotesCell clone={clone} session={session} agents={agents} notes={cloneNotes(clone)} />
+          <NotesCell
+            clone={clone}
+            session={session}
+            agents={agents}
+            notes={cloneNotes(clone)}
+            onShowTerminal={onShowTerminal}
+          />
         </div>
         {clone.oldest !== '' && <AgeCell clone={clone} />}
         <span
@@ -416,7 +464,16 @@ export function DepsRow({
           </button>
         </span>
       </li>
-      {open && <DepsDrawer id={drawerId} clone={clone} onUpgrade={onUpgrade} onMark={onMark} marking={marking} />}
+      {open && (
+        <DepsDrawer
+          id={drawerId}
+          clone={clone}
+          session={session}
+          onUpgrade={onUpgrade}
+          onMark={onMark}
+          marking={marking}
+        />
+      )}
     </>
   )
 }

@@ -12,17 +12,34 @@ import { ScriptEditor } from './ScriptEditor'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-// renderEditor opens the editor on script, a new one unless given.
-function renderEditor(script: UserScript = newUserScript()) {
+// renderEditor opens the editor on script, a new one unless given, with terminal the name
+// of the terminal chosen for launches, '' (not known) unless given.
+function renderEditor(script: UserScript = newUserScript(), terminal = '') {
   const onSaved = vi.fn<(saved: UserScript) => void>()
   const onCancel = vi.fn<() => void>()
 
-  render(<ScriptEditor script={script} variables={scriptVariables()} onSaved={onSaved} onCancel={onCancel} />)
+  render(
+    <ScriptEditor
+      script={script}
+      variables={scriptVariables()}
+      onSaved={onSaved}
+      onCancel={onCancel}
+      terminal={terminal}
+    />,
+  )
 
   return { onSaved, onCancel, dialog: within(screen.getByRole('dialog')) }
 }
 
 describe('ScriptEditor', () => {
+  it('names the terminal a run in the terminal goes to, or the user’s own while it isn’t known', () => {
+    renderEditor(newUserScript(), 'Warp')
+
+    expect(screen.getByRole('radio', { name: 'Warp' })).toBeInTheDocument()
+    expect(screen.getByText('Warp suits a command that asks you questions.')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'Terminal' })).not.toBeInTheDocument()
+  })
+
   it('makes a new script with every field', async () => {
     const { onSaved, dialog } = renderEditor()
     const save = dialog.getByRole('button', { name: 'Save' })
@@ -46,7 +63,7 @@ describe('ScriptEditor', () => {
     await userEvent.type(dialog.getByRole('textbox', { name: 'Command' }), 'magex test:race')
     await userEvent.click(dialog.getByRole('radio', { name: 'Go repositories' }))
     expect(dialog.getByText('Clones with a go.mod at their root.')).toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('radio', { name: 'Terminal' }))
+    await userEvent.click(dialog.getByRole('radio', { name: 'Your terminal' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Ask before running' }))
     await userEvent.click(dialog.getByRole('radio', { name: 'Test' }))
     await userEvent.click(save)

@@ -44,11 +44,6 @@ const iconOptions: readonly SegmentOption<UserScriptIcon>[] = [
   { value: 'configure', label: iconLabels.configure, icon: <SlidersIcon className={iconClass} /> },
 ]
 
-const runsInOptions: readonly SegmentOption<RunsIn | ''>[] = (['', 'app', 'terminal'] as const).map((value) => ({
-  value,
-  label: runsInLabel(value),
-}))
-
 const scopes: readonly UserScriptScope[] = ['all', 'go', 'repos']
 
 interface ChosenProps {
@@ -130,6 +125,9 @@ export interface ScriptEditorProps {
   // onSaved hears the script as saved; onCancel closes the editor, saving nothing.
   onSaved: (saved: UserScript) => void
   onCancel: () => void
+  // terminal names the terminal chosen for launches, which a run in the terminal goes to
+  // ("iTerm2"), for Runs in; '' (the default) while it isn't known offers "Your terminal".
+  terminal?: string
 }
 
 // ScriptEditor makes or edits one of the user's own scripts: its name; the command, a
@@ -138,8 +136,12 @@ export interface ScriptEditorProps {
 // it runs; whether it asks before running; and its icon. It is a modal dialog like
 // TaskInputsForm (useModalDialog): focus starts on the name, Escape cancels, and Enter
 // saves. Render it only while it is open.
-export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEditorProps) {
+export function ScriptEditor({ script, variables, onSaved, onCancel, terminal = '' }: ScriptEditorProps) {
   const id = useId()
+  const runsInOptions: readonly SegmentOption<RunsIn | ''>[] = (['', 'app', 'terminal'] as const).map((value) => ({
+    value,
+    label: runsInLabel(value, terminal),
+  }))
   const dialogRef = useRef<HTMLDialogElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState(script)
@@ -248,7 +250,9 @@ export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEdi
               set({ runsIn })
             }}
           />
-          <p className="text-xs text-muted">Terminal suits a command that asks you questions.</p>
+          <p className="text-xs text-muted">
+            {runsInLabel('terminal', terminal)} suits a command that asks you questions.
+          </p>
         </div>
         <label htmlFor={`${id}-confirm`} className="flex cursor-pointer items-center gap-2 text-sm text-text">
           <input

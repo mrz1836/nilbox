@@ -267,6 +267,9 @@ interface ClonePageProps extends PlaceProps {
   // or is null.
   note: ReactNode
   onOpenSettings: (section: SettingsSection) => void
+  // chosenTerminal names the terminal chosen for launches ("iTerm2"), or is '' while the
+  // settings load, for the editor's Runs in.
+  chosenTerminal: string
 }
 
 // ClonePage is the page for one clone: its repository, folder, and branch beside the
@@ -274,7 +277,17 @@ interface ClonePageProps extends PlaceProps {
 // it is on another branch than the default, New script and Read again, and its scripts,
 // with the editor of the user's own. A pull shows as a run, and once it ends the scripts
 // are read again, since the files they come from may have moved with the branch.
-function ClonePage({ clone, picker, onStarted, onPull, folds, note, onOpenSettings, ...place }: ClonePageProps) {
+function ClonePage({
+  clone,
+  picker,
+  onStarted,
+  onPull,
+  folds,
+  note,
+  onOpenSettings,
+  chosenTerminal,
+  ...place
+}: ClonePageProps) {
   // read counts the reads of the clone's scripts after the first: Read again, which
   // lists magex's targets afresh (refresh), and each change to the user's own scripts,
   // which doesn't. The query shows only the newest read's answer, so one still under way
@@ -440,6 +453,7 @@ function ClonePage({ clone, picker, onStarted, onPull, folds, note, onOpenSettin
         <ScriptEditor
           script={editing.script}
           variables={editing.variables}
+          terminal={chosenTerminal}
           onSaved={() => {
             setEditing(null)
             readAgain(false)
@@ -632,6 +646,7 @@ export function RepoScriptsPage({
         otherName={otherName}
         setting={runsIn}
         terminalName={terminalName}
+        chosenTerminal={terminalLabel(terminal, '')}
         onOpenRelease={onOpenRelease}
         onOpenDeps={onOpenDeps}
         onStarted={(run) => {
