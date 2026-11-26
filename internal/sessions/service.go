@@ -40,10 +40,12 @@ var (
 // Focuser brings forward a terminal's tab that a session runs in. The app adapts the
 // launcher's terminal drivers to it.
 type Focuser interface {
-	// Focus selects the tab, in the terminal named by its settings ID, that the session
-	// whose process is pid runs in on tty, such as /dev/ttys004, and brings its window
-	// forward. iTerm2 and Terminal.app find the tab by its tty, Warp by the focus link in
-	// the process's environment.
+	// Focus selects the tab that the session whose process is pid runs in on tty, such as
+	// /dev/ttys004, and brings its window forward: in the terminal the process's own
+	// environment names (TERM_PROGRAM), since a session the user resumed themselves may
+	// run in another terminal than its record's, or else in terminal, the settings ID its
+	// record names. iTerm2 and Terminal.app find the tab by its tty, Warp by the focus link
+	// in the process's environment.
 	Focus(ctx context.Context, terminal, tty string, pid int) error
 }
 
@@ -146,15 +148,16 @@ func (s *Service) List(ctx context.Context) (Snapshot, error) {
 	return Snapshot{Following: following, Sessions: shown(records, s.home)}, nil
 }
 
-// shown is records as the window shows them, with home as ~. A conversation a running
-// session carries on, as one resumed does, is not offered for resuming again from a
-// session of it that ended.
+// shown is records, newest first, as the window shows them, with home as ~. A
+// conversation a running session carries on, as one resumed does, names that session on
+// every other session of it (CarriedBy), the newest running one's when two do, and is not
+// offered for resuming again from a session of it that ended.
 func shown(records []Record, home string) []Session {
-	carried := map[string]bool{}
+	carriers := map[string]string{}
 
 	for _, r := range records {
-		if r.State.Live() && r.AgentSessionID != "" {
-			carried[r.AgentSessionID] = true
+		if _, seen := carriers[r.AgentSessionID]; !seen && r.State.Live() && r.AgentSessionID != "" {
+			carriers[r.AgentSessionID] = r.ID
 		}
 	}
 
@@ -162,7 +165,11 @@ func shown(records []Record, home string) []Session {
 
 	for _, r := range records {
 		session := r.Session(home)
-		session.CanResume = session.CanResume && !carried[r.AgentSessionID]
+		if by := carriers[r.AgentSessionID]; by != r.ID {
+			session.CarriedBy = by
+		}
+
+		session.CanResume = session.CanResume && session.CarriedBy == ""
 		out = append(out, session)
 	}
 
@@ -171,7 +178,8 @@ func shown(records []Record, home string) []Session {
 
 // Focus brings forward the terminal tab a running session is in. It reads the tty of the
 // session's process first, which proves the session runs in a terminal, whichever way
-// the terminal then finds the tab.
+// the terminal then finds the tab, and hands the Focuser the terminal the session's record
+// names, which the Focuser checks against the one the process runs in.
 func (s *Service) Focus(ctx context.Context, id string) error {
 	r, err := s.store.Get(ctx, id)
 	if err != nil {

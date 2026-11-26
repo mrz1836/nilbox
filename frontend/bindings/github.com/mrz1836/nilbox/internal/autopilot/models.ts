@@ -1709,7 +1709,10 @@ export interface RunView {
 
     /**
      * CanTakeOver reports a run in the background whose agent resumes its conversation in
-     * the terminal, by its session: the run view's Take over.
+     * the terminal, by its session: the run view's Take over. It says nothing of whether a
+     * session carries that conversation on already, as one that took the run over does,
+     * which the window reads from the sessions it follows: while one does, the view offers
+     * Show in terminal for that session in Take over's place.
      */
     "canTakeOver": boolean;
 }

@@ -421,14 +421,17 @@ func (w *Watcher) revive(ctx context.Context, now time.Time, ended []Record, obs
 }
 
 // reviveOne records ended, which its agent listed as o, as a new session resumed from it,
-// when o shows it running again, and returns the new session's ID.
+// when o shows it running again, and returns the new session's ID. The user resumed it
+// themselves, in a terminal, so it is no background run's, even when ended was one's. Its
+// terminal is ended's, the likeliest, but the user may have resumed it in another: Show
+// in terminal's Focuser asks the session's process which it runs in.
 func (w *Watcher) reviveOne(ctx context.Context, now time.Time, ended Record, o Observation) (string, bool) {
 	if !o.Seen || !o.State.Live() {
 		return "", false
 	}
 
 	r := ended
-	r.ID, r.ResumedFrom, r.Prompt, r.PromptHead, r.PID = w.newID(), ended.ID, "", "", 0
+	r.ID, r.ResumedFrom, r.Prompt, r.PromptHead, r.PID, r.RunID = w.newID(), ended.ID, "", "", 0, 0
 	r.State, r.Detail, r.LastMessage, r.LaunchedAt = StateStarting, "", "", now
 
 	// A launch that resumed the session from the app may have recorded it since the

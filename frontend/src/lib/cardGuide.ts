@@ -223,6 +223,7 @@ export function guideSession(now: Date): AgentSession {
     endedAt: ago(now, 1),
     canFocus: false,
     canResume: false,
+    carriedBy: '',
     runId: 0,
     githubEvent: '',
     githubEventCommit: '',

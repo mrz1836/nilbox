@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { itemSessions } from '../../lib/sessions'
 import { formatClock } from '../../lib/time'
 import type { AutopilotRunEvents } from '../../platform'
 import { deferred } from '../../test/async'
@@ -11,12 +12,14 @@ import {
   agentRun,
   agentRunView,
   agents,
+  agentSession,
   githubStep,
   launchHold,
   launchResult,
   runEnding,
   runEvent,
   runEventsPage,
+  sessionsSnapshot,
 } from '../../test/fixtures'
 import { emit, platform, send } from '../../test/platform'
 import { RunView } from './RunView'
@@ -46,6 +49,7 @@ function renderView(
       runId={81}
       terminal="iterm2"
       agents={agents()}
+      sessions={new Map()}
       onOpenItem={onOpenItem}
       onToast={onToast}
       onClose={vi.fn()}
@@ -496,6 +500,91 @@ describe('RunView', () => {
     expect(screen.queryByRole('region', { name: 'Timeline' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Diff' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show the log file' })).not.toBeInTheDocument()
+  })
+
+  it('shows the terminal a run in your terminal runs in, while its session runs, and says why it couldn’t', async () => {
+    const user = userEvent.setup()
+    const sessionId = agentRun().sessionId
+
+    platform.autopilotRunView.mockResolvedValue(
+      agentRunView({
+        live: false,
+        canTakeOver: false,
+        run: agentRun({ runner: 'terminal', scriptRunId: 0, status: 'ended' }),
+      }),
+    )
+    platform.focusSession.mockRejectedValueOnce(new Error('Couldn’t find the session’s tab.'))
+    renderView({ sessions: itemSessions(sessionsSnapshot([agentSession({ id: sessionId, terminal: 'warp' })])) })
+
+    const show = await screen.findByRole('button', { name: 'Show in terminal' })
+    expect(show).toHaveAttribute('title', 'Bring forward the Warp tab it runs in')
+    expect(screen.getByRole('button', { name: 'Show the worktree' })).toBeInTheDocument()
+
+    await user.click(show)
+    expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith(sessionId)
+    expect(await screen.findByText('Couldn’t find the session’s tab.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
+    await waitFor(() => {
+      expect(screen.queryByText('Couldn’t find the session’s tab.')).not.toBeInTheDocument()
+    })
+  })
+
+  it('offers no Show in terminal for a run in your terminal whose session ended, or that the window doesn’t follow', async () => {
+    platform.autopilotRunView.mockResolvedValue(
+      agentRunView({ live: false, canTakeOver: false, run: agentRun({ runner: 'terminal', scriptRunId: 0 }) }),
+    )
+    renderView({
+      sessions: itemSessions(
+        sessionsSnapshot([agentSession({ id: agentRun().sessionId, state: 'ended', canFocus: false })]),
+      ),
+    })
+
+    await screen.findByRole('button', { name: 'Show the worktree' })
+    expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+  })
+
+  it('offers Show in terminal on the session that carries a run’s conversation on, in Take over’s place', async () => {
+    const user = userEvent.setup()
+    const run = agentSession({
+      id: agentRun().sessionId,
+      state: 'ended',
+      runId: 44,
+      canFocus: false,
+      canResume: false,
+      carriedBy: 'resumed',
+    })
+    const resumed = agentSession({ id: 'resumed', resumedFrom: run.id, terminal: 'terminal' })
+
+    renderView({ sessions: itemSessions(sessionsSnapshot([resumed, run])) })
+
+    const show = await screen.findByRole('button', { name: 'Show in terminal' })
+    expect(show).toHaveAttribute('title', 'Bring forward the Terminal tab its conversation carries on in')
+    expect(screen.queryByRole('button', { name: /Take over/ })).not.toBeInTheDocument()
+
+    await user.click(show)
+    expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith('resumed')
+    expect(platform.takeOverRun).not.toHaveBeenCalled()
+  })
+
+  it('offers neither while the session carrying a run’s conversation on can’t be shown yet', async () => {
+    const run = agentSession({ id: agentRun().sessionId, state: 'ended', runId: 44, canFocus: false, carriedBy: 'new' })
+    const starting = agentSession({ id: 'new', state: 'starting', canFocus: false })
+
+    renderView({ sessions: itemSessions(sessionsSnapshot([starting, run])) })
+
+    await screen.findByRole('button', { name: 'Stop' })
+    expect(screen.queryByRole('button', { name: /Take over/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+  })
+
+  it('offers Take over again once nothing carries the run’s conversation on', async () => {
+    const run = agentSession({ id: agentRun().sessionId, state: 'ended', runId: 44, canFocus: false, canResume: true })
+
+    renderView({ sessions: itemSessions(sessionsSnapshot([run])) })
+
+    expect(await screen.findByRole('button', { name: 'Take over in iTerm2' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
   })
 
   it('marks the routine’s steps done before the one it is at', async () => {

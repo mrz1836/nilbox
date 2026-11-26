@@ -4,6 +4,7 @@ import { FIXED_NOW } from '../test/clock'
 import { agentSession, details, item, sessionsSnapshot } from '../test/fixtures'
 import {
   cardSession,
+  carrierOf,
   compactCount,
   githubEventTone,
   githubEventWords,
@@ -71,6 +72,15 @@ describe('sessions', () => {
     expect(itemSessions(sessionsSnapshot([agentSession()], false))).toBe(noSessions)
     expect(itemSessions(null)).toBe(noSessions)
     expect(itemSessions(sessionsSnapshot())).toBe(noSessions)
+  })
+
+  it('finds the running session that carries a conversation on, among those given', () => {
+    const carrier = agentSession({ id: 'resumed', state: 'working' })
+    const run = agentSession({ id: 'run', state: 'ended', runId: 44, canFocus: false, carriedBy: 'resumed' })
+
+    expect(carrierOf(run, [carrier, run])).toBe(carrier)
+    expect(carrierOf(run, [run]), 'one not given isn’t found').toBeUndefined()
+    expect(carrierOf(carrier, [carrier, run]), 'nothing carries the carrier on').toBeUndefined()
   })
 
   it('shows the newest running session on the card, else one that ended in the last day', () => {

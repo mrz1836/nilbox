@@ -74,6 +74,13 @@ export function runningSession(sessions: readonly AgentSession[] | undefined): A
   return sessions?.find((s) => isLive(s.state)) ?? null
 }
 
+// carrierOf is the session among sessions that carries s's conversation on, as the
+// backend names it (carriedBy): one resumed from it, or a background run's take over, still
+// running. It is undefined when none does, or when that session isn't among them.
+export function carrierOf(s: AgentSession, sessions: readonly AgentSession[]): AgentSession | undefined {
+  return s.carriedBy === '' ? undefined : sessions.find((o) => o.id === s.carriedBy)
+}
+
 // cardSession picks the session an item's card shows: the newest still running, else the
 // newest that ended in the last day, unless the item, when given, has moved past it
 // (superseded), else none.

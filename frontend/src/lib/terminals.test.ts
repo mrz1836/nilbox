@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { terminalLabel, terminals } from './terminals'
+import { brand } from '../generated/brand'
+import { terminalLabel, terminalNote, terminals } from './terminals'
+
+describe('terminalNote', () => {
+  it('says what each terminal needs before the first launch, and nothing for Terminal.app', () => {
+    expect(terminalNote('iterm2')).toBe(`Your first launch asks to let ${brand.name} control iTerm2. Choose Allow.`)
+    expect(terminalNote('warp')).toBe('Open Warp once and finish its welcome before your first launch.')
+    expect(terminalNote('terminal')).toBe('')
+  })
+})
 
 describe('terminalLabel', () => {
   it('names each terminal app this build knows, whatever the fallback', () => {

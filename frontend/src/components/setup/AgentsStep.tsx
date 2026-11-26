@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
-import { brand } from '../../generated/brand'
 import { useMutation } from '../../lib/useMutation'
 import { loginCommand } from '../../lib/profiles'
 import { agentRepos } from '../../lib/setup'
+import { terminalNote } from '../../lib/terminals'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   openExternal,
@@ -263,6 +263,10 @@ export function AgentsStep(props: AgentsStepProps) {
     }
   }
 
+  // note is what the chosen terminal needs before the first launch, as Settings → Launching
+  // says it too, or ''.
+  const note = terminalNote(settings.terminal)
+
   return (
     <div className="flex flex-col gap-8">
       <section aria-labelledby={`${id}-agents`} className="flex flex-col gap-3">
@@ -313,12 +317,7 @@ export function AgentsStep(props: AgentsStepProps) {
         ) : (
           <TerminalTiles terminals={terminals} chosen={settings.terminal} onChoose={chooseTerminal} />
         )}
-        {settings.terminal === 'iterm2' && (
-          <p className="text-xs text-muted">Your first launch asks to let {brand.name} control iTerm2. Choose Allow.</p>
-        )}
-        {settings.terminal === 'warp' && (
-          <p className="text-xs text-muted">Open Warp once and finish its welcome before your first launch.</p>
-        )}
+        {note !== '' && <p className="text-xs text-muted">{note}</p>}
       </section>
 
       <div className="flex items-start justify-between gap-6 rounded-lg border border-border bg-surface px-4 py-3.5">

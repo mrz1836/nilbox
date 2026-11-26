@@ -3009,6 +3009,7 @@ export function agentSession(overrides: Partial<AgentSession> = {}): AgentSessio
     endedAt: '',
     canFocus: true,
     canResume: false,
+    carriedBy: '',
     runId: 0,
     githubEvent: '',
     githubEventCommit: '',

@@ -1668,6 +1668,7 @@ export default function AutopilotView({
             runId={runShown}
             terminal={settings?.terminal ?? null}
             agents={agents}
+            sessions={kit.sessions}
             onOpenItem={onOpen}
             onToast={toastText}
             onClose={() => {

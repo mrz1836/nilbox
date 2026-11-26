@@ -2,6 +2,7 @@ import { Suspense, useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
 import {
+  carrierOf,
   githubEventTone,
   githubEventWords,
   isLive,
@@ -97,10 +98,18 @@ function confirmed({ hold, request }: Held): ResumeRequest {
   return hold.reason === 'running' ? { ...request, alongside: hold.key } : { ...request, confirmed: hold.key }
 }
 
+interface SessionEntryProps {
+  session: AgentSession
+  // carrier is the running session that carries its conversation on, as one that took its
+  // background run over does, when the panel lists it (carrierOf), or undefined.
+  carrier: AgentSession | undefined
+  agents: readonly AgentInfo[]
+}
+
 // SessionEntry is one session: who ran it with what, what it is doing, what it started
 // with and where, what its launch worked around, what it last said, and what can be done
 // with it from here.
-function SessionEntry({ session, agents }: { session: AgentSession; agents: readonly AgentInfo[] }) {
+function SessionEntry({ session, carrier, agents }: SessionEntryProps) {
   const focus = useMutation((id: string) => focusSession(id))
   const resume = useMutation((request: ResumeRequest) => resumeSession(request))
   const folder = useMutation((id: string) => showSessionFolder(id))
@@ -108,13 +117,20 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const stop = useMutation((id: string) => stopRun(id))
   const actions = { focus, resume, folder, forget, stop }
   const { copy, onCopy } = useCopy('session ID')
-  const terminal = terminalName(session)
   const watch = useWatch()
   const takeOverIn = useTakeOverTerminal()
   // background reports an agent's run in the background, which Watch opens, Stop stops,
   // and Take over carries on in the terminal, in place of Resume.
   const background = session.runId !== 0
   const live = isLive(session.state)
+  // carried reports a conversation another session carries on, as a take over's does: it
+  // can't be taken over again until that session ends, as Resume isn't offered either.
+  // shows is the session whose tab Show in terminal brings forward: this one, in the
+  // terminal, or, for a run taken over, the session that carries its conversation on,
+  // while that one's tab can be shown.
+  const carried = session.carriedBy !== ''
+  const shows = session.canFocus ? session : background && carrier?.canFocus === true ? carrier : undefined
+  const terminal = shows === undefined ? '' : terminalName(shows)
   const [takingOver, setTakingOver] = useState(false)
   const setup = setupWords(session)
   // onGitHub is what came of its item on GitHub while it ran, as the inbox learned it, or
@@ -150,9 +166,9 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     return presses.current
   }
 
-  const showTerminal = () => {
+  const showTerminal = (id: string) => {
     press('focus')
-    void focus.run(session.id)
+    void focus.run(id)
   }
 
   // resumeNow resumes the session, or holds it back, as a launch is held, until the user
@@ -245,11 +261,13 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         </blockquote>
       )}
       <div className="flex flex-wrap items-center gap-1">
-        {session.canFocus && (
+        {shows === session && (
           <button
             type="button"
             disabled={focus.pending}
-            onClick={showTerminal}
+            onClick={() => {
+              showTerminal(session.id)
+            }}
             title={`Bring forward the ${terminal === '' ? 'terminal' : terminal} tab it runs in`}
             className={quietButtonClass}
           >
@@ -284,7 +302,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             {stop.pending ? 'Stopping…' : 'Stop'}
           </button>
         )}
-        {background && session.agentSessionId !== '' && (
+        {background && session.agentSessionId !== '' && !carried && (
           <button
             type="button"
             onClick={() => {
@@ -296,6 +314,21 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           >
             <TerminalIcon className="size-3.5" />
             Take over
+          </button>
+        )}
+        {/* A run taken over offers the tab its conversation carries on in, in Take over's place. */}
+        {shows !== undefined && shows !== session && (
+          <button
+            type="button"
+            disabled={focus.pending}
+            onClick={() => {
+              showTerminal(shows.id)
+            }}
+            title={`Bring forward the ${terminal === '' ? 'terminal' : terminal} tab its conversation carries on in`}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Show in terminal
           </button>
         )}
         {!background && session.canResume && (
@@ -396,15 +429,17 @@ export interface SessionPanelProps {
 // and prompt, what it is doing and for how long, the permissions it started with, how many
 // tokens it used where the agent's own files say, the folder it runs in and what its
 // launch did to the item's worktree, what the launch worked around, what the agent last
-// said, and buttons to show its terminal, resume it
-// once it ended, show its folder in Finder, copy its ID, and remove it once it ended.
+// said, and buttons to show its terminal, resume it once it ended, show its folder in
+// Finder, copy its ID, and remove it once it ended. A background run's has Watch, Stop,
+// and Take over, or, once taken over, Show in terminal for the session that carries its
+// conversation on.
 export function SessionPanel({ sessions, agents }: SessionPanelProps) {
   return (
     <div className="flex flex-col gap-2.5">
       <h3 className="text-sm font-semibold text-text">Agent sessions</h3>
       <ul className="flex flex-col">
         {sessions.map((s) => (
-          <SessionEntry key={s.id} session={s} agents={agents} />
+          <SessionEntry key={s.id} session={s} carrier={carrierOf(s, sessions)} agents={agents} />
         ))}
       </ul>
     </div>

@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { brand } from '../../generated/brand'
 import { itemText, runVerdictWords } from '../../lib/autopilot'
 import { counted } from '../../lib/format'
+import { itemKey } from '../../lib/itemWorktrees'
 import { agentName } from '../../lib/launch'
 import {
   agentReport,
@@ -20,6 +21,7 @@ import {
   type TimelineRow,
 } from '../../lib/runView'
 import { formatDuration } from '../../lib/scriptRuns'
+import { carrierOf, terminalName } from '../../lib/sessions'
 import { terminalLabel } from '../../lib/terminals'
 import { formatClock, formatFull } from '../../lib/time'
 import { useOnAutopilot } from '../../lib/useAutopilot'
@@ -30,12 +32,14 @@ import { useRunTimeline, type RunTimeline } from '../../lib/useRunTimeline'
 import {
   autopilotRunDiff,
   autopilotRunView,
+  focusSession,
   openExternal,
   showScriptRunLog,
   showSessionFolder,
   stopAutopilotRun,
   type AgentID,
   type AgentInfo,
+  type AgentSession,
   type AutopilotItemRef,
   type AutopilotRunDiff,
   type AutopilotRunEnding,
@@ -56,6 +60,10 @@ export interface RunViewProps {
   // in, or null until the settings load.
   terminal: TerminalID | null
   agents: readonly AgentInfo[]
+  // sessions holds each item's agent sessions, newest first, by itemKey (useSessions'
+  // byItem), among which the view finds the run's own and the one that carries its
+  // conversation on; empty while the app doesn't follow sessions.
+  sessions: ReadonlyMap<string, readonly AgentSession[]>
   // onOpenItem shows the run's item, as Activity's Open does.
   onOpenItem: (item: AutopilotItemRef, routineId: number) => void
   // onToast says what a button did.
@@ -252,15 +260,15 @@ function Ending({ view, ending }: { view: AutopilotRunView; ending: AutopilotRun
 }
 
 // Action is one of the view's buttons.
-type Action = 'stop' | 'folder' | 'log' | 'diff'
+type Action = 'focus' | 'stop' | 'folder' | 'log' | 'diff'
 
 // RunView is one of Autopilot's agent runs, beside Activity, as the Runs page's run panel
 // sits beside its list: what it is and where it runs, how it is doing (its time, its cost
 // against its budget, its tokens, and the routine's steps with its own marked), what can be
-// done with it (Take over in the terminal, Stop, Diff, Show the worktree, View on GitHub,
-// Show the log file), the agent's plan as a live checklist, and its timeline, which pages
-// back a page at a time. Once it ends, it says how it came out.
-export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose }: RunViewProps) {
+// done with it (Show in terminal, Take over in the terminal, Stop, Diff, Show the worktree,
+// View on GitHub, Show the log file), the agent's plan as a live checklist, and its
+// timeline, which pages back a page at a time. Once it ends, it says how it came out.
+export function RunView({ runId, terminal, agents, sessions, onOpenItem, onToast, onClose }: RunViewProps) {
   const headingId = useId()
   const now = useNow()
   const query = useQuery(() => autopilotRunView(runId), [runId])
@@ -269,7 +277,8 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
   const diff = useMutation(() => autopilotRunDiff(runId))
   const folder = useMutation((sessionId: string) => showSessionFolder(sessionId))
   const log = useMutation((scriptRunId: number) => showScriptRunLog(scriptRunId))
-  const actions = { stop, folder, log, diff }
+  const focus = useMutation((sessionId: string) => focusSession(sessionId))
+  const actions = { focus, stop, folder, log, diff }
   const [last, setLast] = useState<Action | null>(null)
   const [shown, setShown] = useState<AutopilotRunDiff | null>(null)
   const [takingOver, setTakingOver] = useState(false)
@@ -333,6 +342,18 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
   ].filter((d) => d !== '')
   const usage = usageText(progress)
   const marks = stepMarks(match)
+  // runSession is the run's session as the window follows it, among its item's, and carrier
+  // the running session that carries its conversation on, as Take over's does: a run taken
+  // over isn't offered for taking over again while that session runs, as Resume isn't.
+  // shows is the session whose tab Show in terminal brings forward: the run's own, in your
+  // terminal, while it runs, else the one carrying its conversation on, while its tab can
+  // be shown.
+  const itemsSessions = sessions.get(itemKey(match.item.repo, match.item.number)) ?? []
+  const runSession = run.sessionId === '' ? undefined : itemsSessions.find((s) => s.id === run.sessionId)
+  const carrier = runSession === undefined ? undefined : carrierOf(runSession, itemsSessions)
+  const shows = runSession?.canFocus === true ? runSession : carrier?.canFocus === true ? carrier : undefined
+  const showsIn = shows === undefined ? '' : terminalName(shows)
+  const canTakeOver = view.canTakeOver && (runSession?.carriedBy ?? '') === ''
 
   const press = (action: Action) => {
     setLast(action)
@@ -398,7 +419,24 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
         )}
       </header>
       <div className="flex flex-wrap items-center gap-1">
-        {view.canTakeOver && (
+        {shows !== undefined && (
+          <button
+            type="button"
+            disabled={focus.pending}
+            onClick={() => {
+              press('focus')
+              void focus.run(shows.id)
+            }}
+            title={`Bring forward the ${showsIn === '' ? 'terminal' : showsIn} tab ${
+              shows === runSession ? 'it runs in' : 'its conversation carries on in'
+            }`}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Show in terminal
+          </button>
+        )}
+        {canTakeOver && (
           <button
             type="button"
             onClick={() => {

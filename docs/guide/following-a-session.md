@@ -73,23 +73,32 @@ has its actions:
 
 **Show in terminal**, on the card (**Show terminal** while the session waits on you), in the
 panel, and in the [menu bar](#the-menu-bar-and-banners), brings forward the tab the session runs
-in, with its window, in the terminal it was launched in. It first reads the session's terminal
-device (`ps -o tty=`), which shows the session still runs in a terminal; then each terminal
-finds the tab its own way:
+in, with its window. It first reads the session's terminal device (`ps -o tty=`), which shows
+the session still runs in a terminal. Then it reads which terminal that is from one environment
+variable of the session's agent process, `TERM_PROGRAM`, which each terminal sets in every shell
+it starts and the agent inherits from its tab: `iTerm.app` for iTerm2, `WarpTerminal` for Warp,
+and `Apple_Terminal` for Terminal.app. So a session you resumed yourself in another terminal than
+the one it was launched in (`claude --resume <id>`, which the app [follows](#how-it-is-read) as
+a new session) is shown where it runs now. When the variable can't be read, or names any other
+program (tmux sets its own), the terminal the session was launched in is used. Each terminal
+then finds the tab its own way:
 
 - **iTerm2 and Terminal.app** find the tab by that device, through AppleScript. iTerm2 uses the
   Automation permission you gave at the first launch; Terminal.app asks for it the first time.
-- **Warp** has no AppleScript, so the app reads one environment variable, `WARP_FOCUS_URL`, from
-  the session's agent process: the link (`warp://session/` and 32 hex digits) Warp exports in
-  every shell it starts, which the agent inherits from its tab. It reads it only when you click,
-  keeps and logs nothing else of that environment, and opens the link in Warp, which brings the
-  tab's window forward and selects its pane. No permission is asked.
+- **Warp** has no AppleScript, so the app reads one more environment variable, `WARP_FOCUS_URL`,
+  from the session's agent process: the link (`warp://session/` and 32 hex digits) Warp exports
+  in every shell it starts, which the agent inherits from its tab. It opens the link in Warp,
+  which brings the tab's window forward and selects its pane. No permission is asked.
+
+Those two variables, `TERM_PROGRAM` and `WARP_FOCUS_URL`, are all the app reads of the agent's
+environment, and only when you click; it keeps and logs none of it.
 
 Warp exports the link from v0.2026.05.27 on, so a session launched in an older Warp can't be
 shown, and Show in terminal says so: *Couldn't tell which Warp tab runs this session. Warp
-v0.2026.05.27 or newer can; update Warp, and sessions launched afterwards can be shown.* macOS
-hides the environment of its own programs, such as a shell, which reads the same way, but an
-agent is never one of them. For about a minute after you close a Warp tab, Warp
+v0.2026.05.27 or newer can; update Warp, and sessions launched afterwards can be shown.* A
+session launched in Warp but resumed in iTerm2 or Terminal.app is shown there, and never says
+that. macOS hides the environment of its own programs, such as a shell, which reads the same way,
+but an agent is never one of them. For about a minute after you close a Warp tab, Warp
 [keeps it](launching-a-session.md#warp), and Show in terminal only brings Warp forward and says
 nothing, since Warp can't tell the tab is gone.
 
@@ -166,13 +175,14 @@ session within 30 seconds, and a Codex session's process must still be `codex` i
 checked every 30 seconds. Where Claude Code can't be asked, a session it never listed is taken
 for running only while a Claude Code process works in its folder, never another program's. A
 Claude session resumed outside the app within a day of ending, as with `claude --resume <id>`
-in a terminal, is followed again from its card as a new session resumed from the first; the
-app asks Claude Code about it only when its `sessions/` folder changes, as a session starting
-changes it, never on a timer. Polling stops while no session runs, and
-starts again with the next launch or the next time the app opens: sessions left running when
-the app quit are reconciled then. Nothing is ever sent to a session, no approval is answered,
-and nothing is written into an agent's config or conversation beyond the launch's
-`--session-id`. Nothing about sessions leaves your Mac.
+in a terminal, is followed again from its card as a new session resumed from the first, in your
+terminal even when the first was a routine's run in the background, as a
+[Take over](autopilot/agents-in-the-background.md)'s is; the app asks Claude Code about it only
+when its `sessions/` folder changes, as a session starting changes it, never on a timer. Polling
+stops while no session runs, and starts again with the next launch or the next time the app
+opens: sessions left running when the app quit are reconciled then. Nothing is ever sent to a
+session, no approval is answered, and nothing is written into an agent's config or conversation
+beyond the launch's `--session-id`. Nothing about sessions leaves your Mac.
 
 ## One session per folder, unless you say so
 

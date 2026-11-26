@@ -1,3 +1,4 @@
+import { brand } from '../generated/brand'
 import type { TerminalID } from '../platform'
 
 // terminalNames are the terminal apps a launch, or a run, can open in, by the names the
@@ -15,6 +16,21 @@ export const terminals: readonly { id: TerminalID; label: string }[] = [
   { id: 'warp', label: terminalNames.warp },
   { id: 'terminal', label: terminalNames.terminal },
 ]
+
+// terminalNote is what to do before the first launch in the terminal with id, as the setup
+// and Settings → Launching say under the choice: allow iTerm2's Automation permission when
+// macOS asks, and finish Warp's welcome, until which Warp drops every launch unseen; ''
+// for Terminal.app, which needs nothing.
+export function terminalNote(id: TerminalID): string {
+  switch (id) {
+    case 'iterm2':
+      return `Your first launch asks to let ${brand.name} control iTerm2. Choose Allow.`
+    case 'warp':
+      return 'Open Warp once and finish its welcome before your first launch.'
+    default:
+      return ''
+  }
+}
 
 // isTerminal reports an id this build names: one of terminalNames' own keys.
 function isTerminal(id: string): id is TerminalID {

@@ -599,4 +599,70 @@ describe('SessionTag for an agent working in the background', () => {
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
     expect(await screen.findByRole('dialog', { name: 'Take over this conversation?' })).toBeInTheDocument()
   })
+
+  // takenOver is a run's session that ended once taken over, its conversation carried on
+  // by the session carriedBy names.
+  function takenOver(carriedBy: string): AgentSession {
+    return agentSession({
+      id: 'run',
+      agentSessionId: 'conversation',
+      state: 'ended',
+      endedAt: '2026-06-15T11:00:00Z',
+      runId: 44,
+      canFocus: false,
+      canResume: false,
+      carriedBy,
+    })
+  }
+
+  it('offers Show in terminal on the session that took the run over, in Take over’s place', async () => {
+    const user = userEvent.setup()
+    inRows([
+      agentSession({ id: 'resumed', agentSessionId: 'conversation', resumedFrom: 'run', terminal: 'warp' }),
+      takenOver('resumed'),
+    ])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [resumed = document.body, run = document.body] = entries(2)
+    expect(within(run).queryByRole('button', { name: 'Take over' })).not.toBeInTheDocument()
+    expect(within(run).getByRole('button', { name: 'Watch' })).toBeInTheDocument()
+
+    const show = within(run).getByRole('button', { name: 'Show in terminal' })
+    expect(show).toHaveAttribute('title', 'Bring forward the Warp tab its conversation carries on in')
+    await user.click(show)
+    expect(platform.focusSession).toHaveBeenCalledExactlyOnceWith('resumed')
+    expect(platform.takeOverRun).not.toHaveBeenCalled()
+
+    expect(within(resumed).getByRole('button', { name: 'Show in terminal' })).toHaveAttribute(
+      'title',
+      'Bring forward the Warp tab it runs in',
+    )
+  })
+
+  it('says why the terminal that carries a run on couldn’t be shown', async () => {
+    const user = userEvent.setup()
+    platform.focusSession.mockRejectedValueOnce(new Error('Couldn’t find the session’s tab.'))
+    inRows([agentSession({ id: 'resumed', agentSessionId: 'conversation' }), takenOver('resumed')])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [, run = document.body] = entries(2)
+    await user.click(within(run).getByRole('button', { name: 'Show in terminal' }))
+    expect(await within(run).findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
+  })
+
+  it('offers neither while the session that took the run over can’t be shown yet', async () => {
+    const user = userEvent.setup()
+    inRows([
+      agentSession({ id: 'resumed', agentSessionId: 'conversation', state: 'starting', canFocus: false }),
+      takenOver('resumed'),
+    ])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [, run = document.body] = entries(2)
+    expect(within(run).queryByRole('button', { name: 'Take over' })).not.toBeInTheDocument()
+    expect(within(run).queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+  })
 })

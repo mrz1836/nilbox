@@ -93,9 +93,13 @@ choose in the setup never moves. iTerm2 and Warp count as installed when `iTerm.
 [This Mac](autopilot/this-mac.md) checks the terminal the same way.
 
 Choose the terminal under **Settings → Launching**, which lists the three in that order
-(searching Settings for *Warp* finds it), and the clone root (the directory whose children are
-your clones, initially `~/projects`) under **Settings → Repositories**. A launch whose agent
-isn't installed says so, as in "Codex isn't installed (codex wasn't found)."
+(searching Settings for *Warp* finds it) and, as the setup does, says under the choice what it
+needs before your first launch there: for iTerm2, *Your first launch asks to let Nilbox control
+iTerm2. Choose Allow.* ([below](#macoss-automation-permission)); for Warp, *Open Warp once and
+finish its welcome before your first launch.* ([below](#warps-welcome-comes-first)); for
+Terminal.app, nothing. Choose the clone root (the directory whose children are your clones,
+initially `~/projects`) under **Settings → Repositories**. A launch whose agent isn't installed
+says so, as in "Codex isn't installed (codex wasn't found)."
 
 ### Open in terminal
 
@@ -348,7 +352,7 @@ permission, for a launch or anything else.
 - **Which Warp.** Warp v0.2026.05.13 or newer runs a launch's script; an older Warp opens the
   script in its editor instead, and nothing runs. [Show in
   terminal](following-a-session.md#show-in-terminal) needs v0.2026.05.27 or newer, and a session
-  launched in such a Warp.
+  started in such a Warp, whether launched there or resumed there yourself.
 - **The tab's folder.** Warp starts the tab in the launch script's folder, which the script then
   leaves for the worktree, so the tab's title, and its prompt once the agent exits, show the
   app's launch folder rather than the worktree: `cd` there, or use [Open in
@@ -363,9 +367,10 @@ permission, for a launch or anything else.
 Until Warp's first-run welcome is finished, Warp quietly drops every script, folder, or link it
 is asked to open, and macOS still reports the open as done, so Nilbox can't tell: a launch says
 it opened, but no tab appears. Open Warp once and finish the welcome (it needs no sign-in)
-before your first launch; the setup says so when you choose Warp: *Open Warp once and finish its
-welcome before your first launch.* An Autopilot routine's run in your terminal is dropped the
-same way, so finish it before you leave a routine to run while you're away.
+before your first launch; the setup and **Settings → Launching** say so when you choose Warp:
+*Open Warp once and finish its welcome before your first launch.* An Autopilot routine's run in
+your terminal is dropped the same way, so finish it before you leave a routine to run while
+you're away.
 
 Nothing dropped is opened later. The session's card shows it starting, then, a minute or so
 later, ended, and a run in your terminal holds its clone until, two minutes on, it reads *The

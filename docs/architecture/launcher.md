@@ -44,11 +44,16 @@ IDs.
 
 Show in terminal is `Registry.Focus(ctx, id, terminal.Tab)`, for a driver that is also a
 `terminal.Focuser` (`Focus(ctx, Tab)`; any other is `ErrNoFocus`). A `Tab` carries the session's
-tty and its agent's PID (`Tab{TTY, PID}`). iTerm2's and Terminal.app's `Focus` take the tty
-(`validateTTY`) and run an AppleScript that walks their windows' tabs for it, `ErrNoSuchTab` when
-none runs on it. Warp has no tty lookup: its `Focus` reads `WARP_FOCUS_URL`, the link Warp
-(v0.2026.05.27 and newer) exports in every shell and the agent inherits, from the PID's
-environment (`procs.EnvOf`, that one variable alone, through the driver's `env`), takes only
+tty and its agent's PID (`Tab{TTY, PID}`). Which `id` is core's choice (`terminalFocuser`, see
+[internal/sessions](sessions.md)): the terminal the agent's `TERM_PROGRAM` names, read with
+`procs.EnvOf` at the click and mapped by `termprogram.go`'s pure `FromTermProgram` (`iTerm.app`
+iTerm2, `WarpTerminal` Warp, `Apple_Terminal` Terminal.app, nothing else), or the session's
+recorded terminal when it names none, so a session resumed in another terminal than its launch's
+is found where it runs. iTerm2's and Terminal.app's `Focus` take the tty (`validateTTY`) and run
+an AppleScript that walks their windows' tabs for it, `ErrNoSuchTab` when none runs on it. Warp
+has no tty lookup: its `Focus` reads `WARP_FOCUS_URL`, the link Warp (v0.2026.05.27 and newer)
+exports in every shell and the agent inherits, from the PID's environment (`procs.EnvOf`, that
+one variable alone, through the driver's `env`), takes only
 `^warp://session/[0-9a-f]{32}$` (`warpFocusLink`), and runs `open -b dev.warp.Warp-Stable <link>`,
 which brings the tab's window forward and selects its pane, with no permission. An invalid PID, a
 process with no link (an older Warp, a session not launched in Warp, a platform binary whose

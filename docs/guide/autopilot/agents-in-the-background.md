@@ -64,7 +64,9 @@ repository, leaves the start not ready.
   a long log never loads whole. Messages the app didn't know are counted, never shown. Once it
   ends, the view says how it came out: Nilbox's verdict from GitHub, the agent's own report or
   its last words, whether it needs a person, its turns, its time, its commit, and how many files
-  it changed.
+  it changed. Once you took the run over, and while its conversation runs on in your terminal,
+  the view offers **Show in terminal** for that session in Take over's place, which comes back
+  once that session ends.
 - **Take over** stops the agent while it works, waits for its end, and opens its conversation in the
   terminal chosen in Settings, in its worktree, with its profile (`claude --resume=<session>`), as a
   launch does, held back as one is. It keeps the run's fence, but someone answers now: anything the
@@ -83,6 +85,9 @@ repository, leaves the start not ready.
   conversation.
 - **Where it shows.** The item's session pill and panel follow the run, with **Watch**, **Stop**,
   and **Take over** in place of Show in terminal and Resume, and its launch button says **Watch**.
+  Once its conversation runs on in your terminal, taken over or resumed there yourself, the run's
+  entry offers **Show in terminal** for that session instead of Take over, as a conversation that
+  runs again offers no Resume.
   The Worktrees view's row for its worktree says *⚡ <routine> · <owner/repo> #<number> · in the
   background* where its agent goes, and its drawer that the routine made it, so the cleanup never
   removes it; a click's launch there is held back, never started beside it: the dialog offers

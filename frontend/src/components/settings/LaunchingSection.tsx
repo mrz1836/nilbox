@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
 import { kindPlural, promptApplies, situationInfo, situations, type PullSituation } from '../../lib/launch'
-import { terminals } from '../../lib/terminals'
+import { terminalNote, terminals } from '../../lib/terminals'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   setDefaultAgent,
@@ -104,12 +104,26 @@ export function LaunchingSection({
     }
   }
 
+  // terminalHelp is what the chosen terminal needs before its first launch, as the setup
+  // says it: iTerm2's permission, or Warp's welcome; '' for Terminal.app.
+  const terminalHelp = terminalNote(settings.terminal)
+
   return (
     <Group>
       <SettingRow
         label="Terminal"
         controlId={`${id}-terminal`}
-        description="The app new sessions open in."
+        description={
+          <>
+            The app new sessions open in.
+            {terminalHelp !== '' && (
+              <>
+                {' '}
+                <span className="mt-1 block">{terminalHelp}</span>
+              </>
+            )}
+          </>
+        }
         error={errorOf('terminal')}
       >
         <select

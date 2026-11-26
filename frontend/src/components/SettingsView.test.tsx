@@ -586,7 +586,6 @@ describe('SettingsView', () => {
 
     const terminal = screen.getByRole('combobox', { name: 'Terminal' })
     expect(terminal).toHaveValue('iterm2')
-    expect(terminal).toHaveAccessibleDescription('The app new sessions open in.')
 
     await userEvent.selectOptions(terminal, 'terminal')
 
@@ -594,6 +593,29 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(settings({ terminal: 'terminal' }))
     })
+  })
+
+  it('says what the chosen terminal needs before its first launch, as the setup does', async () => {
+    renderSettings()
+    await openSection('Launching')
+
+    const terminal = screen.getByRole('combobox', { name: 'Terminal' })
+    expect(terminal).toHaveAccessibleDescription(
+      `The app new sessions open in. Your first launch asks to let ${brand.name} control iTerm2. Choose Allow.`,
+    )
+
+    await userEvent.selectOptions(terminal, 'warp')
+    await waitFor(() => {
+      expect(terminal).toHaveAccessibleDescription(
+        'The app new sessions open in. Open Warp once and finish its welcome before your first launch.',
+      )
+    })
+
+    await userEvent.selectOptions(terminal, 'terminal')
+    await waitFor(() => {
+      expect(terminal).toHaveAccessibleDescription('The app new sessions open in.')
+    })
+    expect(screen.queryByText(/finish its welcome/)).not.toBeInTheDocument()
   })
 
   it('shows a terminal the backend refused', async () => {
@@ -605,9 +627,11 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown terminal')
     expect(onSaved).not.toHaveBeenCalled()
-    // The menu is read with its help, then why the change was refused.
+    // The menu is read with its help, the stored terminal's note in it, then why the change
+    // was refused.
     expect(screen.getByRole('combobox', { name: 'Terminal' })).toHaveAccessibleDescription(
-      'The app new sessions open in. unknown terminal',
+      `The app new sessions open in. Your first launch asks to let ${brand.name} control iTerm2. Choose Allow. ` +
+        'unknown terminal',
     )
   })
 

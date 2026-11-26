@@ -1215,8 +1215,8 @@ func followSessions(
 	})
 
 	cfg := sessions.Config{
-		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
-		Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry, env: procs.EnvOf},
+		PS: runner, Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 		Rereader: rereader,
 		Words: map[agent.ID]sessions.WordsReader{
 			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},
