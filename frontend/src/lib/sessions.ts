@@ -81,9 +81,17 @@ export function carrierOf(s: AgentSession, sessions: readonly AgentSession[]): A
   return s.carriedBy === '' ? undefined : sessions.find((o) => o.id === s.carriedBy)
 }
 
+// silent reports a session that ended with nothing to read: the agent said nothing and left
+// no review, merge, or close on GitHub, as when the user quits it before its first answer.
+// Its card claims no Findings; a session that failed still shows what happened.
+export function silent(session: AgentSession): boolean {
+  return session.state === 'ended' && session.lastMessage.trim() === '' && session.githubEvent === ''
+}
+
 // cardSession picks the session an item's card shows: the newest still running, else the
-// newest that ended in the last day, unless the item, when given, has moved past it
-// (superseded), else none.
+// newest that ended in the last day, unless it ended with nothing to read (silent) or the
+// item, when given, has moved past it (superseded), else none. The card then offers its own
+// next step, and the session stays in the agent's list.
 export function cardSession(
   sessions: readonly AgentSession[] | undefined,
   now: Date,
@@ -102,6 +110,7 @@ export function cardSession(
   if (
     ended === undefined ||
     now.getTime() - Date.parse(ended.endedAt) > endedShownMs ||
+    silent(ended) ||
     (item !== undefined && superseded(ended, item))
   ) {
     return null

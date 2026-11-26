@@ -24,12 +24,14 @@ working 2m**, that opens the item's sessions, with **Show in terminal** (or **Wa
 routine's run in the background) beside it; waiting on you, the card's story says so (**Claude needs
 approval · Bash: go test**) and its next step is **Show terminal**, breathing, or **Watch**; its
 turn done, **Claude’s done · 2m**, which shows its terminal; ended, **✦ Findings · 2m**, which opens
-the item's sheet, where the agent's verdict shows what it last said; failed today, the next step is
-**What happened**, which opens the sessions, and a day later the card is back to its own next step,
-with a fresh launch beside it. While an agent works, the card's story says **Claude is on it**, and
-your own next step stays beside it, quiet. The [Worktrees view](worktrees-view.md) shows how the
-session stands on its worktree's row, where its agent goes, such as **Claude 2.1.328 · needs
-approval · 2m**.
+the item's sheet, where the agent's verdict shows what it last said, unless it ended with nothing to
+read (it said nothing and left no review, merge, or close, as when you quit it before its first
+answer), when the card offers its own next step again and the session stays in the agent's ▾;
+failed today, the next step is **What happened**, which opens the sessions, and a day later the card
+is back to its own next step, with a fresh launch beside it. While an agent works, the card's story
+says **Claude is on it**, and your own next step stays beside it, quiet. The [Worktrees
+view](worktrees-view.md) shows how the session stands on its worktree's row, where its agent
+goes, such as **Claude 2.1.328 · needs approval · 2m**.
 
 | State | What it means |
 |---|---|

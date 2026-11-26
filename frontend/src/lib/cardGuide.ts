@@ -218,7 +218,7 @@ export function guideSession(now: Date): AgentSession {
     state: 'ended',
     detail: '',
     stateAt: ago(now, 1),
-    lastMessage: '',
+    lastMessage: 'One finding: the gater is never closed when the dial fails.',
     launchedAt: ago(now, 9),
     endedAt: ago(now, 1),
     canFocus: false,
