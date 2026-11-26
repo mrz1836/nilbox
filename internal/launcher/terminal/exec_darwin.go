@@ -4,9 +4,11 @@ package terminal
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/procs"
 )
 
 const (
@@ -58,9 +60,13 @@ func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {
 }
 
 // warpDriver opens launch scripts in Warp with `open -b <Warp's bundle ID>`, which needs
-// no Automation permission.
+// no Automation permission, and brings a session's tab forward by the focus link its
+// agent's process inherited.
 type warpDriver struct {
 	executor execpath.Runner
+
+	// env reads one environment variable of a running process, as procs.EnvOf does.
+	env func(pid int, name string) (string, bool)
 }
 
 // ID returns the Warp terminal setting.
@@ -88,15 +94,39 @@ func runTerminal(ctx context.Context, executor execpath.Runner, app, name string
 	return nil
 }
 
-// Focus brings forward the iTerm2 session that runs on tty, with its tab and window.
-func (d itermDriver) Focus(ctx context.Context, tty string) error {
-	return focus(ctx, d.executor, appITerm2, tty, itermFocusScript)
+// Focus brings forward the iTerm2 session that runs on the tab's tty, with its tab and
+// window.
+func (d itermDriver) Focus(ctx context.Context, tab Tab) error {
+	return focus(ctx, d.executor, appITerm2, tab.TTY, itermFocusScript)
 }
 
-// Focus brings forward the Terminal.app tab that runs on tty, with its window. The first
-// time, macOS asks the user to allow the app to control Terminal.app.
-func (d terminalAppDriver) Focus(ctx context.Context, tty string) error {
-	return focus(ctx, d.executor, appTerminal, tty, terminalAppFocusScript)
+// Focus brings forward the Terminal.app tab that runs on the tab's tty, with its window.
+// The first time, macOS asks the user to allow the app to control Terminal.app.
+func (d terminalAppDriver) Focus(ctx context.Context, tab Tab) error {
+	return focus(ctx, d.executor, appTerminal, tab.TTY, terminalAppFocusScript)
+}
+
+// Focus brings forward the Warp tab the session's agent runs in, by the focus link Warp
+// exported in that tab's shell: it reads WARP_FOCUS_URL, that one variable alone, from
+// the agent's process, checks it is a focus link, and opens it in Warp. Warp has no tty
+// lookup and asks for no permission. A process without a link, or whose environment can't
+// be read, is ErrNoFocusLink; a link whose tab was closed only brings Warp forward.
+func (d warpDriver) Focus(ctx context.Context, tab Tab) error {
+	if !procs.ValidPID(tab.PID) {
+		return fmt.Errorf("%w: no process %d to read it from", ErrNoFocusLink, tab.PID)
+	}
+
+	value, ok := d.env(tab.PID, warpFocusEnv)
+	if !ok {
+		return fmt.Errorf("%w: process %d has no %s", ErrNoFocusLink, tab.PID, warpFocusEnv)
+	}
+
+	link, err := warpFocusLink(value)
+	if err != nil {
+		return err
+	}
+
+	return runTerminal(ctx, d.executor, appWarp, openBin, warpFocusArgs(link)...)
 }
 
 // focus runs a terminal's focus script for tty with openTimeout, and explains a failure.

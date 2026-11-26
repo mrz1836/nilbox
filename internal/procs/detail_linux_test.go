@@ -69,6 +69,35 @@ func TestDetailInWithoutACommandLine(t *testing.T) {
 	assert.False(t, ok, "a stat line it can't read")
 }
 
+func TestEnvInReadsOneVariable(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeProc(t, root, "4100", []string{"node", "WARP_FOCUS_URL=only-an-argument"}, "34816")
+
+	environ := strings.Join([]string{"WARP_FOCUS_URL_X=a longer name", "WARP_FOCUS_URL=warp://session/x", "EMPTY=", ""}, "\x00")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "4100", "environ"), []byte(environ), 0o600))
+
+	got, ok := envIn(root, 4100, "WARP_FOCUS_URL")
+	require.True(t, ok)
+	assert.Equal(t, "warp://session/x", got)
+
+	got, ok = envIn(root, 4100, "EMPTY")
+	assert.True(t, ok)
+	assert.Empty(t, got)
+
+	for _, name := range []string{"MISSING", "WARP_FOCUS", "", "A=B"} {
+		_, ok = envIn(root, 4100, name)
+		assert.False(t, ok, "%q", name)
+	}
+
+	_, ok = envIn(root, 4200, "WARP_FOCUS_URL")
+	assert.False(t, ok, "a process that is gone")
+
+	_, ok = envIn(root, 0, "WARP_FOCUS_URL")
+	assert.False(t, ok, "no process")
+}
+
 func TestStatField(t *testing.T) {
 	t.Parallel()
 

@@ -72,32 +72,59 @@ func TestSessionLedgerRecordsWhatTheLauncherStarted(t *testing.T) {
 	}}, running)
 }
 
-// focusDriver is a terminal driver that can focus, failing with err.
+// focusDriver is a terminal driver that can focus, failing with err, and records the tab
+// it was last asked for when asked is set.
 type focusDriver struct {
-	err error
+	id    terminal.ID
+	err   error
+	asked *terminal.Tab
 }
 
-func (focusDriver) ID() terminal.ID                       { return terminal.ITerm2 }
-func (focusDriver) Open(context.Context, string) error    { return nil }
-func (d focusDriver) Focus(context.Context, string) error { return d.err }
+func (d focusDriver) ID() terminal.ID {
+	if d.id == "" {
+		return terminal.ITerm2
+	}
+
+	return d.id
+}
+
+func (focusDriver) Open(context.Context, string) error { return nil }
+
+func (d focusDriver) Focus(_ context.Context, tab terminal.Tab) error {
+	if d.asked != nil {
+		*d.asked = tab
+	}
+
+	return d.err
+}
 
 func TestTerminalFocuserSaysWhyItCannot(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, terminalFocuser{registry: terminal.NewRegistry(focusDriver{})}.Focus(t.Context(), "iterm2", "/dev/ttys004"))
+	var asked terminal.Tab
+
+	require.NoError(t, terminalFocuser{registry: terminal.NewRegistry(focusDriver{asked: &asked})}.
+		Focus(t.Context(), "iterm2", "/dev/ttys004", 4100))
+	assert.Equal(t, terminal.Tab{TTY: "/dev/ttys004", PID: 4100}, asked, "the driver gets the session's tty and process")
 
 	err := terminalFocuser{registry: terminal.NewRegistry(focusDriver{err: terminal.ErrNoSuchTab})}.
-		Focus(t.Context(), "iterm2", "/dev/ttys004")
+		Focus(t.Context(), "iterm2", "/dev/ttys004", 4100)
 	require.ErrorIs(t, err, terminal.ErrNoSuchTab)
 	assert.Contains(t, uierr.Message(err), "Couldn't find the session's tab")
 
-	err = terminalFocuser{registry: terminal.NewRegistry(focusDriver{})}.Focus(t.Context(), "terminal", "/dev/ttys004")
+	err = terminalFocuser{registry: terminal.NewRegistry(focusDriver{})}.Focus(t.Context(), "terminal", "/dev/ttys004", 4100)
 	require.ErrorIs(t, err, terminal.ErrUnknownTerminal)
 	assert.Contains(t, uierr.Message(err), "can't show a session's tab")
 
 	err = terminalFocuser{registry: terminal.NewRegistry(focusDriver{err: terminal.ErrAutomationDenied})}.
-		Focus(t.Context(), "iterm2", "/dev/ttys004")
+		Focus(t.Context(), "iterm2", "/dev/ttys004", 4100)
 	require.ErrorIs(t, err, terminal.ErrAutomationDenied, "the Automation refusal keeps its own words")
+
+	err = terminalFocuser{registry: terminal.NewRegistry(focusDriver{id: terminal.Warp, err: terminal.ErrNoFocusLink})}.
+		Focus(t.Context(), "warp", "/dev/ttys004", 4100)
+	require.ErrorIs(t, err, terminal.ErrNoFocusLink)
+	assert.Equal(t, "Couldn't tell which Warp tab runs this session. Warp v0.2026.05.27 or newer can; "+
+		"update Warp, and sessions launched afterwards can be shown.", uierr.Message(err))
 }
 
 func TestShellSessions(t *testing.T) {

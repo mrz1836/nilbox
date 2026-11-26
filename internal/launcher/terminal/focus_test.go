@@ -62,8 +62,32 @@ func TestRegistryFocusNeedsAFocuser(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry(plainDriver{})
+	tab := Tab{TTY: "/dev/ttys004", PID: 4100}
 
-	require.ErrorIs(t, r.Focus(t.Context(), "plain", "/dev/ttys004"), ErrNoFocus)
-	require.ErrorIs(t, r.Focus(t.Context(), "other", "/dev/ttys004"), ErrUnknownTerminal)
-	require.ErrorIs(t, NewRegistry().Focus(t.Context(), ITerm2, "/dev/ttys004"), ErrUnsupportedOS)
+	require.ErrorIs(t, r.Focus(t.Context(), "plain", tab), ErrNoFocus)
+	require.ErrorIs(t, r.Focus(t.Context(), "other", tab), ErrUnknownTerminal)
+	require.ErrorIs(t, NewRegistry().Focus(t.Context(), ITerm2, tab), ErrUnsupportedOS)
+}
+
+// tabDriver is a Focuser that records the tab it was asked to bring forward.
+type tabDriver struct {
+	plainDriver
+
+	asked *Tab
+}
+
+func (d tabDriver) Focus(_ context.Context, tab Tab) error {
+	*d.asked = tab
+
+	return nil
+}
+
+func TestRegistryFocusHandsTheDriverTheTab(t *testing.T) {
+	t.Parallel()
+
+	var asked Tab
+
+	tab := Tab{TTY: "/dev/ttys004", PID: 4100}
+	require.NoError(t, NewRegistry(tabDriver{asked: &asked}).Focus(t.Context(), "plain", tab))
+	assert.Equal(t, tab, asked, "its tty and its process both")
 }

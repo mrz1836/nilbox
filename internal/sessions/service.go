@@ -37,12 +37,14 @@ var (
 	ErrNoFinder = errors.New("no file manager to show the folder in")
 )
 
-// Focuser brings a terminal's tab that runs on a tty forward. The app adapts the
+// Focuser brings forward a terminal's tab that a session runs in. The app adapts the
 // launcher's terminal drivers to it.
 type Focuser interface {
-	// Focus selects the tab, in the terminal named by its settings ID, whose tty is
-	// tty, such as /dev/ttys004, and brings its window forward.
-	Focus(ctx context.Context, terminal, tty string) error
+	// Focus selects the tab, in the terminal named by its settings ID, that the session
+	// whose process is pid runs in on tty, such as /dev/ttys004, and brings its window
+	// forward. iTerm2 and Terminal.app find the tab by its tty, Warp by the focus link in
+	// the process's environment.
+	Focus(ctx context.Context, terminal, tty string, pid int) error
 }
 
 // Revealer shows a file or a folder in Finder. Core adapts open -R, on macOS only.
@@ -167,7 +169,9 @@ func shown(records []Record, home string) []Session {
 	return out
 }
 
-// Focus brings forward the terminal tab a running session is in.
+// Focus brings forward the terminal tab a running session is in. It reads the tty of the
+// session's process first, which proves the session runs in a terminal, whichever way
+// the terminal then finds the tab.
 func (s *Service) Focus(ctx context.Context, id string) error {
 	r, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -188,7 +192,7 @@ func (s *Service) Focus(ctx context.Context, id string) error {
 		return uierr.New("Couldn't find the session's terminal. It may have just ended.", err)
 	}
 
-	return s.focuser.Focus(ctx, r.Terminal, tty)
+	return s.focuser.Focus(ctx, r.Terminal, tty, r.PID)
 }
 
 // ShowFolder shows the folder a session runs in, its worktree or the clone, in Finder,

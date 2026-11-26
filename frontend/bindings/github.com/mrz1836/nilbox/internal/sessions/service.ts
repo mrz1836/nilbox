@@ -15,7 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Focus brings forward the terminal tab a running session is in.
+ * Focus brings forward the terminal tab a running session is in. It reads the tty of the
+ * session's process first, which proves the session runs in a terminal, whichever way
+ * the terminal then finds the tab.
  */
 export function Focus(id: string): $CancellablePromise<void> {
     return $Call.ByID(2409276569, id);

@@ -2,6 +2,7 @@ package sessions_test
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -22,11 +23,11 @@ type fakeFocuser struct {
 	err   error
 }
 
-func (f *fakeFocuser) Focus(_ context.Context, terminal, tty string) error {
+func (f *fakeFocuser) Focus(_ context.Context, terminal, tty string, pid int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.asked = append(f.asked, terminal+" "+tty)
+	f.asked = append(f.asked, terminal+" "+tty+" "+strconv.Itoa(pid))
 
 	return f.err
 }
@@ -97,7 +98,8 @@ func TestFocus(t *testing.T) {
 	svc := newService(t, ps, focus)
 
 	require.NoError(t, svc.Focus(t.Context(), "s1"))
-	assert.Equal(t, []string{"iterm2 /dev/ttys004"}, focus.asked)
+	assert.Equal(t, []string{"iterm2 /dev/ttys004 4100"}, focus.asked,
+		"its tty, and its process, whose environment Warp's driver reads")
 	assert.Equal(t, [][]string{{"/bin/ps", "-o", "tty=", "-p", "4100"}}, ps.Calls())
 
 	err := svc.Focus(t.Context(), "s2")

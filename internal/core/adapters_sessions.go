@@ -126,14 +126,17 @@ type terminalFocuser struct {
 	registry terminal.Registry
 }
 
-// Focus brings forward the tab that runs on tty in the terminal named by its settings ID.
-// A terminal that cannot is told in words.
-func (f terminalFocuser) Focus(ctx context.Context, id, tty string) error {
-	err := f.registry.Focus(ctx, terminal.ID(id), tty)
+// Focus brings forward the tab that the session whose process is pid runs in on tty, in
+// the terminal named by its settings ID. A terminal that cannot is told in words.
+func (f terminalFocuser) Focus(ctx context.Context, id, tty string, pid int) error {
+	err := f.registry.Focus(ctx, terminal.ID(id), terminal.Tab{TTY: tty, PID: pid})
 
 	switch {
 	case errors.Is(err, terminal.ErrNoSuchTab):
 		return uierr.New("Couldn't find the session's tab. It may have been closed, or moved to another app.", err)
+	case errors.Is(err, terminal.ErrNoFocusLink):
+		return uierr.New("Couldn't tell which Warp tab runs this session. Warp v0.2026.05.27 or newer can; "+
+			"update Warp, and sessions launched afterwards can be shown.", err)
 	case errors.Is(err, terminal.ErrNoFocus), errors.Is(err, terminal.ErrUnknownTerminal),
 		errors.Is(err, terminal.ErrUnsupportedOS):
 		return uierr.New("This terminal can't show a session's tab.", err)
