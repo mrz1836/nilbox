@@ -9,6 +9,7 @@ finish() {
   printf '%s\n' "$1" > '/data/script runs/it'\''s 7.exit.tmp' && mv '/data/script runs/it'\''s 7.exit.tmp' '/data/script runs/it'\''s 7.exit'
   exit "$1"
 }
+[ -z "${WARP_FOCUS_URL-}" ] || printf '%s\n' "$WARP_FOCUS_URL" > '/data/script runs/it'\''s 7.link'
 printf '%s\n' "$$" > '/data/script runs/it'\''s 7.pid'
 cd -- '/work/projects/it'\''s a repo' || finish 1
 unset GIT_DIR

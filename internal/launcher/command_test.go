@@ -40,18 +40,23 @@ func TestCommandOpenerOpensTheScriptInTheChosenTerminal(t *testing.T) {
 	h := newLaunchHarness(t)
 	path := writeRun(t, h)
 
-	require.NoError(t, NewCommandOpener(h.service()).Open(t.Context(), path))
+	id, err := NewCommandOpener(h.service()).Open(t.Context(), path)
+	require.NoError(t, err)
+	assert.Equal(t, terminal.ITerm2, id, "it says where it opened the script")
 	assert.Equal(t, []string{path}, h.iterm.opened, "iTerm2 is the default terminal")
 	assert.Empty(t, h.terminal.opened)
 
 	require.NoError(t, testutil.ErrOf(h.settings.SetTerminal(t.Context(), settings.TerminalApp)))
 
-	require.NoError(t, NewCommandOpener(h.service()).Open(t.Context(), path))
+	id, err = NewCommandOpener(h.service()).Open(t.Context(), path)
+	require.NoError(t, err)
+	assert.Equal(t, terminal.TerminalApp, id)
 	assert.Equal(t, []string{path}, h.terminal.opened, "the terminal chosen in Settings")
 	assert.Len(t, h.iterm.opened, 1)
 
 	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR})
-	require.NoError(t, NewCommandOpener(h.service()).Open(t.Context(), res.ScriptPath), "a launch's own script opens too")
+	_, err = NewCommandOpener(h.service()).Open(t.Context(), res.ScriptPath)
+	require.NoError(t, err, "a launch's own script opens too")
 	assert.Equal(t, []string{path, res.ScriptPath, res.ScriptPath}, h.terminal.opened)
 }
 
@@ -97,8 +102,9 @@ func TestCommandOpenerFailures(t *testing.T) {
 			path := writeRun(t, h)
 			tt.mutate(h)
 
-			err := NewCommandOpener(h.service()).Open(t.Context(), path)
+			id, err := NewCommandOpener(h.service()).Open(t.Context(), path)
 			require.ErrorIs(t, err, tt.wantErr)
+			assert.Empty(t, id, "a script that didn't open opened in no terminal")
 
 			if tt.wantMsg != "" {
 				require.EqualError(t, err, tt.wantMsg, "the refusal keeps the driver's words, as a launch's does")
@@ -126,7 +132,7 @@ func TestCommandOpenerOpensOnlyTheAppsScripts(t *testing.T) {
 		"a missing script":   filepath.Join(h.paths.Launch, "run-9-20260314T150926Z-00000000.command"),
 		"a program":          "/bin/sh",
 	} {
-		err := NewCommandOpener(h.service()).Open(t.Context(), refused)
+		_, err := NewCommandOpener(h.service()).Open(t.Context(), refused)
 		require.ErrorIs(t, err, terminal.ErrInvalidScriptPath, name)
 	}
 
@@ -274,6 +280,106 @@ func TestCommandOpenerOpenFolderFailures(t *testing.T) {
 			opened, err := NewCommandOpener(h.service()).OpenFolder(t.Context(), h.clone)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.False(t, opened, "a failure is never an open, so the caller opens nothing more")
+		})
+	}
+}
+
+// focusDriver is a terminal driver that brings a tab forward, and records the tabs it was
+// asked for.
+type focusDriver struct {
+	fakeDriver
+
+	focusErr error
+	tabs     []terminal.Tab
+}
+
+func (d *focusDriver) Focus(_ context.Context, tab terminal.Tab) error {
+	d.tabs = append(d.tabs, tab)
+
+	return d.focusErr
+}
+
+// withFocusers registers an iTerm2 and a Warp that bring a tab forward, beside the
+// harness's Terminal.app, which here can't, and chooses the terminal chosen in the
+// settings.
+func withFocusers(t *testing.T, h *launchHarness, chosen terminal.ID) (iterm, warp *focusDriver) {
+	t.Helper()
+
+	iterm = &focusDriver{id: terminal.ITerm2}
+	warp = &focusDriver{id: terminal.Warp}
+	h.cfg.Registry = terminal.NewRegistry(iterm, warp, h.terminal)
+
+	require.NoError(t, testutil.ErrOf(h.settings.SetTerminal(t.Context(), chosen)))
+
+	return iterm, warp
+}
+
+func TestCommandOpenerFocusesATabInTheTerminalTheRunOpenedIn(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	iterm, warp := withFocusers(t, h, settings.TerminalITerm2)
+	tab := terminal.Tab{TTY: "/dev/ttys004", PID: 4100, Link: "warp://session/0123456789abcdef0123456789abcdef"}
+
+	require.NoError(t, NewCommandOpener(h.service()).Focus(t.Context(), terminal.Warp, tab))
+	assert.Equal(t, []terminal.Tab{tab}, warp.tabs, "the terminal the run recorded, whatever is chosen now")
+	assert.Empty(t, iterm.tabs)
+
+	require.NoError(t, NewCommandOpener(h.service()).Focus(t.Context(), "", tab))
+	assert.Equal(t, []terminal.Tab{tab}, iterm.tabs, "a run that recorded none: the terminal chosen now")
+	assert.Len(t, warp.tabs, 1)
+}
+
+func TestCommandOpenerFocusFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		id      terminal.ID
+		mutate  func(h *launchHarness, iterm *focusDriver)
+		wantErr error
+	}{
+		{
+			name:    "no tab runs on the tty",
+			id:      terminal.ITerm2,
+			mutate:  func(_ *launchHarness, iterm *focusDriver) { iterm.focusErr = terminal.ErrNoSuchTab },
+			wantErr: terminal.ErrNoSuchTab,
+		},
+		{
+			name:    "a terminal that can't bring a tab forward",
+			id:      terminal.TerminalApp,
+			mutate:  func(*launchHarness, *focusDriver) {},
+			wantErr: terminal.ErrNoFocus,
+		},
+		{
+			name:    "a terminal this build doesn't know",
+			id:      "hyper",
+			mutate:  func(*launchHarness, *focusDriver) {},
+			wantErr: terminal.ErrUnknownTerminal,
+		},
+		{
+			name:    "no terminal support on this OS",
+			id:      terminal.ITerm2,
+			mutate:  func(h *launchHarness, _ *focusDriver) { h.cfg.Registry = terminal.NewRegistry() },
+			wantErr: terminal.ErrUnsupportedOS,
+		},
+		{
+			name:    "unreadable settings, for a run that recorded no terminal",
+			mutate:  func(h *launchHarness, _ *focusDriver) { h.cfg.Settings = failingSettings{} },
+			wantErr: errFakeSettings,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newLaunchHarness(t)
+			iterm, _ := withFocusers(t, h, settings.TerminalITerm2)
+			tt.mutate(h, iterm)
+
+			err := NewCommandOpener(h.service()).Focus(t.Context(), tt.id, terminal.Tab{TTY: "/dev/ttys004", PID: 4100})
+			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 }

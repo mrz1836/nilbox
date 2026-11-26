@@ -1068,6 +1068,8 @@ func newRuns(
 		Progressed: func(id int64) { events.Emit(event.ScriptRunProgress{ID: id}) },
 		Failed:     runFailures{dispatcher: dispatcher}.Failed,
 		Terminal:   terminals,
+		Tabs:       terminals,
+		PS:         runner,
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
 		Kept:       func() { events.Emit(event.QuitKept{}) },

@@ -3,8 +3,8 @@
 
 /**
  * Service is the runs as the window sees them: the history, a run's output, Stop, Run
- * again, and the quit guard's answer. The window binds it; it starts nothing new itself
- * but Run again.
+ * again, Show in terminal, and the quit guard's answer. The window binds it; it starts
+ * nothing new itself but Run again.
  * @module
  */
 
@@ -96,6 +96,20 @@ export function RunAgain(id: number): $CancellablePromise<number> {
  */
 export function Runs(filter: $models.Filter): $CancellablePromise<$models.Run[] | null> {
     return $Call.ByID(3130425600, filter);
+}
+
+/**
+ * ShowInTerminal brings forward the terminal tab a run going in the terminal runs in, with
+ * its window, in the terminal it opened in, so the user can watch it, answer it, or stop
+ * it there. It reads the terminal device of the shell the run's script recorded first,
+ * which shows the run still runs in a terminal (iTerm2 and Terminal.app find its tab by
+ * it), and the focus link the script recorded (Warp finds its tab by that), then hands
+ * them to the engine's TabFocuser, which words what the terminal says. A run that has
+ * ended is refused with ErrNotRunning, one in the app with ErrNotInTerminal, and one whose
+ * shell isn't recorded yet, or is gone, with ErrNoTab.
+ */
+export function ShowInTerminal(id: number): $CancellablePromise<void> {
+    return $Call.ByID(4081361324, id);
 }
 
 /**

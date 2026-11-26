@@ -29,15 +29,22 @@ var (
 // ttyPattern is what a terminal device path looks like: /dev/ttys004, /dev/pts/3.
 var ttyPattern = regexp.MustCompile(`^/dev/[A-Za-z0-9]+(/[0-9]+)?$`)
 
-// Tab is what tells the tab a session runs in: its terminal device, which iTerm2 and
-// Terminal.app find the tab by, and its agent's process, whose environment carries the
-// focus link Warp gave the tab's shell.
+// Tab is what tells the tab a session or a followed run runs in: its terminal device,
+// which iTerm2 and Terminal.app find the tab by, and the focus link Warp gave the tab's
+// shell, which Warp finds it by: the link a followed run's script recorded, or else the
+// one in its process's environment, which a session's agent inherits from its tab.
 type Tab struct {
-	// TTY is the session's terminal device, such as /dev/ttys004.
+	// TTY is the terminal device it runs on, such as /dev/ttys004.
 	TTY string
 
-	// PID is the session's agent process.
+	// PID is the session's agent process, or the shell that runs a followed run's script.
 	PID int
+
+	// Link is the Warp focus link a followed run's script recorded for its tab
+	// (Recording.LinkFile), or "". Warp's Focus opens it when it is exactly a focus link
+	// (warpFocusLink), and reads the PID's environment otherwise; the other terminals
+	// ignore it.
+	Link string
 }
 
 // Focuser is a Driver that can also bring forward the tab a session runs in.
@@ -46,7 +53,8 @@ type Focuser interface {
 
 	// Focus selects the tab that tab tells, brings its window forward, and activates the
 	// terminal. A driver that finds the tab by its tty returns ErrNoSuchTab when no tab
-	// runs on it; Warp's returns ErrNoFocusLink when the process carries no link to it.
+	// runs on it; Warp's returns ErrNoFocusLink when neither the tab's recorded link nor
+	// its process carries a link to it.
 	Focus(ctx context.Context, tab Tab) error
 }
 

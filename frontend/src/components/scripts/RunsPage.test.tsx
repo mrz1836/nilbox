@@ -74,6 +74,19 @@ describe('RunsPage', () => {
     expect((await list()).getByRole('button')).toHaveTextContent('acme-org/sdk · In your terminal')
   })
 
+  it('names the terminal each run opened in, whatever is chosen now', async () => {
+    const inWarp = scriptRun({ ...release, id: 5, title: 'Release v1.4.2', terminal: 'warp' })
+    const inITerm = scriptRun({ ...release, id: 6, title: 'Release v1.4.1', terminal: 'iterm2' })
+
+    renderPage([inWarp, inITerm, release], 'terminal')
+
+    expect(await rows()).toEqual([
+      expect.stringContaining('acme-org/sdk · In Warp'),
+      expect.stringContaining('acme-org/sdk · In iTerm2'),
+      expect.stringContaining('acme-org/sdk · In Terminal'),
+    ])
+  })
+
   it('says nothing has run yet, with nothing to clear', async () => {
     renderPage([])
 

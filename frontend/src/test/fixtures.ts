@@ -1478,6 +1478,7 @@ export function scriptRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
     command: 'magex lint',
     runsIn: 'app',
     status: 'succeeded',
+    terminal: '',
     exitCode: 0,
     summary: 'Finished.',
     result: { tool: 'mage-x', intent: null, warnings: [], unrecognized: [], unrecognizedCount: 0, outcome: null },

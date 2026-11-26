@@ -173,14 +173,14 @@ func TestDriversRejectUnsafePaths(t *testing.T) {
 func TestDriversFocusATabByItsTTY(t *testing.T) {
 	t.Parallel()
 
-	tab := Tab{TTY: "/dev/ttys004", PID: 4100}
+	tab := Tab{TTY: testTTY, PID: 4100}
 
 	for id, script := range map[ID]func(string) string{ITerm2: itermFocusScript, TerminalApp: terminalAppFocusScript} {
 		ex := &fakeExecutor{stdout: "found\n"}
 
 		require.NoError(t, DefaultRegistry(ex).Focus(t.Context(), id, tab), id)
 		assert.Equal(t, "osascript", ex.name)
-		assert.Equal(t, []string{"-e", script("/dev/ttys004")}, ex.args)
+		assert.Equal(t, []string{"-e", script(testTTY)}, ex.args)
 		assert.LessOrEqual(t, ex.deadline, openTimeout)
 
 		ex.stdout = "missing\n"
@@ -227,7 +227,7 @@ func TestWarpDriverFocusesByTheSessionsLink(t *testing.T) {
 		4100: {"WARP_FOCUS_URL": warpTestLink, "TERM_PROGRAM": "WarpTerminal"},
 	})
 
-	require.NoError(t, r.Focus(t.Context(), Warp, Tab{TTY: "/dev/ttys004", PID: 4100}))
+	require.NoError(t, r.Focus(t.Context(), Warp, Tab{TTY: testTTY, PID: 4100}))
 	assert.Equal(t, []string{"4100 WARP_FOCUS_URL"}, env.asked, "it reads that one variable of the session's process")
 	assert.Equal(t, 1, ex.calls)
 	assert.Equal(t, "open", ex.name)
@@ -236,6 +236,43 @@ func TestWarpDriverFocusesByTheSessionsLink(t *testing.T) {
 	assert.LessOrEqual(t, ex.deadline, openTimeout)
 
 	require.NoError(t, r.Focus(t.Context(), Warp, Tab{PID: 4100}), "Warp needs no tty")
+}
+
+func TestWarpDriverFocusesARunByTheLinkItsScriptRecorded(t *testing.T) {
+	t.Parallel()
+
+	ex := &fakeExecutor{}
+	r, env := warpFocusing(ex, map[int]map[string]string{}) // a shell, whose environment macOS hides
+
+	require.NoError(t, r.Focus(t.Context(), Warp, Tab{TTY: testTTY, PID: 4100, Link: warpTestLink}))
+	assert.Empty(t, env.asked, "the recorded link needs no environment")
+	assert.Equal(t, 1, ex.calls)
+	assert.Equal(t, "open", ex.name)
+	assert.Equal(t, []string{"-b", "dev.warp.Warp-Stable", warpTestLink}, ex.args)
+	assert.LessOrEqual(t, ex.deadline, openTimeout)
+
+	for name, bad := range map[string]string{
+		"an action":          "warp://action/new_tab?path=/tmp/launch/pr-7.command",
+		"a trailing newline": warpTestLink + "\n",
+		"a short link":       warpTestLink[:len(warpTestLink)-1],
+	} {
+		ex := &fakeExecutor{}
+		r, env := warpFocusing(ex, map[int]map[string]string{})
+
+		err := r.Focus(t.Context(), Warp, Tab{TTY: testTTY, PID: 4100, Link: bad})
+		require.ErrorIs(t, err, ErrNoFocusLink, name)
+		assert.NotContains(t, err.Error(), "path=", "%s: the error never repeats a value that isn't a link", name)
+		assert.Equal(t, []string{"4100 WARP_FOCUS_URL"}, env.asked, "%s: it falls back on the process's link", name)
+		assert.Zero(t, ex.calls, "%s: nothing is opened in Warp", name)
+	}
+
+	for _, id := range []ID{ITerm2, TerminalApp} {
+		ex := &fakeExecutor{stdout: "found\n"}
+
+		require.NoError(t, DefaultRegistry(ex).Focus(t.Context(), id, Tab{TTY: testTTY, PID: 4100, Link: warpTestLink}))
+		assert.Equal(t, "osascript", ex.name, "%s finds the tab by its tty, whatever link it carries", id)
+		assert.NotContains(t, strings.Join(ex.args, " "), warpTestLink, id)
+	}
 }
 
 func TestWarpDriverWithoutAFocusLink(t *testing.T) {
@@ -266,7 +303,7 @@ func TestWarpDriverWithoutAFocusLink(t *testing.T) {
 			ex := &fakeExecutor{}
 			r, _ := warpFocusing(ex, vars)
 
-			err := r.Focus(t.Context(), Warp, Tab{TTY: "/dev/ttys004", PID: pid})
+			err := r.Focus(t.Context(), Warp, Tab{TTY: testTTY, PID: pid})
 			require.ErrorIs(t, err, ErrNoFocusLink)
 			assert.NotContains(t, err.Error(), "path=", "the error never repeats a value that isn't a link")
 			assert.Zero(t, ex.calls, "nothing is opened in Warp")
@@ -281,7 +318,7 @@ func TestWarpDriverRefusesAnInvalidPID(t *testing.T) {
 		ex := &fakeExecutor{}
 		r, env := warpFocusing(ex, map[int]map[string]string{pid: {"WARP_FOCUS_URL": warpTestLink}})
 
-		require.ErrorIs(t, r.Focus(t.Context(), Warp, Tab{TTY: "/dev/ttys004", PID: pid}), ErrNoFocusLink, pid)
+		require.ErrorIs(t, r.Focus(t.Context(), Warp, Tab{TTY: testTTY, PID: pid}), ErrNoFocusLink, pid)
 		assert.Empty(t, env.asked, "no environment is read for pid %d", pid)
 		assert.Zero(t, ex.calls, "nothing is opened in Warp for pid %d", pid)
 	}

@@ -47,6 +47,81 @@ func TestWarpFocusLink(t *testing.T) {
 	}
 }
 
+func TestWarpTabLink(t *testing.T) {
+	t.Parallel()
+
+	const other = "warp://session/fedcba9876543210fedcba9876543210"
+
+	// env answers WARP_FOCUS_URL for 4100 alone, and records what it was asked.
+	newEnv := func() (func(int, string) (string, bool), *[]string) {
+		var asked []string
+
+		return func(pid int, name string) (string, bool) {
+			asked = append(asked, name)
+
+			return other, pid == 4100 && name == warpFocusEnv
+		}, &asked
+	}
+
+	t.Run("a recorded link", func(t *testing.T) {
+		t.Parallel()
+
+		env, asked := newEnv()
+
+		got, err := warpTabLink(Tab{TTY: testTTY, PID: 4100, Link: warpTestLink}, env)
+		require.NoError(t, err)
+		assert.Equal(t, warpTestLink, got, "a run's recorded link wins over its process's")
+		assert.Empty(t, *asked, "no environment is read")
+
+		got, err = warpTabLink(Tab{Link: warpTestLink}, env)
+		require.NoError(t, err)
+		assert.Equal(t, warpTestLink, got, "a recorded link needs no process")
+	})
+
+	t.Run("no recorded link", func(t *testing.T) {
+		t.Parallel()
+
+		env, asked := newEnv()
+
+		got, err := warpTabLink(Tab{PID: 4100}, env)
+		require.NoError(t, err)
+		assert.Equal(t, other, got, "the process's own link, as a session's agent inherits it")
+		assert.Equal(t, []string{warpFocusEnv}, *asked, "that one variable alone")
+
+		_, err = warpTabLink(Tab{PID: 4200}, env)
+		require.ErrorIs(t, err, ErrNoFocusLink, "a process without a link, or whose environment is hidden")
+
+		_, err = warpTabLink(Tab{}, env)
+		require.ErrorIs(t, err, ErrNoFocusLink, "no link and no process")
+	})
+
+	t.Run("a recorded value that isn't a link", func(t *testing.T) {
+		t.Parallel()
+
+		hex := strings.TrimPrefix(warpTestLink, "warp://session/")
+
+		for name, bad := range map[string]string{
+			"an action":          "warp://action/new_tab?path=/tmp/launch/pr-7.command",
+			"uppercase hex":      "warp://session/" + strings.ToUpper(hex),
+			"short hex":          "warp://session/" + hex[:31],
+			"a trailing newline": warpTestLink + "\n",
+			"two lines":          warpTestLink + "\nwarp://action/new_tab?path=/tmp",
+		} {
+			env, _ := newEnv()
+
+			got, err := warpTabLink(Tab{PID: 4100, Link: bad}, env)
+			require.NoError(t, err, name)
+			assert.Equal(t, other, got, "%s: it falls back on the process's link", name)
+
+			got, err = warpTabLink(Tab{PID: 4200, Link: bad}, env)
+			require.ErrorIs(t, err, ErrNoFocusLink, name)
+			assert.Empty(t, got, name)
+			assert.NotContains(t, err.Error(), "path=", "%s: the error never repeats a value that isn't a link", name)
+			assert.NotContains(t, err.Error(), hex[:31], "%s: nor any part of it", name)
+		}
+	})
+}
+
 func TestWarpFocusArgs(t *testing.T) {
 	t.Parallel()
 

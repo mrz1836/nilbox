@@ -56,6 +56,7 @@ func followedRun() Script {
 			Log:      "/data/script-runs/42.log",
 			PIDFile:  "/data/script-runs/42.pid",
 			ExitFile: "/data/script-runs/42.exit",
+			LinkFile: "/data/script-runs/42.link",
 		},
 	}
 }
@@ -83,6 +84,20 @@ func TestRenderGolden(t *testing.T) {
 					Log:      "/data/script runs/it's 7.log",
 					PIDFile:  "/data/script runs/it's 7.pid",
 					ExitFile: "/data/script runs/it's 7.exit",
+					LinkFile: "/data/script runs/it's 7.link",
+				},
+			},
+		},
+		{
+			name: "followed run without a link file",
+			script: Script{
+				Dir:    "/work/projects/sdk",
+				Binary: "/work/bin/magex",
+				Args:   []string{"lint"},
+				Record: &Recording{
+					Log:      "/data/script-runs/43.log",
+					PIDFile:  "/data/script-runs/43.pid",
+					ExitFile: "/data/script-runs/43.exit",
 				},
 			},
 		},
@@ -160,6 +175,7 @@ type recordedRun struct {
 	log    string
 	pid    string
 	exit   string
+	link   string
 }
 
 // newRecordedRun returns a recorded script that runs in a folder of root.
@@ -178,6 +194,7 @@ func newRecordedRun(t *testing.T) recordedRun {
 		log:  filepath.Join(runs, "it's 7.log"),
 		pid:  filepath.Join(runs, "it's 7.pid"),
 		exit: filepath.Join(runs, "it's 7.exit"),
+		link: filepath.Join(runs, "it's 7.link"),
 	}
 	r.script = Script{
 		Dir:    dir,
@@ -185,10 +202,25 @@ func newRecordedRun(t *testing.T) recordedRun {
 		Args:   []string{"version:bump", "message=it's `id` $(id)", "", "two  spaces"},
 		Env:    map[string]string{"EXTRA_VAR": "it's $HOME\nnext"},
 		Unset:  []string{"OLD_VAR"},
-		Record: &Recording{Log: r.log, PIDFile: r.pid, ExitFile: r.exit},
+		Record: &Recording{Log: r.log, PIDFile: r.pid, ExitFile: r.exit, LinkFile: r.link},
 	}
 
 	return r
+}
+
+// environWithout returns the test's environment with the variable name left out, as a
+// shell outside Warp has it.
+func environWithout(name string) []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, name+"=") {
+			out = append(out, kv)
+		}
+	}
+
+	return out
 }
 
 // runScript writes script to a file and runs it with /bin/sh, returning what it printed,
@@ -234,8 +266,9 @@ func TestRecordedScriptRecordsTheRun(t *testing.T) {
 			r := newRecordedRun(t)
 
 			out, pid, got := runScript(t, renderPOSIX(r.script, standInTool(status)),
-				append(os.Environ(), "OLD_VAR=inherited"))
+				append(environWithout(warpFocusEnv), "OLD_VAR=inherited"))
 			assert.Equal(t, status, got, "the script exits with the command's status")
+			assert.NoFileExists(t, r.link, "a shell outside Warp has no focus link to record")
 
 			realDir, err := filepath.EvalSymlinks(r.dir)
 			require.NoError(t, err)
@@ -257,6 +290,79 @@ func TestRecordedScriptRecordsTheRun(t *testing.T) {
 			assert.NoFileExists(t, r.exit+".tmp", "the exit status is renamed into place")
 		})
 	}
+}
+
+func TestRecordedScriptRecordsItsTabsFocusLink(t *testing.T) {
+	t.Parallel()
+
+	// A value that isn't a link names the file a shell that ran it would make, under
+	// <root>, the recorded run's folder's parent.
+	const injection = "$(touch <root>/injected) `touch <root>/injected` it's"
+
+	tests := []struct {
+		name string
+		// value is WARP_FOCUS_URL's, or unset for none.
+		value string
+		unset bool
+		want  string // the link file's contents, or "" for none
+	}{
+		{name: "in Warp", value: warpTestLink, want: warpTestLink + "\n"},
+		{name: "outside Warp, under set -u", unset: true},
+		{name: "an empty link"},
+		{name: "a value that isn't a link is written as it is, and never run", value: injection, want: injection + "\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRecordedRun(t)
+			root := filepath.Dir(r.dir)
+			value := strings.ReplaceAll(tt.value, "<root>", root)
+
+			env := environWithout(warpFocusEnv)
+			if !tt.unset {
+				env = append(env, warpFocusEnv+"="+value)
+			}
+
+			_, pid, status := runScript(t, renderPOSIX(r.script, standInTool(4)), env)
+			assert.Equal(t, 4, status, "the command runs, and its status is the script's, link or none")
+
+			recordedPID, err := os.ReadFile(r.pid)
+			require.NoError(t, err)
+			assert.Equal(t, strconv.Itoa(pid)+"\n", string(recordedPID), "the shell is recorded, link or none")
+
+			exit, err := os.ReadFile(r.exit)
+			require.NoError(t, err)
+			assert.Equal(t, "4\n", string(exit))
+
+			assert.NoFileExists(t, filepath.Join(root, "injected"), "the value is never run")
+
+			if tt.want == "" {
+				assert.NoFileExists(t, r.link, "no link, no file")
+
+				return
+			}
+
+			link, err := os.ReadFile(r.link)
+			require.NoError(t, err)
+			assert.Equal(t, strings.ReplaceAll(tt.want, "<root>", root), string(link))
+		})
+	}
+
+	t.Run("no link file asked for", func(t *testing.T) {
+		t.Parallel()
+
+		r := newRecordedRun(t)
+		r.script.Record.LinkFile = ""
+
+		script := renderPOSIX(r.script, standInTool(0))
+		assert.NotContains(t, string(script), warpFocusEnv, "a recording without a link file never reads the link")
+
+		_, _, status := runScript(t, script, append(environWithout(warpFocusEnv), warpFocusEnv+"="+warpTestLink))
+		assert.Zero(t, status)
+		assert.NoFileExists(t, r.link)
+	})
 }
 
 func TestRecordedScriptStopsBeforeTheCommand(t *testing.T) {

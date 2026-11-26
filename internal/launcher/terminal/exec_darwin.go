@@ -4,11 +4,9 @@ package terminal
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/procs"
 )
 
 const (
@@ -60,8 +58,8 @@ func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {
 }
 
 // warpDriver opens launch scripts in Warp with `open -b <Warp's bundle ID>`, which needs
-// no Automation permission, and brings a session's tab forward by the focus link its
-// agent's process inherited.
+// no Automation permission, and brings a tab forward by its focus link: the one a
+// followed run's script recorded, or the one a session's agent process inherited.
 type warpDriver struct {
 	executor execpath.Runner
 
@@ -106,22 +104,14 @@ func (d terminalAppDriver) Focus(ctx context.Context, tab Tab) error {
 	return focus(ctx, d.executor, appTerminal, tab.TTY, terminalAppFocusScript)
 }
 
-// Focus brings forward the Warp tab the session's agent runs in, by the focus link Warp
-// exported in that tab's shell: it reads WARP_FOCUS_URL, that one variable alone, from
-// the agent's process, checks it is a focus link, and opens it in Warp. Warp has no tty
-// lookup and asks for no permission. A process without a link, or whose environment can't
-// be read, is ErrNoFocusLink; a link whose tab was closed only brings Warp forward.
+// Focus brings forward the Warp tab a session or a followed run runs in, by the focus link
+// Warp exported in that tab's shell: the link the run's script recorded (Tab.Link), when
+// it is a focus link, or else WARP_FOCUS_URL, that one variable alone, read from the
+// session's agent process (warpTabLink); it opens the link in Warp. Warp has no tty lookup
+// and asks for no permission. No link either way, as for a process whose environment
+// can't be read, is ErrNoFocusLink; a link whose tab was closed only brings Warp forward.
 func (d warpDriver) Focus(ctx context.Context, tab Tab) error {
-	if !procs.ValidPID(tab.PID) {
-		return fmt.Errorf("%w: no process %d to read it from", ErrNoFocusLink, tab.PID)
-	}
-
-	value, ok := d.env(tab.PID, warpFocusEnv)
-	if !ok {
-		return fmt.Errorf("%w: process %d has no %s", ErrNoFocusLink, tab.PID, warpFocusEnv)
-	}
-
-	link, err := warpFocusLink(value)
+	link, err := warpTabLink(tab, d.env)
 	if err != nil {
 		return err
 	}

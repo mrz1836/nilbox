@@ -12,9 +12,11 @@ all go through one runner, which keeps a record of each run and its whole output
   script in the launch folder, as a session does. The script runs the command under `script(1)`,
   so it has a real terminal (colors, a passphrase prompt) while its output is copied into the same
   log, and leaves the shell's process ID and the command's exit status beside it, which is how the
-  app follows a run it didn't start itself. The script opens as a launch's does ([The
-  terminal](launching-a-session.md#the-terminal)), and is followed alike in iTerm2, Warp, and
-  Terminal.app.
+  app follows a run it didn't start itself. In Warp it leaves the tab's focus link there too
+  (`WARP_FOCUS_URL`, which Warp sets in each of its shells), for **Show in terminal**. The script
+  opens as a launch's does ([The terminal](launching-a-session.md#the-terminal)), and is followed
+  alike in iTerm2, Warp, and Terminal.app. The run remembers which of them it opened in, so
+  choosing another terminal later changes nothing about a run already going or done.
 - **One run per clone, and none queued.** A run holds its clone while it goes. A second run in that
   clone, or a launch that needs a new worktree there, fails at once and names the run, and the
   worktree cleanup skips the clone until its next pass. A tool updating itself holds the folder
@@ -66,8 +68,9 @@ all go through one runner, which keeps a record of each run and its whole output
   them again as a run starts, changes, or ends. Each row shows the run's status (**Running**,
   **Done**, **Failed**, **Stopped**, **Interrupted**, or **Orphaned**), its title, and when it
   started (hover for the exact time); on the line below, its repository, or its folder when that
-  isn't one, **In Nilbox** or in the terminal chosen in Settings → Launching, how long it took once
-  it ended; under that, its result. Click a row to open the run in its panel beside the list. The
+  isn't one, **In Nilbox** or in the terminal it opened in (**In Warp**; for a run from before the
+  app remembered that, the terminal chosen in Settings → Launching now), how long it took once it
+  ended; under that, its result. Click a row to open the run in its panel beside the list. The
   buttons above the list pick the kind of run it shows: **All**, **Release**, **Hooks** (hooks
   actions and checks), **Scripts** (scripts and pulls), or **Updates** (a tool updating itself).
   **Search repositories…** keeps the runs whose `owner/name` holds what you type, in any case, so it
@@ -87,10 +90,22 @@ all go through one runner, which keeps a record of each run and its whole output
   starts it. **Stop** shows while a run goes in the app: it is off, with the reason beside it,
   while the run's kind refuses it (a release while magex switches branches and pulls, a pull for
   its whole run), and asks first, in the kind's own words, while stopping would leave something
-  behind. A run in your terminal has no **Stop**: the panel says to press Control-C there.
+  behind. A run in your terminal has no **Stop**: the panel says to press Control-C there (*It
+  runs in iTerm2: press Control-C there to stop it.*), naming the terminal the run opened in.
   Closing its tab or window ends it too, but a closed Warp tab [lives on for about a
   minute](launching-a-session.md#warp), and the run with it, before the panel reads *The
   terminal closed while this was running.*
+- **Show in terminal.** While a run goes in your terminal, the panel offers **Show in terminal**
+  in place of Open in terminal: it brings forward the run's own tab, with its window, in the
+  terminal the run opened in, as a session's [Show in
+  terminal](following-a-session.md#show-in-terminal) does. It first reads the terminal device of
+  the shell the run's script recorded (`ps -o tty=`), which shows the run still runs in a
+  terminal; iTerm2 and Terminal.app find the tab by that device, and Warp by the focus link the
+  script recorded as it started, which it opens in Warp. A run that has ended offers Open in
+  terminal again. A run started in a Warp older than v0.2026.05.27, or before this version of the
+  app, has no link to its tab, and Show in terminal says so; for about a minute after its Warp tab
+  closes, it only brings Warp forward. The same panel shows a run in the Release sheet, Repo
+  scripts, and a tool's update in Settings → Integrations, so each offers it.
 - **A run that fails tells you.** Once a run's end is recorded as failed, or as stopped at its
   time limit, the [notification history](menu-bar.md) gets one **Run failed**
   entry for it, with a banner while that kind is on: *Checks failed: Checks · all files* under

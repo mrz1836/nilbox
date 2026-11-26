@@ -22,7 +22,10 @@ opens it through `launcher.CommandOpener`, and its `OpenFolder`, which every pag
 terminal goes through (the runs', Hooks', and Release's directly, the Worktrees view's and Deps'
 through `worktreeTerminal`), tries `CommandOpener.OpenFolder` first, so a terminal that opens a
 folder itself (Warp) gets no script, and writes and opens the script that changes into the
-folder and starts the login shell only when it can't. `terminalFocuser` (`adapters_sessions.go`)
+folder and starts the login shell only when it can't. Its `OpenRun` reports the terminal a run
+opened in, which the run records, and its `FocusRun`, the runs' `TabFocuser`, brings a run's tab
+forward through `CommandOpener.Focus` in that terminal and words what it says: no such tab, no
+Warp focus link, and a terminal that can't show a tab. `terminalFocuser` (`adapters_sessions.go`)
 builds the `terminal.Tab` for the sessions' `Focuser`, focuses in the terminal the agent's
 `TERM_PROGRAM` names (read with its `env`, `procs.EnvOf`, at the click), the session's recorded
 one when it names none, and words its errors: no such tab, no Warp focus link (naming Warp

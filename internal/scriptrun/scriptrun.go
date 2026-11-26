@@ -6,8 +6,9 @@
 // process group and writes straight into its log file, never through a pipe, so a crash of
 // the app can't cut its output short; the engine tails the file every 100 ms and feeds what
 // is new to the run's output reader. A run in the terminal is opened through a
-// TerminalOpener, and followed through the files its script writes: the PID of the shell
-// that runs it, its log, and its exit status.
+// TerminalOpener, which reports the terminal it opened in, and followed through the files
+// its script writes: the PID of the shell that runs it, its log, its exit status, and its
+// tab's focus link, which Show in terminal brings that tab forward by.
 //
 // Every run holds its clone's lock (clonelock) from its start to its end, and a busy clone
 // fails a run at once, naming what holds it: runs never queue on a clone. Up to four runs
@@ -20,7 +21,7 @@
 // that is gone is marked interrupted. When the app quits, every run in the app is stopped.
 //
 // The Service is what the window binds: the history, a run's output in pages, Stop, Run
-// again, and the quit guard's answer. The Engine itself is not bound.
+// again, Show in terminal, and the quit guard's answer. The Engine itself is not bound.
 package scriptrun
 
 import (
@@ -225,6 +226,13 @@ var (
 
 	// ErrNoReveal is returned where no file manager can show a file.
 	ErrNoReveal = errors.New("files can't be shown here")
+
+	// ErrNotInTerminal is returned for Show in terminal on a run that goes in the app.
+	ErrNotInTerminal = errors.New("the run doesn't go in the terminal")
+
+	// ErrNoTab is returned for Show in terminal on a run whose terminal tab can't be found:
+	// its shell isn't recorded yet, or is gone, or runs on no terminal.
+	ErrNoTab = errors.New("the run's terminal tab can't be found")
 )
 
 // Spec is a run to start.
@@ -522,6 +530,11 @@ type Record struct {
 	RunsIn  RunsIn
 	Status  Status
 
+	// Terminal is the settings ID of the terminal app a run in the terminal opened in, as
+	// its TerminalOpener reported it, such as "iterm2", or "" for a run in the app, one
+	// whose terminal never opened, and one recorded before runs recorded it.
+	Terminal string
+
 	// ExitCode is the program's exit status, or nil when unknown or still running.
 	ExitCode *int
 
@@ -543,9 +556,10 @@ type Record struct {
 }
 
 // TerminalRun is a run for the terminal to open: a script that changes into Dir, records
-// its shell's PID in PIDFile, runs Argv with its output recorded in Log, and writes its
-// exit status to ExitFile, under a temporary name first and then renamed, so it is never
-// read half written.
+// its tab's focus link in LinkFile, when its shell has one, and its shell's PID in
+// PIDFile, runs Argv with its output recorded in Log, and writes its exit status to
+// ExitFile, under a temporary name first and then renamed, so it is never read half
+// written.
 type TerminalRun struct {
 	// Name names the script, "run-<id>" (ScriptName).
 	Name string
@@ -559,14 +573,48 @@ type TerminalRun struct {
 	Log      string
 	PIDFile  string
 	ExitFile string
+
+	// LinkFile receives the focus link of the terminal tab the script runs in, which Warp
+	// exports in each of its shells as WARP_FOCUS_URL: what Show in terminal brings that
+	// tab forward by (TerminalTab.Link). The script writes it only when its shell has one.
+	LinkFile string
 }
 
 // TerminalOpener opens a run in the user's terminal app, or the terminal in a run's folder
 // with nothing run there, for Open in terminal. Core adapts the launcher's terminal to it;
 // where no terminal can be opened, it returns an error.
 type TerminalOpener interface {
-	OpenRun(ctx context.Context, run TerminalRun) error
+	// OpenRun opens run in the terminal, and returns the settings ID of the terminal app it
+	// opened it in, such as "iterm2", which the run records (Record.Terminal).
+	OpenRun(ctx context.Context, run TerminalRun) (terminal string, err error)
 	FolderOpener
+}
+
+// TerminalTab is what tells the terminal tab a run in the terminal goes in, for Show in
+// terminal: where to look, and what each terminal finds a tab by.
+type TerminalTab struct {
+	// Terminal is the settings ID of the terminal app the run opened in (Record.Terminal),
+	// or "" for a run recorded before runs recorded it, which the terminal chosen now
+	// stands in for.
+	Terminal string
+
+	// TTY is the terminal device the run's shell runs on, such as /dev/ttys004, which
+	// iTerm2 and Terminal.app find the tab by.
+	TTY string
+
+	// PID is the run's shell, the one its script recorded.
+	PID int
+
+	// Link is what the run's script recorded in its LinkFile, without the newline that ends
+	// it, or "" when it recorded nothing: the focus link Warp finds the tab by, once it is
+	// checked to be one.
+	Link string
+}
+
+// TabFocuser brings forward the terminal tab a run in the terminal goes in, for Show in
+// terminal. Core adapts the launcher's terminal drivers to it, and words their errors.
+type TabFocuser interface {
+	FocusRun(ctx context.Context, tab TerminalTab) error
 }
 
 // Revealer shows a file in the user's file manager: Finder on macOS. Core adapts it.

@@ -199,6 +199,14 @@ export interface Run {
     "status": Status;
 
     /**
+     * Terminal is the settings ID of the terminal app a run in the terminal opened in, such
+     * as "iterm2", which the window names it by ("In iTerm2"), or "" for a run in the app
+     * and one recorded before runs recorded it, which the window names by the terminal
+     * chosen now.
+     */
+    "terminal": string;
+
+    /**
      * ExitCode is the program's exit status, or null when unknown or still running.
      */
     "exitCode": number | null;

@@ -43,23 +43,36 @@ that is, Autopilot's readiness reads the same, and `settings` accepts exactly `t
 IDs.
 
 Show in terminal is `Registry.Focus(ctx, id, terminal.Tab)`, for a driver that is also a
-`terminal.Focuser` (`Focus(ctx, Tab)`; any other is `ErrNoFocus`). A `Tab` carries the session's
-tty and its agent's PID (`Tab{TTY, PID}`). Which `id` is core's choice (`terminalFocuser`, see
-[internal/sessions](sessions.md)): the terminal the agent's `TERM_PROGRAM` names, read with
-`procs.EnvOf` at the click and mapped by `termprogram.go`'s pure `FromTermProgram` (`iTerm.app`
-iTerm2, `WarpTerminal` Warp, `Apple_Terminal` Terminal.app, nothing else), or the session's
-recorded terminal when it names none, so a session resumed in another terminal than its launch's
-is found where it runs. iTerm2's and Terminal.app's `Focus` take the tty (`validateTTY`) and run
-an AppleScript that walks their windows' tabs for it, `ErrNoSuchTab` when none runs on it. Warp
-has no tty lookup: its `Focus` reads `WARP_FOCUS_URL`, the link Warp (v0.2026.05.27 and newer)
-exports in every shell and the agent inherits, from the PID's environment (`procs.EnvOf`, that
-one variable alone, through the driver's `env`), takes only
-`^warp://session/[0-9a-f]{32}$` (`warpFocusLink`), and runs `open -b dev.warp.Warp-Stable <link>`,
-which brings the tab's window forward and selects its pane, with no permission. An invalid PID, a
-process with no link (an older Warp, a session not launched in Warp, a platform binary whose
-environment macOS hides), or any other value is `ErrNoFocusLink`, whose text never repeats the
-value, and nothing is opened. A closed tab, which Warp keeps about 60 seconds, still has a link,
-and opening it only brings Warp forward while `open` succeeds, so nothing can tell.
+`terminal.Focuser` (`Focus(ctx, Tab)`; any other is `ErrNoFocus`). A `Tab` carries the tty, the
+PID (a session's agent, or the shell of a followed run's script), and the Warp focus link a
+followed run's script recorded (`Tab{TTY, PID, Link}`). For a session, which `id` is core's
+choice (`terminalFocuser`, see [internal/sessions](sessions.md)): the terminal the agent's
+`TERM_PROGRAM` names, read with `procs.EnvOf` at the click and mapped by `termprogram.go`'s pure
+`FromTermProgram` (`iTerm.app` iTerm2, `WarpTerminal` Warp, `Apple_Terminal` Terminal.app,
+nothing else), or the session's recorded terminal when it names none, so a session resumed in
+another terminal than its launch's is found where it runs. iTerm2's and Terminal.app's `Focus` take
+the tty (`validateTTY`) and run an AppleScript that walks their windows' tabs for it,
+`ErrNoSuchTab` when none runs on it; they ignore the link. Warp has no tty lookup: its `Focus`
+(`warpTabLink`) takes the recorded `Link` when it is exactly `^warp://session/[0-9a-f]{32}$`
+(`warpFocusLink`), and otherwise reads `WARP_FOCUS_URL`, the link Warp (v0.2026.05.27 and newer)
+exports in every shell and the agent inherits, from the PID's environment (`procs.EnvOf`, that one
+variable alone, through the driver's `env`), with the same check, and runs
+`open -b dev.warp.Warp-Stable <link>`, which brings the tab's window forward and selects its pane,
+with no permission. A followed run needs the recorded link: its PID is `/bin/sh`, a platform
+binary whose environment macOS hides, so its script writes `${WARP_FOCUS_URL-}` into the
+`Recording`'s `LinkFile` itself, before its PID, only when it is set and not empty (the `-` keeps
+`set -u` quiet). No link either way (an older Warp, a session or run not started in Warp, a run
+whose script came before the link file, a hidden environment, an invalid PID) or any other value
+is `ErrNoFocusLink`, whose text never repeats the value, and nothing is opened. A closed tab,
+which Warp keeps about 60 seconds, still has a link, and opening it only brings Warp forward while
+`open` succeeds, so nothing can tell.
+
+`CommandOpener.Open(ctx, path) (terminal.ID, error)` returns the terminal it opened a followed
+run's script in, the one chosen as it read the settings (none on an error), and the run records
+it; `CommandOpener.Focus(ctx, id, tab)` brings that run's tab forward through the same registry,
+in the terminal `id` the run recorded, or the one chosen now when `id` is empty (a run recorded
+before runs recorded their terminal). Core's `terminalRuns.FocusRun` words its errors for the
+window ([internal/scriptrun](scriptrun.md)).
 
 Open in terminal is `CommandOpener.OpenFolder(ctx, dir) (opened bool, err error)`. Whichever
 terminal is chosen, it checks the folder first (`terminal.CheckFolder`: absolute, no control

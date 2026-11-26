@@ -72,8 +72,9 @@ type Script struct {
 // Recording is how a script records a run the app follows. The command runs under
 // script(1), which gives it a pseudo-terminal (so colors and passphrase prompts work) and
 // copies everything it writes into Log as it writes it. The shell that waits for it writes
-// its own PID into PIDFile first, and the command's exit status into ExitFile once it
-// ends, through a temporary file renamed into place, so ExitFile never holds half a status.
+// its tab's focus link into LinkFile, when it has one, and its own PID into PIDFile first,
+// and the command's exit status into ExitFile once it ends, through a temporary file
+// renamed into place, so ExitFile never holds half a status.
 type Recording struct {
 	// Log is the file the command's output is copied into.
 	Log string
@@ -83,6 +84,15 @@ type Recording struct {
 
 	// ExitFile receives the command's exit status. ExitFile + ".tmp" is written first.
 	ExitFile string
+
+	// LinkFile, when set, receives the focus link of the tab the script runs in: the value
+	// of WARP_FOCUS_URL, which Warp exports in every shell it starts, written only when the
+	// shell has it set and not empty, and before PIDFile, so a run whose shell is recorded
+	// has its link recorded too. It is what brings that tab forward later (Tab.Link):
+	// macOS hides a shell's environment from the app, so the script records the link
+	// itself. The value is written as it is, ended by a newline, and is checked as a link
+	// only where it is read.
+	LinkFile string
 }
 
 // ScriptRenderer writes a Script as a file a terminal can run. A port to another shell
@@ -139,6 +149,7 @@ func (POSIXRenderer) Extension() string { return ".command" }
 //	  printf '%s\n' "$1" > '<exit file>.tmp' && mv '<exit file>.tmp' '<exit file>'
 //	  exit "$1"
 //	}
+//	[ -z "${WARP_FOCUS_URL-}" ] || printf '%s\n' "$WARP_FOCUS_URL" > '<link file>'
 //	printf '%s\n' "$$" > '<pid file>'
 //	cd -- '<dir>' || finish 1
 //	unset NAME
@@ -146,9 +157,12 @@ func (POSIXRenderer) Extension() string { return ".command" }
 //	/usr/bin/script -q -F '<log>' '<binary>' '<arg>' ...
 //	finish "$?"
 //
-// The shell's PID is recorded first, so the app follows the run from its first line, and
-// every way the script ends records an exit status: it runs without set -e, so a failing
-// command still has its status recorded, and a folder it can't change into, or an
+// The tab's focus link, when the Recording has a LinkFile and the shell has a link, and
+// the shell's PID are recorded first, so the app follows the run from its first line and
+// can bring its tab forward from then on; ${WARP_FOCUS_URL-} reads an unset variable as
+// empty, which set -u allows, and the variable itself is read only once it is known to
+// be set. Every way the script ends records an exit status: it runs without set -e, so a
+// failing command still has its status recorded, and a folder it can't change into, or an
 // invalid variable name (which no caller passes), is followed by || finish 1 instead.
 func (POSIXRenderer) Render(s Script) []byte {
 	return renderPOSIX(s, recordTool)
@@ -235,6 +249,7 @@ func writeExec(b *strings.Builder, s Script) {
 
 // writeRecordStart writes a recorded script's first lines: finish, which records an exit
 // status, written to a temporary file and renamed into place, and exits with it; then the
+// tab's focus link, for a Recording with a LinkFile, when the shell has one; then the
 // waiting shell's PID.
 func writeRecordStart(b *strings.Builder, r *Recording) {
 	tmp := textutil.ShellQuote(r.ExitFile + ".tmp")
@@ -243,6 +258,12 @@ func writeRecordStart(b *strings.Builder, r *Recording) {
 	b.WriteString(`  printf '%s\n' "$1" > ` + tmp + " && mv " + tmp + " " + textutil.ShellQuote(r.ExitFile) + "\n")
 	b.WriteString(`  exit "$1"` + "\n")
 	b.WriteString("}\n")
+
+	if r.LinkFile != "" {
+		b.WriteString(`[ -z "${` + warpFocusEnv + `-}" ] || printf '%s\n' "$` + warpFocusEnv + `" > ` +
+			textutil.ShellQuote(r.LinkFile) + "\n")
+	}
+
 	b.WriteString(`printf '%s\n' "$$" > ` + textutil.ShellQuote(r.PIDFile) + "\n")
 }
 

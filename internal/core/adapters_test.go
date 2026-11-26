@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -476,10 +477,11 @@ func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {
 	runs := terminalRuns{launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher)}
 	logs := filepath.Join(paths.Root, "script-runs")
 
-	err := runs.OpenRun(t.Context(), scriptrun.TerminalRun{
+	opened, err := runs.OpenRun(t.Context(), scriptrun.TerminalRun{
 		Name: "run-7", Dir: "/work/example-repo", Argv: []string{"/usr/local/bin/magex", "lint"},
 		Env: []string{"MAGEX_NO_UPDATE_CHECK=1"},
 		Log: filepath.Join(logs, "7.log"), PIDFile: filepath.Join(logs, "7.pid"), ExitFile: filepath.Join(logs, "7.exit"),
+		LinkFile: filepath.Join(logs, "7.link"),
 	})
 
 	scripts, globErr := filepath.Glob(filepath.Join(paths.Launch, "run-7-*"))
@@ -493,20 +495,193 @@ func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {
 	assert.Contains(t, body, "export MAGEX_NO_UPDATE_CHECK='1'\n")
 	assert.Contains(t, body, "-q -F '"+filepath.Join(logs, "7.log")+"' '/usr/local/bin/magex' 'lint'\n",
 		"the command runs recorded into the run's log")
+	assert.Contains(t, body, `printf '%s\n' "$WARP_FOCUS_URL" > '`+filepath.Join(logs, "7.link")+"'\n",
+		"with its tab's focus link recorded beside it")
 
 	if runtime.GOOS != "darwin" {
 		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
+		assert.Empty(t, opened, "it opened in no terminal")
 
 		return
 	}
 
 	require.NoError(t, err)
+	assert.Equal(t, string(terminal.ITerm2), opened, "it says which terminal it opened in: the default")
 
 	calls := runner.Calls()
 	require.NotEmpty(t, calls)
 	assert.Contains(t, strings.Join(calls[len(calls)-1], " "), scripts[0], "the terminal chosen for launches opens it")
 
-	require.ErrorIs(t, runs.OpenRun(t.Context(), scriptrun.TerminalRun{Name: "run-8"}), errNoCommand)
+	require.NoError(t, testutil.ErrOf(c.Settings.SetTerminal(t.Context(), settings.TerminalWarp)))
+
+	opened, err = runs.OpenRun(t.Context(), scriptrun.TerminalRun{
+		Name: "run-8", Dir: "/work/example-repo", Argv: []string{"/usr/local/bin/magex", "lint"},
+		Log: filepath.Join(logs, "8.log"), PIDFile: filepath.Join(logs, "8.pid"), ExitFile: filepath.Join(logs, "8.exit"),
+		LinkFile: filepath.Join(logs, "8.link"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, string(terminal.Warp), opened, "the terminal chosen as the run starts")
+
+	_, err = runs.OpenRun(t.Context(), scriptrun.TerminalRun{Name: "run-9"})
+	require.ErrorIs(t, err, errNoCommand)
+}
+
+// focusRig is terminalRuns over a real launcher whose terminal programs runner answers,
+// for Show in terminal.
+type focusRig struct {
+	c      *Core
+	runner *testutil.Runner
+	runs   terminalRuns
+}
+
+func newFocusRig(t *testing.T, stdout string) focusRig {
+	t.Helper()
+
+	paths := appdata.NewPaths(filepath.Join(t.TempDir(), "data"))
+	runner := &testutil.Runner{Stdout: stdout}
+	c := bootstrap(t, Options{Paths: paths, Home: testutil.ClaudeHome(t), Runner: runner})
+
+	return focusRig{
+		c: c, runner: runner, runs: terminalRuns{launch: paths.Launch, opener: launcher.NewCommandOpener(c.Launcher)},
+	}
+}
+
+func TestTerminalRunsFocusARunsTabInTheTerminalItOpenedIn(t *testing.T) {
+	t.Parallel()
+
+	const link = "warp://session/0123456789abcdef0123456789abcdef"
+
+	t.Run("Warp, by the link the run's script recorded", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFocusRig(t, "")
+		err := r.runs.FocusRun(t.Context(), scriptrun.TerminalTab{
+			Terminal: string(terminal.Warp), TTY: "/dev/ttys004", PID: 4100, Link: link,
+		})
+
+		if runtime.GOOS != "darwin" {
+			assert.Equal(t, "This terminal can't show a run's tab.", uierr.Message(err))
+
+			return
+		}
+
+		require.NoError(t, err)
+		assert.Equal(t, [][]string{{"open", "-b", "dev.warp.Warp-Stable", link}}, r.runner.Calls(),
+			"the recorded terminal, though iTerm2 is chosen now")
+	})
+
+	t.Run("iTerm2, by the run's tty", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFocusRig(t, "found\n")
+		require.NoError(t, testutil.ErrOf(r.c.Settings.SetTerminal(t.Context(), settings.TerminalWarp)))
+
+		err := r.runs.FocusRun(t.Context(), scriptrun.TerminalTab{
+			Terminal: string(terminal.ITerm2), TTY: "/dev/ttys004", PID: 4100,
+		})
+
+		if runtime.GOOS != "darwin" {
+			assert.Equal(t, "This terminal can't show a run's tab.", uierr.Message(err))
+
+			return
+		}
+
+		require.NoError(t, err)
+
+		calls := r.runner.Calls()
+		require.Len(t, calls, 1)
+		assert.Equal(t, "osascript", calls[0][0], "the recorded terminal, though Warp is chosen now")
+		assert.Contains(t, strings.Join(calls[0], " "), `if tty of s is "/dev/ttys004" then`)
+	})
+
+	t.Run("a run recorded before runs recorded their terminal", func(t *testing.T) {
+		t.Parallel()
+
+		r := newFocusRig(t, "")
+		require.NoError(t, testutil.ErrOf(r.c.Settings.SetTerminal(t.Context(), settings.TerminalWarp)))
+
+		err := r.runs.FocusRun(t.Context(), scriptrun.TerminalTab{TTY: "/dev/ttys004", PID: 4100, Link: link})
+
+		if runtime.GOOS != "darwin" {
+			assert.Equal(t, "This terminal can't show a run's tab.", uierr.Message(err))
+
+			return
+		}
+
+		require.NoError(t, err)
+		assert.Equal(t, [][]string{{"open", "-b", "dev.warp.Warp-Stable", link}}, r.runner.Calls(),
+			"the terminal chosen now stands in for the one it didn't record")
+	})
+}
+
+func TestTerminalRunsWordWhyARunsTabCantBeShown(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS != "darwin" {
+		r := newFocusRig(t, "")
+		err := r.runs.FocusRun(t.Context(), scriptrun.TerminalTab{Terminal: string(terminal.ITerm2), TTY: "/dev/ttys004"})
+		require.ErrorIs(t, err, terminal.ErrUnsupportedOS)
+		assert.Equal(t, "This terminal can't show a run's tab.", uierr.Message(err))
+
+		return
+	}
+
+	tests := []struct {
+		name    string
+		stdout  string
+		tab     scriptrun.TerminalTab
+		wantErr error
+		want    string
+	}{
+		{
+			name:    "no tab runs on the tty",
+			stdout:  "missing\n",
+			tab:     scriptrun.TerminalTab{Terminal: string(terminal.ITerm2), TTY: "/dev/ttys004", PID: 4100},
+			wantErr: terminal.ErrNoSuchTab,
+			want:    "Couldn't find the run's terminal tab. It may have been closed, or moved to another app.",
+		},
+		{
+			// launchd stands in for the run's shell: both are platform binaries, whose
+			// environment macOS hides.
+			name:    "no link file, as a run opened before scripts recorded one",
+			tab:     scriptrun.TerminalTab{Terminal: string(terminal.Warp), TTY: "/dev/ttys004", PID: 1},
+			wantErr: terminal.ErrNoFocusLink,
+		},
+		{
+			name: "a link file that holds no link",
+			tab: scriptrun.TerminalTab{
+				Terminal: string(terminal.Warp), TTY: "/dev/ttys004", PID: 1, Link: "warp://action/new_tab?path=/tmp",
+			},
+			wantErr: terminal.ErrNoFocusLink,
+		},
+		{
+			name:    "a terminal this build doesn't know",
+			tab:     scriptrun.TerminalTab{Terminal: "hyper", TTY: "/dev/ttys004", PID: 4100},
+			wantErr: terminal.ErrUnknownTerminal,
+			want:    "This terminal can't show a run's tab.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newFocusRig(t, tt.stdout)
+			err := r.runs.FocusRun(t.Context(), tt.tab)
+			require.ErrorIs(t, err, tt.wantErr)
+
+			if tt.want != "" {
+				assert.Equal(t, tt.want, uierr.Message(err))
+			}
+
+			if errors.Is(tt.wantErr, terminal.ErrNoFocusLink) {
+				assert.Contains(t, uierr.Message(err), "Couldn't tell which Warp tab runs this.")
+				assert.Contains(t, uierr.Message(err), "v0.2026.05.27")
+				assert.NotContains(t, uierr.Message(err), "path=", "the words never repeat what the file held")
+				assert.Empty(t, r.runner.Calls(), "nothing is opened in Warp")
+			}
+		})
+	}
 }
 
 // folderRig is the terminal the runs open in, over a real launcher whose terminal programs

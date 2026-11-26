@@ -560,6 +560,41 @@ describe('ReleaseSheet', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('shows a release going in the terminal in its own tab, in the terminal it opened in', async () => {
+    platform.getScriptRun.mockResolvedValue(
+      releaseRun({
+        status: 'running',
+        exitCode: null,
+        finishedAt: '',
+        summary: '',
+        runsIn: 'terminal',
+        terminal: 'warp',
+        progress: { step: 'onBranch', working: 'updated', stopRefused: '', stopConfirm: '' },
+      }),
+    )
+    renderSheet({ runsIn: 'terminal' })
+
+    const s = await sheet()
+
+    await userEvent.click(s.getByRole('button', { name: 'Release v1.4.3' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Releasing acme-org/sdk v1.4.3' }))
+
+    // Warp, which the run opened in, though the sheet's terminal is iTerm2 now.
+    expect(await dialog.findByText('It runs in Warp: press Control-C there to stop it.')).toBeInTheDocument()
+    expect(dialog.queryByRole('button', { name: 'Open in terminal' })).not.toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Show in terminal' }))
+    expect(platform.showScriptRunInTerminal).toHaveBeenCalledExactlyOnceWith(7)
+
+    platform.getScriptRun.mockResolvedValue(releaseRun({ runsIn: 'terminal', terminal: 'warp' }))
+    send('scriptruns:updated')
+
+    expect(await dialog.findByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
+    expect(dialog.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: 'Open in terminal' })).toBeInTheDocument()
+  })
+
   it('chooses a bump from a click anywhere on its card', async () => {
     platform.prepareRelease.mockImplementation(offerFor)
     renderSheet()

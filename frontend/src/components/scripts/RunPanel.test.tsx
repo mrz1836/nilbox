@@ -138,6 +138,22 @@ describe('RunPanel', () => {
     expect(screen.getByText(words)).toBeInTheDocument()
   })
 
+  it.each<[string, TerminalID | null, string]>([
+    ['warp', 'iterm2', 'In Warp'],
+    ['iterm2', 'warp', 'In iTerm2'],
+    ['terminal', null, 'In Terminal'],
+    ['', 'warp', 'In Warp'],
+  ])(
+    'names the terminal a run recorded it opened in (%s), whatever is chosen now (%s)',
+    async (recorded, chosen, words) => {
+      renderPanel(ended({ runsIn: 'terminal', terminal: recorded }), chosen)
+
+      await shownRun()
+
+      expect(screen.getByText(words)).toBeInTheDocument()
+    },
+  )
+
   it('says no time for an ended run whose end wasn’t recorded', async () => {
     renderPanel(ended({ status: 'interrupted', finishedAt: '' }))
 
@@ -375,6 +391,77 @@ describe('RunPanel', () => {
 
       expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
       expect(screen.getByText(`It runs in ${name}: press Control-C there to stop it.`)).toBeInTheDocument()
+    })
+
+    it('says to press Control-C in the terminal the run opened in, not the one chosen now', async () => {
+      renderPanel(running({ runsIn: 'terminal', canStop: false, terminal: 'iterm2' }), 'warp')
+
+      await shownRun()
+
+      expect(screen.getByText('It runs in iTerm2: press Control-C there to stop it.')).toBeInTheDocument()
+      expect(screen.getByText('In iTerm2')).toBeInTheDocument()
+    })
+
+    it('shows a run going in the terminal in its own tab, rather than opening another', async () => {
+      renderPanel(running({ runsIn: 'terminal', canStop: false, terminal: 'warp' }))
+
+      await shownRun()
+
+      expect(screen.queryByRole('button', { name: 'Open in terminal' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Show in terminal' }))
+
+      expect(platform.showScriptRunInTerminal).toHaveBeenCalledExactlyOnceWith(1)
+      expect(platform.openScriptRunInTerminal).not.toHaveBeenCalled()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('says why it couldn’t show the run’s tab', async () => {
+      platform.showScriptRunInTerminal.mockRejectedValue(
+        new Error('Couldn’t find the run’s terminal tab. It may have been closed, or moved to another app.'),
+      )
+      renderPanel(running({ runsIn: 'terminal', canStop: false, terminal: 'iterm2' }))
+
+      await shownRun()
+      await userEvent.click(screen.getByRole('button', { name: 'Show in terminal' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Couldn’t find the run’s terminal tab. It may have been closed, or moved to another app.',
+      )
+    })
+
+    it('trades Show in terminal for Open in terminal as the run ends', async () => {
+      renderPanel(running({ runsIn: 'terminal', canStop: false, terminal: 'iterm2' }))
+
+      await shownRun()
+      expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeInTheDocument()
+
+      platform.getScriptRun.mockResolvedValue(ended({ runsIn: 'terminal', terminal: 'iterm2' }))
+      send('scriptruns:updated')
+
+      expect(await screen.findByRole('button', { name: 'Open in terminal' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+      expect(screen.queryByText(/press Control-C there/)).not.toBeInTheDocument()
+    })
+
+    it('opens a new terminal in the folder of a run in the terminal once it has ended', async () => {
+      renderPanel(ended({ runsIn: 'terminal', terminal: 'warp' }))
+
+      await shownRun()
+
+      expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Open in terminal' }))
+
+      expect(platform.openScriptRunInTerminal).toHaveBeenCalledExactlyOnceWith(1)
+      expect(platform.showScriptRunInTerminal).not.toHaveBeenCalled()
+    })
+
+    it('offers Open in terminal, never Show in terminal, for a run going in the app', async () => {
+      renderPanel(running())
+
+      await shownRun()
+
+      expect(screen.getByRole('button', { name: 'Open in terminal' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
     })
 
     it('has no close button where the panel closes with what holds it', async () => {
