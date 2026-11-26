@@ -105,3 +105,17 @@ func appleScriptEscape(body string, i int) (c byte, known bool) {
 		return 0, false
 	}
 }
+
+// FuzzWarpOpenArgs checks that any path reaches open as its last argument, untouched,
+// after Warp's bundle ID.
+func FuzzWarpOpenArgs(f *testing.F) {
+	for _, seed := range quotingSeeds() {
+		f.Add(seed)
+	}
+
+	f.Add(awkwardScriptPath)
+
+	f.Fuzz(func(t *testing.T, path string) {
+		assert.Equal(t, []string{"-b", warpBundleID, path}, warpOpenArgs(path))
+	})
+}

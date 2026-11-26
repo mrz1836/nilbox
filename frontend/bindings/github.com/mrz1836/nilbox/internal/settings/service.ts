@@ -813,8 +813,8 @@ export function SetStatusProvider(id: statusprefs$0.ProviderID, on: boolean): $C
 }
 
 /**
- * SetTerminal stores the terminal launches open in, TerminalITerm2 or TerminalApp, and
- * returns the settings with it.
+ * SetTerminal stores the terminal launches open in, TerminalITerm2, TerminalWarp, or
+ * TerminalApp, and returns the settings with it.
  */
 export function SetTerminal(id: terminal$0.ID): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2731649341, id);

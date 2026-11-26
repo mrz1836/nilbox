@@ -239,10 +239,12 @@ export function githubSignIn(overrides: Partial<GitHubSignIn> = {}): GitHubSignI
   }
 }
 
-// terminalChoices are the terminals launches can open in, both installed.
-export function terminalChoices(overrides: { iterm?: boolean } = {}): TerminalChoice[] {
+// terminalChoices are the terminals launches can open in, in the order setup prefers them,
+// each installed unless overrides says otherwise.
+export function terminalChoices(overrides: { iterm?: boolean; warp?: boolean } = {}): TerminalChoice[] {
   return [
     { id: 'iterm2', name: 'iTerm2', installed: overrides.iterm ?? true },
+    { id: 'warp', name: 'Warp', installed: overrides.warp ?? true },
     { id: 'terminal', name: 'Terminal', installed: true },
   ]
 }

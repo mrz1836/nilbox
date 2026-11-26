@@ -74,8 +74,9 @@ type Config struct {
 	Account Account
 	CLI     CLI
 
-	// Terminals lists the terminals launches can open in, and whether each is installed
-	// (core: the terminal registry's Installed, over /Applications and ~/Applications).
+	// Terminals lists the terminals launches can open in, and whether each is installed, in
+	// the order a choice prefers them, iTerm2, Warp, then Terminal (core: the terminal
+	// registry's Installed, over /Applications and ~/Applications).
 	Terminals func() []terminal.Choice
 
 	// Clones lists the user's clones, whose markers Signals counts.

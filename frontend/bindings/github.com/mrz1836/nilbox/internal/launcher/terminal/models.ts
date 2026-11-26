@@ -4,7 +4,7 @@
 /**
  * ID names a terminal app, as the terminal setting stores it.
  */
-export type ID = "iterm2" | "terminal";
+export type ID = "iterm2" | "warp" | "terminal";
 
 /**
  * The values of ID, by the names of their Go constants.
@@ -16,6 +16,11 @@ export const ID = {
      * ITerm2 opens launches in a new iTerm2 tab or window.
      */
     ITerm2: "iterm2",
+
+    /**
+     * Warp opens launches in a new tab of Warp's frontmost window, or a new window.
+     */
+    Warp: "warp",
 
     /**
      * TerminalApp opens launches in a new Terminal.app window.

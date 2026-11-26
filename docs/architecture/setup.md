@@ -17,9 +17,10 @@ held while the setup showed at launch), and `Restart` opens it again from Welcom
 query `FetchViewer` sends, widened to `login name url`, with the token's `X-OAuth-Scopes`)
 into one of six `GitHubState`s with the command that fixes it, never an error but a check
 the window gave up on; `Terminals` says which terminals are installed
-(`terminal.Registry.Installed`, over `/Applications` and `~/Applications`; Terminal always
-is); `Signals` counts the clones, every repository location's through the shared
-`localrepos.Reader`, that hold each sign the Tools step looks for (a `go.mod`, mage-x's signs,
+(`terminal.Registry.Installed`, over `/Applications` and `~/Applications`, iTerm2, Warp, then
+Terminal, the order the Agents step picks the first installed one in; Terminal always is);
+`Signals` counts the clones, every repository location's through the shared `localrepos.Reader`,
+that hold each sign the Tools step looks for (a `go.mod`, mage-x's signs,
 `toolsigns.MageX`, the list Deps reads too, go-pre-commit's config, go-fortress's workflow),
 fixed paths with `os.Lstat` alone. `Reset`,
 once the user typed `ResetWord`, refuses while runs go in the app (its `Runs`), saves a

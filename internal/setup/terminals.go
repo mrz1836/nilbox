@@ -16,8 +16,9 @@ type TerminalChoice struct {
 	Installed bool `json:"installed"`
 }
 
-// Terminals returns the terminals launches can open in, in the settings' order, and
-// whether each is installed, so the Agents step never leaves the user on one that isn't.
+// Terminals returns the terminals launches can open in, and whether each is installed, in
+// the order a choice prefers them (iTerm2, Warp, then Terminal), so the Agents step moves
+// a user whose terminal isn't installed to the first one that is.
 // It reads only whether each app is there; a system without terminal support has none.
 func (s *Service) Terminals(context.Context) []TerminalChoice {
 	out := []TerminalChoice{}

@@ -905,7 +905,8 @@ func signInCheck(label string, in agent.SignIn, fix string) autopilot.ReadyCheck
 	return warn(label, "is there, but its sign-in couldn't be read", fix, true)
 }
 
-// terminalCheck checks the terminal launches open in.
+// terminalCheck checks the terminal launches open in: Terminal is always installed, and
+// iTerm2 and Warp are when their bundles are in /Applications or ~/Applications.
 func (r *readyChecks) terminalCheck(s settings.Settings) autopilot.ReadyCheck {
 	apps := []string{"/Applications", filepath.Join(r.deps.home, "Applications")}
 

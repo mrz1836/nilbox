@@ -13,7 +13,7 @@ const (
 	// osascriptBin runs AppleScript; it drives iTerm2.
 	osascriptBin = "osascript"
 
-	// openBin is macOS's open command; it hands scripts to Terminal.app.
+	// openBin is macOS's open command; it hands scripts to Terminal.app and Warp.
 	openBin = "open"
 
 	// openTimeout bounds how long a terminal app may take to accept a launch, so a stuck
@@ -55,6 +55,25 @@ func (d terminalAppDriver) Open(ctx context.Context, scriptPath string) error {
 	}
 
 	return runTerminal(ctx, d.executor, appTerminal, openBin, terminalAppArgs(scriptPath)...)
+}
+
+// warpDriver opens launch scripts in Warp with `open -b <Warp's bundle ID>`, which needs
+// no Automation permission.
+type warpDriver struct {
+	executor execpath.Runner
+}
+
+// ID returns the Warp terminal setting.
+func (warpDriver) ID() ID { return Warp }
+
+// Open runs the script in a new tab of Warp's frontmost window, or a new window when none
+// is open.
+func (d warpDriver) Open(ctx context.Context, scriptPath string) error {
+	if err := validateScriptPath(scriptPath); err != nil {
+		return err
+	}
+
+	return runTerminal(ctx, d.executor, appWarp, openBin, warpOpenArgs(scriptPath)...)
 }
 
 // runTerminal runs one terminal program with openTimeout and explains a failure.

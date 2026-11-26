@@ -31,9 +31,24 @@ const (
 	// ITerm2 opens launches in a new iTerm2 tab or window.
 	ITerm2 ID = "iterm2"
 
+	// Warp opens launches in a new tab of Warp's frontmost window, or a new window.
+	Warp ID = "warp"
+
 	// TerminalApp opens launches in a new Terminal.app window.
 	TerminalApp ID = "terminal"
 )
+
+// All returns every terminal ID, in the order a choice prefers them: iTerm2, then Warp,
+// then Terminal.app, which every Mac has. Setup offers them in this order and picks the
+// first one installed.
+func All() []ID {
+	return []ID{ITerm2, Warp, TerminalApp}
+}
+
+// Valid reports whether id names one of the terminals, as All lists them.
+func Valid(id ID) bool {
+	return slices.Contains(All(), id)
+}
 
 // Name returns the terminal's name as a sentence says it, as in "It runs in iTerm2.", or
 // "" for an ID no terminal has.
@@ -41,6 +56,8 @@ func Name(id ID) string {
 	switch id {
 	case ITerm2:
 		return appITerm2
+	case Warp:
+		return appWarp
 	case TerminalApp:
 		return appTerminal
 	default:

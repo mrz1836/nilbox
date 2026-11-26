@@ -163,6 +163,30 @@ func TestName(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, "iTerm2", Name(ITerm2))
+	assert.Equal(t, "Warp", Name(Warp))
 	assert.Equal(t, "Terminal", Name(TerminalApp))
 	assert.Empty(t, Name("hyper"))
+}
+
+func TestAllListsTheTerminalsInTheOrderAChoicePrefers(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []ID{ITerm2, Warp, TerminalApp}, All())
+
+	all := All()
+	all[0] = "changed"
+
+	assert.Equal(t, ITerm2, All()[0], "All returns a list of its own each time")
+}
+
+func TestValid(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []ID{ITerm2, Warp, TerminalApp} {
+		assert.True(t, Valid(id), id)
+	}
+
+	for _, id := range []ID{"", "kitty", "WARP", "iTerm2", "warp-preview"} {
+		assert.False(t, Valid(id), id)
+	}
 }

@@ -21,6 +21,20 @@ script runs its command under `script(1)`, recording its output, its shell's PID
 status in the run's files. `launcher.CommandOpener`, which core hands the runs and never binds,
 opens only such a script, in the terminal chosen in Settings.
 
+The macOS drivers: iTerm2's types the quoted script path into a new tab with AppleScript
+(`osascript`, which needs macOS's Automation permission); Terminal.app's runs
+`open -a Terminal <script>`; Warp's runs `open -b dev.warp.Warp-Stable <script>`, by bundle ID so
+neither Warp Preview nor another app named Warp answers. Warp has no AppleScript dictionary, and
+runs an executable `.command` file it is asked to open in a new tab of its frontmost window (a new
+window when none is open), starting the tab in the script's folder and typing the escaped path
+once its shell is ready, so a followed run's script is its own process, as in iTerm2. Neither
+`open` asks for a permission, and neither can tell when the terminal drops the script: Warp drops
+every open until its first-run welcome is finished, and `open` still succeeds. `terminal.All`
+lists the terminals in the order a choice prefers them, iTerm2, Warp, Terminal;
+`Registry.Installed` (a bundle in `/Applications` or `~/Applications`, Terminal.app always)
+lists them in that order, so the setup moves a terminal that isn't installed to the first one that
+is, and `settings` accepts exactly `terminal.Valid`'s IDs.
+
 `Resume` takes `ResumeRequest.Access`: a background run's session resumes under its run's fence
 (`ResumableSession.Fence`, the preset and the run's folder), taken over (`Fence.TakenOver`,
 `agent.Access.TakenOver`: for Claude Code, the same tools, rules, hook, and sandbox, a fixed preset

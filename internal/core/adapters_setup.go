@@ -42,8 +42,9 @@ func newSetup(pool *sql.DB, opts Options, deps setupDeps, logger *slog.Logger) *
 		Memory:  prefsstore.New(pool, opts.Clock),
 		Account: setupAccount{tokens: deps.tokens, client: deps.client},
 		CLI:     setupCLI{info: deps.info},
-		// iTerm2 is installed when its bundle is in /Applications or ~/Applications;
-		// Terminal comes with the system.
+		// iTerm2 and Warp are installed when their bundles are in /Applications or
+		// ~/Applications; Terminal comes with the system. They are listed iTerm2, Warp,
+		// Terminal, the order setup picks the first installed one in.
 		Terminals:    func() []terminal.Choice { return deps.registry.Installed(apps...) },
 		Clones:       setupClones{settings: deps.settings, home: opts.Home, reader: deps.locations},
 		Runs:         deps.runs,

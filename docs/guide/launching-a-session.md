@@ -58,7 +58,15 @@ The terminal then runs the script:
 
 - **iTerm2** (the default) opens a new tab in the frontmost window, or a new window when none is
   open.
+- **Warp** opens a new tab in its frontmost window, or a new window when none is open, and
+  starts it in the launch script's folder, which the script then leaves for the worktree. Warp
+  opens it by its bundle ID (`open -b dev.warp.Warp-Stable`), so Warp Preview never answers.
+  The tab's title, and its prompt once the agent exits, show the launch folder rather than the
+  worktree: `cd` there, or use **Open in terminal**, to keep working. Warp v0.2026.05.13 or
+  newer runs the script; an older Warp opens it in its editor instead.
 - **Terminal.app** opens a new window (`open -a Terminal`).
+
+Setup picks the first one installed, in that order: iTerm2, then Warp, then Terminal.
 
 Choose the terminal under **Settings → Launching**, and the clone root (the directory whose
 children are your clones, initially `~/projects`) under **Settings → Repositories**. A launch
@@ -285,10 +293,22 @@ The first launch in iTerm2 makes macOS ask once whether the app may control iTer
 Automation permission, which has nothing to do with [Autopilot](autopilot/README.md)): "“Nilbox”
 wants access to control “iTerm”", followed by the app's reason: Nilbox opens your terminal app
 (such as iTerm2) to start coding sessions in your local clones, and asks Finder to move a copy of
-a tool to the Trash when you choose to. Choose **Allow**. Terminal.app
-launches never ask. An Autopilot routine's run in your terminal, and **Take over**, open
+a tool to the Trash when you choose to. Choose **Allow**. Warp and Terminal.app launches never
+ask. An Autopilot routine's run in your terminal, and **Take over**, open
 iTerm2 the same way, so allow it before you leave a routine to run while you're away.
 
 If you chose **Don't Allow**, the launch fails with a message that says so. Change it in
 **System Settings → Privacy & Security → Automation**, under Nilbox. A build from source asks,
 and is listed there, as Nilbox Dev, apart from the release.
+
+## Warp's welcome comes first
+
+Until Warp's first-run welcome is finished, Warp quietly drops every script it is asked to
+open, and macOS still reports the open as done, so Nilbox can't tell: the launch says it opened,
+but no tab appears. Open Warp once and finish the welcome (it needs no sign-in) before your
+first launch; the setup says so when you choose Warp. A launch made before then isn't opened
+later, so launch it again.
+
+Warp keeps a closed tab for about a minute, so it can be reopened with ⇧⌘T, and what ran in it
+keeps running until then. A followed run whose Warp tab you close reads "The terminal closed
+while this was running." once Warp lets the tab go.

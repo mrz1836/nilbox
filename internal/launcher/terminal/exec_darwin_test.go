@@ -40,7 +40,7 @@ func TestDefaultRegistryOnDarwin(t *testing.T) {
 
 	r := DefaultRegistry(&fakeExecutor{})
 
-	assert.Equal(t, []ID{ITerm2, TerminalApp}, r.IDs())
+	assert.Equal(t, []ID{ITerm2, TerminalApp, Warp}, r.IDs())
 
 	d, err := r.Get("iterm2")
 	require.NoError(t, err)
@@ -49,6 +49,10 @@ func TestDefaultRegistryOnDarwin(t *testing.T) {
 	d, err = r.Get("terminal")
 	require.NoError(t, err)
 	assert.Equal(t, TerminalApp, d.ID())
+
+	d, err = r.Get("warp")
+	require.NoError(t, err)
+	assert.Equal(t, Warp, d.ID())
 }
 
 func TestITermDriverRunsOsascript(t *testing.T) {
@@ -79,6 +83,40 @@ func TestTerminalAppDriverRunsOpen(t *testing.T) {
 	assert.Equal(t, "open", ex.name)
 	assert.Equal(t, []string{"-a", "Terminal", awkwardScriptPath}, ex.args)
 	assert.Greater(t, ex.deadline, time.Duration(0))
+}
+
+func TestWarpDriverRunsOpenByBundleID(t *testing.T) {
+	t.Parallel()
+
+	ex := &fakeExecutor{}
+
+	d, err := DefaultRegistry(ex).Get("warp")
+	require.NoError(t, err)
+	require.NoError(t, d.Open(t.Context(), awkwardScriptPath))
+
+	assert.Equal(t, 1, ex.calls)
+	assert.Equal(t, "open", ex.name)
+	assert.Equal(t, []string{"-b", "dev.warp.Warp-Stable", awkwardScriptPath}, ex.args)
+	assert.Greater(t, ex.deadline, time.Duration(0))
+	assert.LessOrEqual(t, ex.deadline, openTimeout)
+}
+
+func TestWarpDriverReportsWarpMissing(t *testing.T) {
+	t.Parallel()
+
+	ex := &fakeExecutor{
+		stderr: "LSCopyApplicationURLsForBundleIdentifier() failed while trying to determine the application " +
+			"with bundle identifier dev.warp.Warp-Stable.\n",
+		err: &exec.ExitError{},
+	}
+
+	d, err := DefaultRegistry(ex).Get("warp")
+	require.NoError(t, err)
+
+	err = d.Open(t.Context(), awkwardScriptPath)
+	require.ErrorIs(t, err, ErrTerminalOpen)
+	require.NotErrorIs(t, err, ErrAutomationDenied)
+	assert.Contains(t, err.Error(), "Warp: LSCopyApplicationURLsForBundleIdentifier() failed")
 }
 
 func TestDriverReportsAutomationDenied(t *testing.T) {
@@ -112,7 +150,7 @@ func TestDriverReportsOpenFailure(t *testing.T) {
 func TestDriversRejectUnsafePaths(t *testing.T) {
 	t.Parallel()
 
-	for _, id := range []ID{ITerm2, TerminalApp} {
+	for _, id := range []ID{ITerm2, Warp, TerminalApp} {
 		t.Run(string(id), func(t *testing.T) {
 			t.Parallel()
 
