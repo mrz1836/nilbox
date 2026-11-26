@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="740" viewBox="0 0 1320 740" role="img" aria-labelledby="hiw-title hiw-desc">
+  <title id="hiw-title">How Nilbox works</title>
+  <desc id="hiw-desc">GitHub's notifications from every repository arrive as one unranked pile. Nilbox, on your Mac, hides the bots, noise, and finished work and keeps only what needs you. One click opens an item in Claude Code or Codex, already in the right clone, worktree, account, model, and prompt. Nilbox reads GitHub with your own gh token, and your triage state, prompts, and caches never leave your Mac.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="740" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="760" cy="380" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.2"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <linearGradient id="button" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D2561F"/>
+    </linearGradient>
+    <linearGradient id="noise" x1="330" y1="0" x2="475" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AA3B2" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#9AA3B2" stop-opacity="0.04"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="card-clip"><rect width="1320" height="740" rx="28"/></clipPath>
+    <clipPath id="avatar"><circle r="15"/></clipPath>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="16"/>
+      <feOffset dy="14"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <marker id="head" viewBox="0 0 12 12" refX="6" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1.5L10.5 6L1 10.5Z" fill="#F5803F"/>
+    </marker>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .step { font-size: 13px; font-weight: 700; letter-spacing: 2.6px; fill: #E8743B; }
+    .title { font-size: 26px; font-weight: 700; fill: #F2F3F5; }
+    .foot { font-size: 16px; fill: #9AA3B2; }
+    .chip-noise rect { fill: #161A22; stroke: #262B35; }
+    .chip-noise text { font-size: 15.5px; fill: #6E7686; }
+    .chip-noise .k { font-weight: 600; fill: #7D8595; }
+    .chip-sig rect { fill: #1D222C; stroke: #E8743B; stroke-opacity: 0.6; }
+    .chip-sig text { font-size: 15.5px; fill: #E6E8EC; }
+    .chip-sig .k { font-weight: 700; fill: #F5803F; }
+    .card-title { font-size: 16px; font-weight: 700; fill: #E6E8EC; }
+    .card-sub { font-size: 13.5px; fill: #9AA3B2; }
+    .term { font-size: 15px; }
+    .tl { fill: #7D8595; }
+    .tv { fill: #E6E8EC; }
+    .flow { fill: none; stroke: #F5803F; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0.1 11; animation: flow 0.9s linear infinite; }
+    .pulse { animation: pulse 1.6s ease-in-out infinite; }
+    .blink { animation: blink 1.1s steps(1) infinite; }
+    @keyframes flow { to { stroke-dashoffset: -11.1; } }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .pulse, .blink { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#card-clip)">
+    <rect width="1320" height="740" fill="url(#bg)"/>
+    <rect width="1320" height="740" fill="url(#dots)"/>
+    <rect width="1320" height="740" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="739" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Your Mac boundary -->
+  <rect x="445" y="92" width="850" height="544" rx="22" fill="#E8743B" fill-opacity="0.025" stroke="#E8743B" stroke-opacity="0.38" stroke-width="1.5" stroke-dasharray="7 7"/>
+  <g transform="translate(1295 78)">
+    <text class="sans" x="0" y="0" text-anchor="end" font-size="12.5" font-weight="700" letter-spacing="2.4" fill="#C9744A">ON YOUR MAC</text>
+  </g>
+
+  <!-- Column headers -->
+  <g class="sans" text-anchor="middle">
+    <text class="step" x="195" y="126">01 · GITHUB</text>
+    <text class="title" x="195" y="160">Every repo you touch</text>
+    <text class="step" x="655" y="126">02 · NILBOX</text>
+    <text class="title" x="655" y="160">Only what needs you</text>
+    <text class="step" x="1105" y="126">03 · YOUR AGENT</text>
+    <text class="title" x="1105" y="160">One click to an agent</text>
+  </g>
+
+  <!-- Noise sinks toward "hidden" -->
+  <g fill="none" stroke="url(#noise)" stroke-width="1.6">
+    <path d="M335 204C400 204 420 536 475 536"/>
+    <path d="M329 290C395 290 420 536 475 536"/>
+    <path d="M341 333C400 333 420 536 475 536"/>
+    <path d="M343 419C400 419 425 536 475 536"/>
+    <path d="M331 462C395 462 425 536 475 536"/>
+    <path d="M337 548C400 548 430 536 475 536"/>
+  </g>
+
+  <!-- Signal flows into the inbox -->
+  <g fill="none" stroke="#E8743B" stroke-opacity="0.28" stroke-width="2">
+    <path d="M345 247C410 247 420 304 475 304"/>
+    <path d="M333 376C400 376 420 388 475 388"/>
+    <path d="M331 505C400 505 420 472 475 472"/>
+  </g>
+  <g>
+    <path class="flow" d="M345 247C410 247 420 304 475 304"/>
+    <path class="flow" d="M333 376C400 376 420 388 475 388"/>
+    <path class="flow" d="M331 505C400 505 420 472 475 472"/>
+  </g>
+
+  <!-- 01 · The pile -->
+  <g class="sans">
+    <g class="chip-noise" transform="translate(51 186)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">dependabot</tspan><tspan dx="7">bump lodash</tspan></text></g>
+    <g class="chip-sig" transform="translate(61 229)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="6" fill="#E8743B" filter="url(#glow)"/><circle cx="18" cy="18" r="4" fill="#F5803F"/><text x="34" y="23.5"><tspan class="k">review requested</tspan><tspan dx="7">api #412</tspan></text></g>
+    <g class="chip-noise" transform="translate(45 272)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">CI passed</tspan><tspan dx="7">web #87</tspan></text></g>
+    <g class="chip-noise" transform="translate(57 315)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">subscribed</tspan><tspan dx="7">infra #77</tspan></text></g>
+    <g class="chip-sig" transform="translate(49 358)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="6" fill="#E8743B" filter="url(#glow)"/><circle cx="18" cy="18" r="4" fill="#F5803F"/><text x="34" y="23.5"><tspan class="k">checks failing</tspan><tspan dx="7">web #88</tspan></text></g>
+    <g class="chip-noise" transform="translate(59 401)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">renovate</tspan><tspan dx="7">actions/cache</tspan></text></g>
+    <g class="chip-noise" transform="translate(47 444)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">closed</tspan><tspan dx="7">cli #301</tspan></text></g>
+    <g class="chip-sig" transform="translate(47 487)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="6" fill="#E8743B" filter="url(#glow)"/><circle cx="18" cy="18" r="4" fill="#F5803F"/><text x="34" y="23.5"><tspan class="k">mentioned you</tspan><tspan dx="7">docs #9</tspan></text></g>
+    <g class="chip-noise" transform="translate(53 530)"><rect width="284" height="36" rx="10"/><circle cx="18" cy="18" r="4" fill="#4A5160"/><text x="34" y="23.5"><tspan class="k">team mention</tspan><tspan dx="7">sdk #53</tspan></text></g>
+    <text class="foot" x="195" y="606" text-anchor="middle">200+ repos, one unranked pile</text>
+  </g>
+
+  <!-- 02 · The inbox -->
+  <g class="sans">
+    <g filter="url(#shadow)">
+      <rect x="475" y="186" width="360" height="380" rx="14" fill="#161A22"/>
+    </g>
+    <path d="M489 186H821A14 14 0 0 1 835 200V224H475V200A14 14 0 0 1 489 186Z" fill="#1D222C"/>
+    <rect x="475.5" y="186.5" width="359" height="379" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="475" y1="224.5" x2="835" y2="224.5" stroke="#2A303C"/>
+    <circle cx="495" cy="205" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="513" cy="205" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="531" cy="205" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <use href="#mark" transform="translate(616 196) scale(0.036)" fill="url(#glyph)"/>
+    <text x="638" y="210" font-size="14" font-weight="600" fill="#C4CAD4">Nilbox</text>
+
+    <text x="491" y="252" font-size="15" font-weight="700" fill="#E6E8EC">Needs you</text>
+    <rect x="787" y="237" width="32" height="22" rx="11" fill="#E8743B" fill-opacity="0.18"/>
+    <text x="803" y="253" text-anchor="middle" font-size="13.5" font-weight="700" fill="#F5803F">3</text>
+
+    <!-- Card 1: launching -->
+    <rect x="491" y="268" width="328" height="72" rx="11" fill="none" stroke="#E8743B" stroke-width="2" stroke-opacity="0.55" filter="url(#glow)"/>
+    <rect x="491" y="268" width="328" height="72" rx="11" fill="#222834" stroke="#E8743B" stroke-opacity="0.7"/>
+    <rect x="501" y="282" width="4" height="44" rx="2" fill="#E8743B"/>
+    <g transform="translate(531 304)"><g clip-path="url(#avatar)"><circle r="15" fill="#8FA4C4"/><circle cy="-4" r="5.5" fill="#0F1218" fill-opacity="0.35"/><ellipse cy="13" rx="10" ry="8" fill="#0F1218" fill-opacity="0.35"/></g></g>
+    <text class="card-title" x="556" y="299">Review requested</text>
+    <text class="card-sub mono" x="556" y="321">acme-org/api #412</text>
+    <rect x="735" y="289" width="72" height="30" rx="15" fill="url(#button)"/>
+    <path d="M752 298.5L760 304L752 309.5Z" fill="#1A0E06"/>
+    <text x="766" y="309" font-size="14" font-weight="700" fill="#1A0E06">Open</text>
+
+    <!-- Card 2 -->
+    <rect x="491" y="352" width="328" height="72" rx="11" fill="#1D222C" stroke="#2A303C"/>
+    <rect x="501" y="366" width="4" height="44" rx="2" fill="#E8743B"/>
+    <g transform="translate(531 388)"><g clip-path="url(#avatar)"><circle r="15" fill="#3DBE8B"/><circle cy="-4" r="5.5" fill="#0F1218" fill-opacity="0.35"/><ellipse cy="13" rx="10" ry="8" fill="#0F1218" fill-opacity="0.35"/></g></g>
+    <text class="card-title" x="556" y="383">Your checks failed</text>
+    <text class="card-sub mono" x="556" y="405">acme-org/web #88</text>
+    <circle cx="793" cy="388" r="11" fill="#F05D5E" fill-opacity="0.16"/>
+    <path d="M789 384L797 392M797 384L789 392" stroke="#F05D5E" stroke-width="2.2" stroke-linecap="round"/>
+
+    <!-- Card 3 -->
+    <rect x="491" y="436" width="328" height="72" rx="11" fill="#1D222C" stroke="#2A303C"/>
+    <rect x="501" y="450" width="4" height="44" rx="2" fill="#E8743B"/>
+    <g transform="translate(531 472)"><g clip-path="url(#avatar)"><circle r="15" fill="#E9B44C"/><circle cy="-4" r="5.5" fill="#0F1218" fill-opacity="0.35"/><ellipse cy="13" rx="10" ry="8" fill="#0F1218" fill-opacity="0.35"/></g></g>
+    <text class="card-title" x="556" y="467">Mentioned you</text>
+    <text class="card-sub mono" x="556" y="489">acme-org/docs #9</text>
+    <text x="805" y="477" text-anchor="end" font-size="14" font-weight="700" fill="#F5803F">@you</text>
+
+    <!-- Hidden -->
+    <rect x="491.5" y="520.5" width="327" height="31" rx="9.5" fill="none" stroke="#3A4150" stroke-dasharray="4 4"/>
+    <text x="655" y="541" text-anchor="middle" font-size="14" fill="#7D8595"><tspan font-weight="700" fill="#9AA3B2">6 hidden</tspan>  ·  bots, CI, subscriptions</text>
+
+    <text class="foot" x="655" y="606" text-anchor="middle">Bots, noise, and done stay out of sight</text>
+  </g>
+
+  <!-- 1 click -->
+  <path d="M807 304H921" fill="none" stroke="#E8743B" stroke-width="8" stroke-opacity="0.35" filter="url(#glow)"/>
+  <path d="M807 304H919" fill="none" stroke="#E8743B" stroke-opacity="0.45" stroke-width="2.5" marker-end="url(#head)"/>
+  <path class="flow" d="M807 304H917"/>
+  <text class="mono" x="871" y="289" text-anchor="middle" font-size="13" font-weight="700" fill="#F5803F">1 click</text>
+
+  <!-- 03 · The agent -->
+  <g>
+    <g filter="url(#shadow)">
+      <rect x="935" y="186" width="340" height="380" rx="14" fill="#0C0E13"/>
+    </g>
+    <path d="M949 186H1261A14 14 0 0 1 1275 200V224H935V200A14 14 0 0 1 949 186Z" fill="#161A22"/>
+    <rect x="935.5" y="186.5" width="339" height="379" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="935" y1="224.5" x2="1275" y2="224.5" stroke="#2A303C"/>
+    <circle cx="955" cy="205" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="973" cy="205" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="991" cy="205" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <text class="mono" x="1115" y="210" text-anchor="middle" font-size="13" fill="#9AA3B2">api · pr-412</text>
+
+    <g class="mono term">
+      <g transform="translate(965 263)"><circle r="9" fill="#3DBE8B" fill-opacity="0.16"/><path d="M-4 0.5L-1 3.5L4.5-2.5" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <text x="985" y="268"><tspan class="tl">clone</tspan><tspan class="tv" x="1077">~/projects/api</tspan></text>
+      <g transform="translate(965 299)"><circle r="9" fill="#3DBE8B" fill-opacity="0.16"/><path d="M-4 0.5L-1 3.5L4.5-2.5" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <text x="985" y="304"><tspan class="tl">worktree</tspan><tspan class="tv" x="1077">pr-412</tspan></text>
+      <g transform="translate(965 335)"><circle r="9" fill="#3DBE8B" fill-opacity="0.16"/><path d="M-4 0.5L-1 3.5L4.5-2.5" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <text x="985" y="340"><tspan class="tl">account</tspan><tspan class="tv" x="1077">work</tspan></text>
+      <g transform="translate(965 371)"><circle r="9" fill="#3DBE8B" fill-opacity="0.16"/><path d="M-4 0.5L-1 3.5L4.5-2.5" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <text x="985" y="376"><tspan class="tl">model</tspan><tspan class="tv" x="1077">opus · high</tspan></text>
+      <g transform="translate(965 407)"><circle r="9" fill="#3DBE8B" fill-opacity="0.16"/><path d="M-4 0.5L-1 3.5L4.5-2.5" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+      <text x="985" y="412"><tspan class="tl">prompt</tspan><tspan class="tv" x="1077">review-pr</tspan></text>
+
+      <line x1="957" y1="440.5" x2="1253" y2="440.5" stroke="#1F242E"/>
+      <text x="957" y="480"><tspan fill="#F5803F" font-weight="700">$</tspan><tspan class="tv" dx="10">claude</tspan></text>
+      <circle class="pulse" cx="963" cy="511" r="5" fill="#F5803F"/>
+      <text x="979" y="516" fill="#9AA3B2">Reviewing #412…</text>
+      <rect class="blink" x="1131" y="502" width="9" height="18" fill="#E6E8EC" fill-opacity="0.85"/>
+    </g>
+
+    <text class="sans foot" x="1105" y="606" text-anchor="middle">Claude Code or Codex, ready to go</text>
+  </g>
+
+  <!-- Privacy line -->
+  <g class="sans">
+    <g transform="translate(345 684)" fill="none" stroke="#9AA3B2" stroke-width="1.8">
+      <rect x="0" y="0" width="14" height="11" rx="2.5" fill="#9AA3B2" fill-opacity="0.2"/>
+      <path d="M3 0V-3.5A4 4 0 0 1 11-3.5V0"/>
+    </g>
+    <text x="370" y="695" font-size="16" fill="#7D8595">Reads GitHub with <tspan fill="#C4CAD4" font-weight="600">your own gh token</tspan>  ·  triage state, prompts, and caches <tspan fill="#C4CAD4" font-weight="600">never leave your Mac</tspan></text>
+  </g>
+</svg>

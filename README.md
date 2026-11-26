@@ -138,29 +138,9 @@ hooks and scripts too. Your triage state stays on your machine and never touches
 <br/>
 <br/>
 
-```
-                                   YOUR MAC
-  ┌─────────────────────────────────────────────────────────────────────────┐
-  │                                                                         │
-  │  ┌──────────────────────────────┐        ┌───────────────────────────┐  │
-  │  │  NILBOX                      │        │  iTerm2 / Terminal.app    │  │
-  │  │                              │        │                           │  │
-  │  │  Inbox      triage · review  │  Open  │  worktree pr-42 of        │  │
-  │  │  Worktrees  track · clean up │   in   │  example-repo             │  │
-  │  │  Prompts    your templates   │ Claude │  claude  or  codex        │  │
-  │  │  Scripts    release · hooks  │───────►│    profile · model ·      │  │
-  │  │                              │or Codex│    effort · your prompt   │  │
-  │  │                              │        │                           │  │
-  │  │  local SQLite, never sent    │        └───────────────────────────┘  │
-  │  └───────────────▲──────────────┘                                       │
-  │                  │                                                      │
-  └──────────────────┼──────────────────────────────────────────────────────┘
-                     │  GraphQL + REST reads, and the edits you ask for
-                     │  your gh CLI token, held in memory
-            ┌────────┴─────────┐
-            │  api.github.com  │
-            └──────────────────┘
-```
+<p align="center">
+  <img src="docs/images/how-it-works.svg" width="100%" alt="How Nilbox works: GitHub's notifications from every repository arrive as one unranked pile; Nilbox, on your Mac, hides the bots and noise and keeps only what needs you; one click opens an item in Claude Code or Codex, already in the right clone, worktree, account, model, and prompt. Nilbox reads GitHub with your own gh token, and your triage state, prompts, and caches never leave your Mac.">
+</p>
 
 <br/>
 
