@@ -56,6 +56,15 @@ sessions that ran at its time, launched by then and not ended before, give or ta
 s), keeping a later event over an earlier one, and emits `event.SessionsUpdated` once when any
 changed.
 
+The bound `Focus` (Show in terminal) brings a running session's tab forward, for a session with a
+PID and no background run (`Session.CanFocus`). It reads the tty of the session's process first
+(`TTY`, `ps -o tty=`), which proves the session runs in a terminal, then hands its `Focuser`
+(core's `terminalFocuser` over the terminal registry) the terminal the session was launched in,
+that tty, and the PID: `Focus(ctx, terminal, tty, pid)`. iTerm2 and Terminal.app find the tab
+by its tty, Warp by the focus link in the PID's environment (see
+[internal/launcher](launcher.md)), and core words each failure for the window, Warp's
+`ErrNoFocusLink` naming the version that can.
+
 `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer. The bound
 `Forget` deletes an ended session's record on the user's click (the panel's ×), refusing one still
 running (`ErrLive`; failed and unknown count as running) and counting one already gone as done, and

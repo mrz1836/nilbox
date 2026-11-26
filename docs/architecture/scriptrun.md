@@ -75,3 +75,12 @@ in one transaction with the read its change is given, as a release's follow of i
 and `Ended` lists a kind's ended runs, from which that follow resumes. The history keeps 200 runs
 and 512 MB of logs, and cuts a long log to its head and tail; Run again works the command out afresh
 from its source, never for a release or a tool's update.
+
+`OpenInTerminal` opens the folder through the engine's `TerminalOpener` (its
+`OpenFolder(ctx, name, dir)`, core's `terminalRuns`), as the package's `OpenFolder` does for
+Hooks' and Release's clone, under `FolderScript`: Warp opens the folder itself and no script is
+written, and any other terminal gets the script `name` names ([internal/launcher](launcher.md)).
+A run in the terminal is followed the same in every terminal, but a closed Warp tab keeps its
+shell about 60 seconds, so such a run ends as "The terminal closed while this was running."
+that much later; one whose script the terminal never ran (Warp before its welcome is finished)
+ends after `pidWait` (2 minutes) as "The terminal didn't start the run."

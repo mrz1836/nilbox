@@ -308,8 +308,9 @@ aside, and what [wakes a snooze early](snooze-dismiss-pin.md#waking-a-snooze-ear
 [review replies](prompts.md#review-replies)); under **Agents**, in the order you set them up,
 repositories (the clone root, the other [repository locations](launching-a-session.md#repository-locations), and the
 [launch defaults](launch-defaults.md) for orgs and repositories), [coding agents and
-profiles](agents-and-profiles.md), launching (the terminal, the default coding agent, each
-agent's default profile, the default prompt for pull requests, for issues, and for each
+profiles](agents-and-profiles.md), launching ([the
+terminal](launching-a-session.md#the-terminal), the default coding agent, each agent's default
+profile, the default prompt for pull requests, for issues, and for each
 situation a pull request can be in, the worktree default, following agent sessions, and whether an agent may sign in with an [API key from your
 shell](launching-a-session.md)), trust (the [trusted bots](outside-contributors.md)),
 [sensitive files](sensitive-files.md), and worktrees (whether to [clean up worktrees after

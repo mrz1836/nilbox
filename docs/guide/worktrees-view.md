@@ -57,7 +57,8 @@ session the app launched there), and the age of its last commit. Then comes at m
 open item the inbox lists whose own worktree it is (linked by its record, its name, or the
 branch made for it), **Open in Claude** or **Open in Codex**, which opens the launch options
 and, from their **Open**, resumes it. Last come **›_**, which opens the worktree in the
-terminal your launches open in, **⋯**, and the chevron.
+terminal your launches open in ([Open in terminal](launching-a-session.md#open-in-terminal)),
+**⋯**, and the chevron.
 
 ## The drawer
 
@@ -77,10 +78,10 @@ session in it, its launches, who made it (Nilbox, a routine, Claude Code under a
 removal would delete. The first 12 files show at once, from the listing; the drawer reads the rest
 from local git as it opens, with the commits and the base, once per listing (a read that failed is
 tried again when the drawer opens again), and lists at most 200 files and 200 commits (the rest are
-in Terminal, in `git status` and `git log`). The drawer's footer has **Open in Terminal**, **Reveal
-in Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force
-remove…** for a worktree with uncommitted files, as the drawer last read them, each saying why when
-it can't run.
+in your terminal, in `git status` and `git log`). The drawer's footer has **Open in Terminal**,
+**Reveal in Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or
+**Force remove…** for a worktree with uncommitted files, as the drawer last read them, each saying
+why when it can't run.
 
 **The ⋯ menu** holds everything a row offers: **Open in Terminal**, **Reveal in Finder**, **Copy
 path**, **Copy branch**, the item on GitHub, **Unlock** for a lock an ended session left,

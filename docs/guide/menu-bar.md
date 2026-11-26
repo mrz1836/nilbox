@@ -13,7 +13,8 @@ menu:
 - Agent sessions waiting for your approval or input, under **Waiting for you**, such as
   **example-repo #12 · Claude needs approval**, or, for an upgrade from [Deps](deps.md),
   **example-repo · Upgrade dependencies · Claude needs approval**. Click one to bring its
-  terminal tab forward (see [Following a session](following-a-session.md)).
+  terminal tab forward (see [Show in terminal](following-a-session.md#show-in-terminal)), or its
+  item in the window when the tab can't be shown.
 - Up to five items from each list that need you, under the list's name, **Review requested**
   or **Yours** (a native section heading on macOS 14 and later), and **N more…** for the rest. Hover an item for its full title. Click it to bring the window forward with the
   item in view: its list opens at the tab that holds it, and its row scrolls into view,

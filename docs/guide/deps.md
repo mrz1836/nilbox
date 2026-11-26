@@ -110,9 +110,9 @@ indirect*, or *48 deps · 12 dev*, with any peer and optional ones), the subject
 last changed it and its age, and a **Reveal in Finder** button that shows that manifest. A manifest over 1 MiB,
 one that doesn't parse, or one whose history couldn't be read says so in amber under its line.
 The clone's workspace files follow (*Workspaces: go.work · pnpm-workspace.yaml*), and at its foot
-**Open in Terminal** opens your terminal in the clone, running nothing, **Mark up to date** (or
-**Unmark up to date**) marks it as its row's check does, and **Upgrade dependencies…** opens the
-Upgrade dialog.
+[**Open in Terminal**](launching-a-session.md#open-in-terminal) opens your terminal in the clone,
+running nothing, **Mark up to date** (or **Unmark up to date**) marks it as its row's check does,
+and **Upgrade dependencies…** opens the Upgrade dialog.
 
 **The Upgrade dialog** starts a coding agent on the repository itself rather than on a pull
 request or an issue. It is the launch options' own dialog, as an item's **Launch options…** opens

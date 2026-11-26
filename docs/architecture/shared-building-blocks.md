@@ -32,6 +32,11 @@ Services share their building blocks rather than keep copies:
 - `internal/procs` lists the running processes' working directories (`lsof` on macOS, `/proc` on
   Linux), which tell a worktree some session is in, reads one process's whole command line and
   whether it has a terminal (`DetailOf`, from the kernel's process table, never its environment),
+  reads one variable of a process's environment and nothing else of it (`EnvOf(pid, name)`, for
+  Warp's focus link: `kern.procargs2` on macOS, parsed by the pure, fuzzed `ParseProcEnv`, which
+  skips the arguments so a `NAME=value` among them never counts; `/proc/<pid>/environ` on Linux;
+  false elsewhere, and for a platform binary such as a shell, whose environment macOS hides; the
+  buffer read is cleared before it returns, since the environment holds the process's secrets),
   tells a process the process manager adopted (`Adopted`), reads a process's start time (`StartedAt`),
   which tells a process from a stranger that reused its PID, and probes a PID as running, gone, or
   unknown (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's

@@ -15,3 +15,14 @@ the assignee Finder both sheets offer people to assign through (`assignees.Finde
 People directory, adapted by `assigneesDirectory` in `adapters_assignees.go`), so a
 repository's assignable users are read at most once at a time, whichever sheet asks.
 Every `internal/*` package is plain Go, built and tested on Linux without CGO.
+
+The terminal reaches the services through two adapters over the launcher's one registry.
+`terminalRuns` (`adapters_runs.go`) writes a followed run's script into the launch folder and
+opens it through `launcher.CommandOpener`, and its `OpenFolder`, which every page's Open in
+terminal goes through (the runs', Hooks', and Release's directly, the Worktrees view's and Deps'
+through `worktreeTerminal`), tries `CommandOpener.OpenFolder` first, so a terminal that opens a
+folder itself (Warp) gets no script, and writes and opens the script that changes into the
+folder and starts the login shell only when it can't. `terminalFocuser` (`adapters_sessions.go`)
+builds the `terminal.Tab` for the sessions' `Focuser` and words its errors: no such tab, no Warp
+focus link (naming Warp v0.2026.05.27), and a terminal that can't show a tab. See
+[internal/launcher](launcher.md).

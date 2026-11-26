@@ -50,17 +50,15 @@ worktree**, or **in the clone**), what came of the item on GitHub while it ran, 
 used, the folder, anything its launch worked around, and the start of what the agent last said. Each
 has its actions:
 
-- **Show in terminal** brings forward the tab the session runs in, found by its terminal
-  device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
-  Terminal.app asks for it the first time.
-- **Resume** reopens a session that ended, in the same folder and terminal, with `claude
-  --resume=<id>` or `codex resume <id> <flags> --`, and the item's launch settings as they now
-  resolve for the agent and profile it ran with. The item must still be in the inbox and its
-  worktree still on disk; the resumed session is a new one on the card. It asks first, as a
-  launch does, when a session is running in that folder, and when the pull request's
-  [files](sensitive-files.md), as last checked, change agent configuration; it asks GitHub
-  nothing. A conversation that already runs again, resumed from the app or outside it, offers
-  no Resume.
+- **Show in terminal** brings forward the tab the session runs in ([below](#show-in-terminal)).
+- **Resume** reopens a session that ended, in the same folder and the terminal chosen in Settings
+  → Launching, with `claude --resume=<id>` or `codex resume <id> <flags> --`, and the item's
+  launch settings as they now resolve for the agent and profile it ran with. The item must still
+  be in the inbox and its worktree still on disk; the resumed session is a new one on the card.
+  It asks first, as a launch does, when a session is running in that folder, and when the pull
+  request's [files](sensitive-files.md), as last checked, change agent configuration; it asks
+  GitHub nothing. A conversation that already runs again, resumed from the app or outside it,
+  offers no Resume.
 - **Show in Finder** shows the folder the session runs in, its worktree or the clone, whether or
   not it still runs, and says so when the folder is gone.
 - **Copy session ID** copies the agent's own ID, to resume or look the session up yourself.
@@ -70,6 +68,30 @@ has its actions:
   may want it. A session still running, or one that failed or whose status is unavailable,
   can't be removed. The card then follows the next session that ended within the day, or
   none.
+
+## Show in terminal
+
+**Show in terminal**, on the card (**Show terminal** while the session waits on you), in the
+panel, and in the [menu bar](#the-menu-bar-and-banners), brings forward the tab the session runs
+in, with its window, in the terminal it was launched in. It first reads the session's terminal
+device (`ps -o tty=`), which shows the session still runs in a terminal; then each terminal
+finds the tab its own way:
+
+- **iTerm2 and Terminal.app** find the tab by that device, through AppleScript. iTerm2 uses the
+  Automation permission you gave at the first launch; Terminal.app asks for it the first time.
+- **Warp** has no AppleScript, so the app reads one environment variable, `WARP_FOCUS_URL`, from
+  the session's agent process: the link (`warp://session/` and 32 hex digits) Warp exports in
+  every shell it starts, which the agent inherits from its tab. It reads it only when you click,
+  keeps and logs nothing else of that environment, and opens the link in Warp, which brings the
+  tab's window forward and selects its pane. No permission is asked.
+
+Warp exports the link from v0.2026.05.27 on, so a session launched in an older Warp can't be
+shown, and Show in terminal says so: *Couldn't tell which Warp tab runs this session. Warp
+v0.2026.05.27 or newer can; update Warp, and sessions launched afterwards can be shown.* macOS
+hides the environment of its own programs, such as a shell, which reads the same way, but an
+agent is never one of them. For about a minute after you close a Warp tab, Warp
+[keeps it](launching-a-session.md#warp), and Show in terminal only brings Warp forward and says
+nothing, since Warp can't tell the tab is gone.
 
 ## How it is read
 

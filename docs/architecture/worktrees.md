@@ -386,8 +386,9 @@ window), or show it in Finder with `open -R` (off macOS there is no `Revealer`, 
 fails with `ErrNoFinder`, likewise worded). The package never imports `internal/scriptrun`.
 Core builds the worktree service before the terminal, which needs the launcher, which needs
 the worktrees, so the service's `FolderOpener` is a core adapter (`worktreeTerminal`) filled
-in once the terminal is built, before any work starts, which opens the folder as
-`scriptrun.FolderScript`.
+in once the terminal is built, before any work starts, which opens the folder as every page's
+Open in terminal does: in Warp itself, with no script, and in any other terminal through a
+script named `scriptrun.FolderScript` (see [internal/launcher](launcher.md)).
 
 ## In use: the running processes (`sessions.go`)
 

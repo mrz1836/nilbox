@@ -18,22 +18,55 @@ session's (`WriteLaunchFiles`, with its prompt file) and a followed run's (`term
 alike (named `pr-`, `issue-`, or `run-<number>`, or a repository's
 launch's `repo-<YYYYMMDD>`, pruned after seven days by those prefixes alone); a followed run's
 script runs its command under `script(1)`, recording its output, its shell's PID, and its exit
-status in the run's files. `launcher.CommandOpener`, which core hands the runs and never binds,
-opens only such a script, in the terminal chosen in Settings.
+status in the run's files. `launcher.CommandOpener`, which core hands the runs and never binds
+(so the window can open neither a file nor a folder), opens such a script in the terminal chosen
+in Settings, and opens that terminal in a folder where its driver can do so itself (below).
 
 The macOS drivers: iTerm2's types the quoted script path into a new tab with AppleScript
 (`osascript`, which needs macOS's Automation permission); Terminal.app's runs
 `open -a Terminal <script>`; Warp's runs `open -b dev.warp.Warp-Stable <script>`, by bundle ID so
 neither Warp Preview nor another app named Warp answers. Warp has no AppleScript dictionary, and
 runs an executable `.command` file it is asked to open in a new tab of its frontmost window (a new
-window when none is open), starting the tab in the script's folder and typing the escaped path
-once its shell is ready, so a followed run's script is its own process, as in iTerm2. Neither
-`open` asks for a permission, and neither can tell when the terminal drops the script: Warp drops
-every open until its first-run welcome is finished, and `open` still succeeds. `terminal.All`
-lists the terminals in the order a choice prefers them, iTerm2, Warp, Terminal;
+window when none is open; a Warp that is quit starts and restores its last window first),
+starting the tab in the script's folder and typing the escaped path once its shell is ready, so a
+followed run's script is its own process, as in iTerm2. Neither `open` asks for a permission, and
+neither can tell when the terminal drops the script: Warp drops every open, a folder's and a
+link's too, until its first-run welcome is finished, and `open` still succeeds. A Warp before
+v0.2026.05.13 opens the script in its editor, which nothing can tell either. Warp's driver is
+`warp.go` (the pure arguments and the focus link's check), `exec_darwin.go` (`Open` and `Focus`),
+and `folder_darwin.go` (`OpenFolder`); no other OS registers a driver yet (`drivers_other.go`),
+so Warp, like the others, is macOS's alone. `terminal.All` lists the terminals in the order a
+choice prefers them, iTerm2, Warp, Terminal, and `terminal.Valid` reports one of them;
 `Registry.Installed` (a bundle in `/Applications` or `~/Applications`, Terminal.app always)
-lists them in that order, so the setup moves a terminal that isn't installed to the first one that
-is, and `settings` accepts exactly `terminal.Valid`'s IDs.
+lists them in that order, so the setup moves a terminal that isn't installed to the first one
+that is, Autopilot's readiness reads the same, and `settings` accepts exactly `terminal.Valid`'s
+IDs.
+
+Show in terminal is `Registry.Focus(ctx, id, terminal.Tab)`, for a driver that is also a
+`terminal.Focuser` (`Focus(ctx, Tab)`; any other is `ErrNoFocus`). A `Tab` carries the session's
+tty and its agent's PID (`Tab{TTY, PID}`). iTerm2's and Terminal.app's `Focus` take the tty
+(`validateTTY`) and run an AppleScript that walks their windows' tabs for it, `ErrNoSuchTab` when
+none runs on it. Warp has no tty lookup: its `Focus` reads `WARP_FOCUS_URL`, the link Warp
+(v0.2026.05.27 and newer) exports in every shell and the agent inherits, from the PID's
+environment (`procs.EnvOf`, that one variable alone, through the driver's `env`), takes only
+`^warp://session/[0-9a-f]{32}$` (`warpFocusLink`), and runs `open -b dev.warp.Warp-Stable <link>`,
+which brings the tab's window forward and selects its pane, with no permission. An invalid PID, a
+process with no link (an older Warp, a session not launched in Warp, a platform binary whose
+environment macOS hides), or any other value is `ErrNoFocusLink`, whose text never repeats the
+value, and nothing is opened. A closed tab, which Warp keeps about 60 seconds, still has a link,
+and opening it only brings Warp forward while `open` succeeds, so nothing can tell.
+
+Open in terminal is `CommandOpener.OpenFolder(ctx, dir) (opened bool, err error)`. Whichever
+terminal is chosen, it checks the folder first (`terminal.CheckFolder`: absolute, no control
+character, and a directory now, or `ErrInvalidFolder`, which a folder gone since its page listed
+it turns into "<folder> isn't there anymore.", with `~` for home), then reads the chosen terminal
+and, when its driver is a `terminal.FolderOpener`, opens the folder through it and reports true.
+Warp's is: `open -b dev.warp.Warp-Stable <dir>`, after `validateFolder` again, opens a new tab
+whose own shell starts in the folder, set up by Warp as any of its tabs, with its input editor
+and blocks. iTerm2's and Terminal.app's aren't, so it returns false with no error, and the caller
+(core's `terminalRuns`) writes the script that changes into the folder and execs the user's
+login shell, and opens it. Warp gets no such script because it runs it as one long command in
+its tab, whose nested shell has none of Warp's blocks.
 
 `Resume` takes `ResumeRequest.Access`: a background run's session resumes under its run's fence
 (`ResumableSession.Fence`, the preset and the run's folder), taken over (`Fence.TakenOver`,

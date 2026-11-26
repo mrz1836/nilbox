@@ -24,8 +24,10 @@
   issue cards show [the projects each issue is in](../guide/inbox-cards.md#issue-projects); `gh` doesn't grant it by
   default, so add it with `gh auth refresh -s read:project`.
 - To launch sessions: the **`claude`** CLI (Claude Code), the **`codex`** CLI (OpenAI Codex),
-  or both, and **iTerm2** (the default terminal), **Warp** (v0.2026.05.13 or newer), or
-  Terminal.app. **Settings → Profiles** shows which agents are installed.
+  or both, and **iTerm2** (the default terminal), **Warp** (Stable, v0.2026.05.13 or newer, and
+  v0.2026.05.27 or newer for Show in terminal, with its first-run welcome finished; see
+  [Warp](../guide/launching-a-session.md#warp)), or Terminal.app. **Settings → Profiles** shows
+  which agents are installed.
 
 The Wails CLI is never installed. The targets run it with `go run` at the version `go.mod`
 pins.

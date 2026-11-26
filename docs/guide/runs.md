@@ -12,7 +12,9 @@ all go through one runner, which keeps a record of each run and its whole output
   script in the launch folder, as a session does. The script runs the command under `script(1)`,
   so it has a real terminal (colors, a passphrase prompt) while its output is copied into the same
   log, and leaves the shell's process ID and the command's exit status beside it, which is how the
-  app follows a run it didn't start itself.
+  app follows a run it didn't start itself. The script opens as a launch's does ([The
+  terminal](launching-a-session.md#the-terminal)), and is followed alike in iTerm2, Warp, and
+  Terminal.app.
 - **One run per clone, and none queued.** A run holds its clone while it goes. A second run in that
   clone, or a launch that needs a new worktree there, fails at once and names the run, and the
   worktree cleanup skips the clone until its next pass. A tool updating itself holds the folder
@@ -78,14 +80,17 @@ all go through one runner, which keeps a record of each run and its whole output
   closes the panel unless the run in it is still going. The agents' runs stay: **Clear
   history…** in [Settings → Autopilot](autopilot/settings.md) forgets those.
 - **The run panel.** A run's panel shows its status, its result, and its log as it comes
-  (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
-  your terminal in the run's folder and runs nothing there; **Show the log file** shows the log
-  in Finder; **Copy log** copies the log, and **Run again**, where the kind allows it, works the
-  command out afresh and starts it. **Stop** shows while a run goes in the app: it is off, with
-  the reason beside it, while the run's kind refuses it (a release while magex switches branches
-  and pulls, a pull for its whole run), and asks
-  first, in the kind's own words, while stopping would leave something behind. A run in your
-  terminal has no **Stop**: the panel says to press Control-C there.
+  (colors kept, the newest 2,000 lines, earlier output on request).
+  [**Open in terminal**](launching-a-session.md#open-in-terminal) opens your terminal in the run's
+  folder and runs nothing there; **Show the log file** shows the log in Finder; **Copy log**
+  copies the log, and **Run again**, where the kind allows it, works the command out afresh and
+  starts it. **Stop** shows while a run goes in the app: it is off, with the reason beside it,
+  while the run's kind refuses it (a release while magex switches branches and pulls, a pull for
+  its whole run), and asks first, in the kind's own words, while stopping would leave something
+  behind. A run in your terminal has no **Stop**: the panel says to press Control-C there.
+  Closing its tab or window ends it too, but a closed Warp tab [lives on for about a
+  minute](launching-a-session.md#warp), and the run with it, before the panel reads *The
+  terminal closed while this was running.*
 - **A run that fails tells you.** Once a run's end is recorded as failed, or as stopped at its
   time limit, the [notification history](menu-bar.md) gets one **Run failed**
   entry for it, with a banner while that kind is on: *Checks failed: Checks · all files* under

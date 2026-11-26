@@ -54,23 +54,41 @@ each lets a key from your shell through for that
 agent's launches, billed to that key. The same rule decides the environment of every launch: from
 the launch menu, a resume, and an Autopilot routine's. Nothing logs a variable's value.
 
+## The terminal
+
 The terminal then runs the script:
 
 - **iTerm2** (the default) opens a new tab in the frontmost window, or a new window when none is
   open.
-- **Warp** opens a new tab in its frontmost window, or a new window when none is open, and
-  starts it in the launch script's folder, which the script then leaves for the worktree. Warp
-  opens it by its bundle ID (`open -b dev.warp.Warp-Stable`), so Warp Preview never answers.
-  The tab's title, and its prompt once the agent exits, show the launch folder rather than the
-  worktree: `cd` there, or use **Open in terminal**, to keep working. Warp v0.2026.05.13 or
-  newer runs the script; an older Warp opens it in its editor instead.
+- **Warp** opens a new tab in its frontmost window, or a new window when none is open. When Warp
+  is quit, it starts, restores its last window, and adds the tab there. What differs in Warp is
+  [below](#warp).
 - **Terminal.app** opens a new window (`open -a Terminal`).
 
-Setup picks the first one installed, in that order: iTerm2, then Warp, then Terminal.
+**Resume**, **Take over**, an Autopilot routine's run in your terminal, and a [run](runs.md)
+that goes in your terminal open the same way.
 
-Choose the terminal under **Settings → Launching**, and the clone root (the directory whose
-children are your clones, initially `~/projects`) under **Settings → Repositories**. A launch
-whose agent isn't installed says so, as in "Codex isn't installed (codex wasn't found)."
+The first-run setup picks the first one installed, in that order: iTerm2, then Warp, then
+Terminal, and says so, as in *iTerm2 isn't installed, so launches open in Warp.* A terminal you
+choose in the setup never moves. iTerm2 and Warp count as installed when `iTerm.app` or
+`Warp.app` is in `/Applications` or `~/Applications`, and Terminal.app always is; Autopilot's
+[This Mac](autopilot/this-mac.md) checks the terminal the same way.
+
+Choose the terminal under **Settings → Launching**, which lists the three in that order
+(searching Settings for *Warp* finds it), and the clone root (the directory whose children are
+your clones, initially `~/projects`) under **Settings → Repositories**. A launch whose agent
+isn't installed says so, as in "Codex isn't installed (codex wasn't found)."
+
+### Open in terminal
+
+**Open in terminal** (on the [Worktrees view](worktrees-view.md)'s rows, drawer, and ⋯ menu, a
+[run](runs.md)'s panel, [Hooks](hooks.md), [Release](release.md), and [Deps](deps.md)) opens the
+chosen terminal in a folder and runs nothing there. In iTerm2 and Terminal.app, a small script
+in the launch folder changes into the folder and starts your login shell. In Warp, nothing runs
+and no script is written: Warp opens the folder itself, in a new tab whose own shell starts
+there, with Warp's input editor and blocks. Warp would run that script's shell as one long
+command, with no blocks. With any terminal, a folder gone since the page listed it is refused,
+as in *~/projects/example-repo isn't there anymore.*
 
 ## Repository locations
 
@@ -296,19 +314,41 @@ wants access to control “iTerm”", followed by the app's reason: Nilbox opens
 a tool to the Trash when you choose to. Choose **Allow**. Warp and Terminal.app launches never
 ask. An Autopilot routine's run in your terminal, and **Take over**, open
 iTerm2 the same way, so allow it before you leave a routine to run while you're away.
+[Show in terminal](following-a-session.md#show-in-terminal) uses the same permission in iTerm2,
+asks for its own the first time in Terminal.app, and needs none in Warp.
 
 If you chose **Don't Allow**, the launch fails with a message that says so. Change it in
 **System Settings → Privacy & Security → Automation**, under Nilbox. A build from source asks,
 and is listed there, as Nilbox Dev, apart from the release.
 
-## Warp's welcome comes first
+## Warp
 
-Until Warp's first-run welcome is finished, Warp quietly drops every script it is asked to
-open, and macOS still reports the open as done, so Nilbox can't tell: the launch says it opened,
-but no tab appears. Open Warp once and finish the welcome (it needs no sign-in) before your
-first launch; the setup says so when you choose Warp. A launch made before then isn't opened
-later, so launch it again.
+Nilbox supports Warp Stable on macOS, and opens it by its bundle ID
+(`open -b dev.warp.Warp-Stable <script>`), so Warp Preview never answers. Warp asks for no macOS
+permission, for a launch or anything else.
 
-Warp keeps a closed tab for about a minute, so it can be reopened with ⇧⌘T, and what ran in it
-keeps running until then. A followed run whose Warp tab you close reads "The terminal closed
-while this was running." once Warp lets the tab go.
+- **Which Warp.** Warp v0.2026.05.13 or newer runs a launch's script; an older Warp opens the
+  script in its editor instead, and nothing runs. [Show in
+  terminal](following-a-session.md#show-in-terminal) needs v0.2026.05.27 or newer, and a session
+  launched in such a Warp.
+- **The tab's folder.** Warp starts the tab in the launch script's folder, which the script then
+  leaves for the worktree, so the tab's title, and its prompt once the agent exits, show the
+  app's launch folder rather than the worktree: `cd` there, or use [Open in
+  terminal](#open-in-terminal), to keep working.
+- **A closed tab lives on for about a minute.** Warp keeps a closed tab about 60 seconds, so ⇧⌘T
+  can reopen it, and what ran in it keeps running until then. A followed run whose Warp tab you
+  close reads *The terminal closed while this was running.* that much later, and in that minute
+  Show in terminal only brings Warp forward.
+
+### Warp's welcome comes first
+
+Until Warp's first-run welcome is finished, Warp quietly drops every script, folder, or link it
+is asked to open, and macOS still reports the open as done, so Nilbox can't tell: a launch says
+it opened, but no tab appears. Open Warp once and finish the welcome (it needs no sign-in)
+before your first launch; the setup says so when you choose Warp: *Open Warp once and finish its
+welcome before your first launch.* An Autopilot routine's run in your terminal is dropped the
+same way, so finish it before you leave a routine to run while you're away.
+
+Nothing dropped is opened later. The session's card shows it starting, then, a minute or so
+later, ended, and a run in your terminal holds its clone until, two minutes on, it reads *The
+terminal didn't start the run.* Finish the welcome, then launch or run it again.
