@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="800" viewBox="0 0 1320 800" role="img" aria-labelledby="app-title app-desc">
+  <title id="app-title">The app: always on, never in the way</title>
+  <desc id="app-desc">Five tiles. The menu bar: the Nilbox icon shows a live count, and its menu lists the agent sessions waiting for you, the items asking for your review, and Refresh Now; closing the window keeps Nilbox running there. Native banners: Review requested for acme-org/api #412, and Back from snooze for acme-org/search #57. The API budget: a dial for whichever GitHub budget has the least left, here 76% of GraphQL. Light or dark: follow the system, or pin either theme. Service status: GitHub and Claude operational and OpenAI degraded, each check costing no API budget.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="660" cy="420" r="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.13"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <linearGradient id="appicon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262B37"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#181C24"/>
+      <stop offset="1" stop-color="#12151B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="800" rx="28"/></clipPath>
+    <clipPath id="tileA"><rect x="64" y="228" width="560" height="270" rx="18"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="12"/>
+      <feOffset dy="10"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 44px; font-weight: 800; letter-spacing: -0.6px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .lede .b { font-weight: 600; fill: #D5D9E0; }
+    .tile { fill: url(#tile); stroke: #2A303C; }
+    .tt { font-size: 18px; font-weight: 700; fill: #F2F3F5; }
+    .ts { font-size: 15px; fill: #8A93A3; }
+    .mi { font-size: 14.5px; fill: #E6E8EC; }
+    .mh { font-size: 12.5px; font-weight: 700; fill: #8A93A3; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="800" fill="url(#bg)"/>
+    <rect width="1320" height="800" fill="url(#dots)"/>
+    <rect width="1320" height="800" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="799" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Headline -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="76">THE APP</text>
+    <text class="headline" x="62" y="128">Always on.<tspan dx="14">Never in the way.</tspan></text>
+    <text class="lede" x="64" y="166">A live count in the menu bar, native banners, and a dial that watches your GitHub API budget.</text>
+    <text class="lede" x="64" y="194">Light or dark, and a check on GitHub, Claude, and OpenAI's status pages that <tspan class="b">costs no budget</tspan>.</text>
+  </g>
+
+  <g class="sans">
+    <!-- Tile A: menu bar -->
+    <rect class="tile" x="64.5" y="228.5" width="559" height="269" rx="18"/>
+    <text class="tt" x="88" y="266">Menu bar</text>
+    <text class="ts" x="88" y="290">A live count, and who's waiting on you</text>
+    <g clip-path="url(#tileA)">
+      <rect x="64" y="308" width="560" height="30" fill="#262A33"/>
+      <line x1="64" y1="338.5" x2="624" y2="338.5" stroke="#343A46"/>
+    </g>
+    <rect x="398" y="311" width="60" height="24" rx="6" fill="#FFFFFF" fill-opacity="0.16"/>
+    <use href="#mark" transform="translate(410 315) scale(0.031)" fill="#F2F3F5"/>
+    <text x="430" y="328.5" font-size="14.5" font-weight="700" fill="#F2F3F5">4</text>
+    <path d="M478 327.5a12 12 0 0 1 17 0M481.5 331a7 7 0 0 1 10 0" fill="none" stroke="#C4CAD4" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="486.5" cy="334" r="1.6" fill="#C4CAD4"/>
+    <rect x="508.5" y="317.5" width="24" height="12" rx="3" fill="none" stroke="#C4CAD4" stroke-width="1.4"/>
+    <rect x="511" y="320" width="16" height="7" rx="1.5" fill="#C4CAD4"/>
+    <rect x="534" y="321" width="2" height="5" rx="1" fill="#C4CAD4"/>
+    <text x="604" y="328.5" text-anchor="end" font-size="14" font-weight="600" fill="#E6E8EC">Tue 9:41</text>
+
+    <g filter="url(#shadow)"><rect x="330" y="344" width="282" height="144" rx="10" fill="#262A33"/></g>
+    <rect x="330.5" y="344.5" width="281" height="143" rx="9.5" fill="none" stroke="#3A404C"/>
+    <text class="mh" x="346" y="366">Waiting for you</text>
+    <circle class="pulse" cx="352" cy="385" r="4.5" fill="#8FA4C4"/>
+    <text class="mi" x="364" y="390">app #201 · Claude needs approval</text>
+    <line x1="342" y1="402.5" x2="600" y2="402.5" stroke="#3A404C"/>
+    <text class="mh" x="346" y="422">Review requested</text>
+    <text class="mi" x="346" y="446">api #412 · Retry failed webhook…</text>
+    <line x1="342" y1="458.5" x2="600" y2="458.5" stroke="#3A404C"/>
+    <text class="mi" x="346" y="479">Refresh Now</text>
+
+    <text x="88" y="384" font-size="15.5" fill="#9AA3B2">Close the window, and</text>
+    <text x="88" y="406" font-size="15.5" fill="#9AA3B2">Nilbox keeps running</text>
+    <text x="88" y="428" font-size="15.5" fill="#9AA3B2">in the menu bar.</text>
+
+    <!-- Tile B: native banners -->
+    <rect class="tile" x="644.5" y="228.5" width="611" height="269" rx="18"/>
+    <text class="tt" x="668" y="266">Native banners</text>
+    <text class="ts" x="668" y="290">Review requests, assignments, early wake-ups, and releases</text>
+
+    <g filter="url(#shadow)"><rect x="668" y="310" width="564" height="80" rx="16" fill="#2A2F3A"/></g>
+    <rect x="668.5" y="310.5" width="563" height="79" rx="15.5" fill="none" stroke="#3A4150"/>
+    <rect x="684" y="328" width="44" height="44" rx="10" fill="url(#appicon)" stroke="#3A4150"/>
+    <use href="#mark" transform="translate(694.6 336) scale(0.055)" fill="url(#glyph)"/>
+    <text x="744" y="335" font-size="15" font-weight="700" fill="#F2F3F5">Review requested</text>
+    <text x="1214" y="335" text-anchor="end" font-size="13" fill="#8A93A3">now</text>
+    <text x="744" y="356" font-size="14.5" font-weight="600" fill="#C4CAD4">acme-org/api #412</text>
+    <text x="744" y="377" font-size="14.5" fill="#AEB5C1">Retry failed webhook deliveries</text>
+
+    <g filter="url(#shadow)"><rect x="668" y="402" width="564" height="80" rx="16" fill="#2A2F3A"/></g>
+    <rect x="668.5" y="402.5" width="563" height="79" rx="15.5" fill="none" stroke="#3A4150"/>
+    <rect x="684" y="420" width="44" height="44" rx="10" fill="url(#appicon)" stroke="#3A4150"/>
+    <use href="#mark" transform="translate(694.6 428) scale(0.055)" fill="url(#glyph)"/>
+    <text x="744" y="427" font-size="15" font-weight="700" fill="#F2F3F5">Back from snooze</text>
+    <text x="1214" y="427" text-anchor="end" font-size="13" fill="#8A93A3">2m ago</text>
+    <text x="744" y="448" font-size="14.5" font-weight="600" fill="#C4CAD4">acme-org/search #57</text>
+    <text x="744" y="469" font-size="14.5" fill="#AEB5C1">Stream search results to the client</text>
+
+    <!-- Tile C: API budget -->
+    <rect class="tile" x="64.5" y="518.5" width="379" height="233" rx="18"/>
+    <text class="tt" x="88" y="556">API budget</text>
+    <text class="ts" x="88" y="580">The budget closest to running out</text>
+    <path d="M176 712A78 78 0 0 1 332 712" fill="none" stroke="#262B35" stroke-width="13" stroke-linecap="round"/>
+    <path d="M176 712A78 78 0 0 1 332 712" fill="none" stroke="#3DBE8B" stroke-width="13" stroke-linecap="round" stroke-opacity="0.25" filter="url(#glow)" stroke-dasharray="186 400"/>
+    <path d="M176 712A78 78 0 0 1 332 712" fill="none" stroke="#3DBE8B" stroke-width="13" stroke-linecap="round" stroke-dasharray="186 400"/>
+    <text x="254" y="700" text-anchor="middle" font-size="32" font-weight="800" fill="#F2F3F5">76%</text>
+    <text x="254" y="724" text-anchor="middle" font-size="13.5" fill="#8A93A3">GraphQL left</text>
+
+    <!-- Tile D: themes -->
+    <rect class="tile" x="464.5" y="518.5" width="391" height="233" rx="18"/>
+    <text class="tt" x="488" y="556">Light or dark</text>
+    <text class="ts" x="488" y="580">Follow the system, or pin either one</text>
+    <rect x="488.5" y="596.5" width="267" height="31" rx="8" fill="#0F1218" stroke="#2F3542"/>
+    <rect x="667" y="599" width="86" height="26" rx="6" fill="#2A303C"/>
+    <text x="533" y="617" text-anchor="middle" font-size="14" fill="#8A93A3">System</text>
+    <text x="622" y="617" text-anchor="middle" font-size="14" fill="#8A93A3">Light</text>
+    <text x="710" y="617" text-anchor="middle" font-size="14" font-weight="700" fill="#E6E8EC">Dark</text>
+    <rect x="488.5" y="644.5" width="163" height="87" rx="9" fill="#0F1218" stroke="#2F3542"/>
+    <rect x="500" y="656" width="140" height="20" rx="4" fill="#1D222C"/><rect x="500" y="656" width="3" height="20" fill="#E8743B"/>
+    <rect x="510" y="663" width="70" height="6" rx="3" fill="#6E7686"/>
+    <rect x="500" y="682" width="140" height="20" rx="4" fill="#1D222C"/><rect x="500" y="682" width="3" height="20" fill="#3DBE8B"/>
+    <rect x="510" y="689" width="90" height="6" rx="3" fill="#6E7686"/>
+    <rect x="500" y="708" width="140" height="14" rx="4" fill="#1D222C"/><rect x="500" y="708" width="3" height="14" fill="#8FA4C4"/>
+    <rect x="668.5" y="644.5" width="163" height="87" rx="9" fill="#F7F5F2" stroke="#DDD8D0"/>
+    <rect x="680" y="656" width="140" height="20" rx="4" fill="#FFFFFF" stroke="#E6E1DA"/><rect x="680" y="656" width="3" height="20" fill="#B04A1E"/>
+    <rect x="690" y="663" width="70" height="6" rx="3" fill="#B6B0A6"/>
+    <rect x="680" y="682" width="140" height="20" rx="4" fill="#FFFFFF" stroke="#E6E1DA"/><rect x="680" y="682" width="3" height="20" fill="#17784F"/>
+    <rect x="690" y="689" width="90" height="6" rx="3" fill="#B6B0A6"/>
+    <rect x="680" y="708" width="140" height="14" rx="4" fill="#FFFFFF" stroke="#E6E1DA"/><rect x="680" y="708" width="3" height="14" fill="#4A6285"/>
+
+    <!-- Tile E: service status -->
+    <rect class="tile" x="876.5" y="518.5" width="379" height="233" rx="18"/>
+    <text class="tt" x="900" y="556">Service status</text>
+    <text class="ts" x="900" y="580">Each check costs no API budget</text>
+    <circle cx="908" cy="616" r="5" fill="#3DBE8B"/>
+    <text x="924" y="621" font-size="15.5" font-weight="700" fill="#E6E8EC">GitHub</text>
+    <text x="1232" y="621" text-anchor="end" font-size="14.5" fill="#3DBE8B">Operational</text>
+    <line x1="900" y1="640.5" x2="1232" y2="640.5" stroke="#232833"/>
+    <circle cx="908" cy="664" r="5" fill="#3DBE8B"/>
+    <text x="924" y="669" font-size="15.5" font-weight="700" fill="#E6E8EC">Claude</text>
+    <text x="1232" y="669" text-anchor="end" font-size="14.5" fill="#3DBE8B">Operational</text>
+    <line x1="900" y1="688.5" x2="1232" y2="688.5" stroke="#232833"/>
+    <circle class="pulse" cx="908" cy="712" r="5" fill="#E9B44C"/>
+    <text x="924" y="717" font-size="15.5" font-weight="700" fill="#E6E8EC">OpenAI</text>
+    <text x="1232" y="717" text-anchor="end" font-size="14.5" fill="#E9B44C">Degraded</text>
+  </g>
+</svg>

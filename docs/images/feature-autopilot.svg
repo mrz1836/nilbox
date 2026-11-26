@@ -1,0 +1,297 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="800" viewBox="0 0 1320 800" role="img" aria-labelledby="autopilot-title autopilot-desc">
+  <title id="autopilot-title">Autopilot (beta): Dry run, Ask first, Autopilot</title>
+  <desc id="autopilot-desc">The Nilbox Autopilot tab, marked Beta, open on the template routine Fix Dependabot security failures, switched on in Ask first. Watch: pull requests by Dependabot in your account and acme-org. When: checks fail, once every check has finished. If: a failed check's name contains security, codeql, govulncheck, gitleaks, nancy, or osv. Then: run a coding agent with the Fix dep security prompt in the background, inside a fence of $3.00, 30 minutes, and Edit, test, and push to the PR's branch; wait for the checks only if it pushed; and tell you how it went. Test says 3 of 7 open pull requests match now and shows why. Beside it, the routine's modes in order: Dry run records what it would do and does nothing else; Ask first has each match wait for your Run under Needs you; Autopilot runs every step at once within your limits, and its fix is followed to a verdict such as Fixed. Pause Autopilot stops every new start at once. Above, Describe it: tell Autopilot what you want in your own words, and Claude proposes cards you test and apply.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <path id="spark" d="M0-7C0.9-2.2 2.2-0.9 7 0C2.2 0.9 0.9 2.2 0 7C-0.9 2.2-2.2 0.9-7 0C-2.2-0.9-0.9-2.2 0-7Z"/>
+    <path id="bolt" d="M1.6-7.2L-4.6 1.2H-0.4L-1.6 7.2L4.6-1.2H0.4Z"/>
+    <path id="chev" d="M-3.6-1.6L0 2L3.6-1.6" fill="none" stroke="#7D8595" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tick" d="M-4.6 0.4L-1.5 3.5L4.6-3.2" fill="none" stroke="#3DBE8B" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tick-s" d="M-3.6 0.3L-1.2 2.7L3.6-2.5" fill="none" stroke="#3DBE8B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="700" cy="470" r="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <linearGradient id="button" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D2561F"/>
+    </linearGradient>
+    <linearGradient id="trust" x1="0" y1="268" x2="0" y2="518" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8FA4C4"/>
+      <stop offset="0.5" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#3DBE8B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="800" rx="28"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 44px; font-weight: 800; letter-spacing: -0.6px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .lede b, .lede .b { font-weight: 600; fill: #D5D9E0; }
+    .tab { font-size: 15.5px; fill: #8A93A3; }
+    .cap { font-size: 13px; font-weight: 700; letter-spacing: 1.3px; fill: #9AA3B2; }
+    .hint { font-size: 12.5px; fill: #7D8595; }
+    .ui { font-size: 14.5px; fill: #E6E8EC; }
+    .mut { font-size: 14.5px; fill: #9AA3B2; }
+    .step { font-size: 14.5px; font-weight: 650; fill: #E6E8EC; }
+    .field { fill: #0F1218; stroke: #2F3542; }
+    .tok { fill: #1D222C; stroke: #3A4150; }
+    .x { font-size: 14.5px; fill: #7D8595; }
+    .btn { font-size: 14.5px; font-weight: 700; }
+    .num { font-size: 15px; font-weight: 800; fill: #1A0E06; }
+    .co-t { font-size: 18px; font-weight: 700; fill: #F2F3F5; }
+    .co-d { font-size: 15.5px; fill: #9AA3B2; }
+    .flow { fill: none; stroke: #F2F3F5; stroke-opacity: 0.7; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0.1 12; animation: flow 1.1s linear infinite; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes flow { to { stroke-dashoffset: -12.1; } }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .pulse { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="800" fill="url(#bg)"/>
+    <rect width="1320" height="800" fill="url(#dots)"/>
+    <rect width="1320" height="800" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="799" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Headline -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="76">AUTOPILOT</text>
+    <rect x="180.5" y="61.5" width="46" height="19" rx="9.5" fill="#E8743B" fill-opacity="0.1" stroke="#E8743B" stroke-opacity="0.45"/>
+    <text x="203.5" y="75.5" text-anchor="middle" font-size="12.5" font-weight="700" letter-spacing="1" fill="#E8743B">BETA</text>
+    <text class="headline" x="62" y="128">Dry run.<tspan dx="14">Ask first.</tspan><tspan dx="14" fill="#F5803F">Autopilot.</tspan></text>
+    <text class="lede" x="64" y="166">A routine watches your items, waits for something to happen, and <tspan class="b">acts within your limits</tspan>.</text>
+    <text class="lede" x="64" y="194">Test it on your items, then let it earn your trust: <tspan class="b">nothing changes its mode but you</tspan>.</text>
+  </g>
+
+  <!-- Describe it -->
+  <g class="sans">
+    <use href="#spark" x="919" y="70.5" fill="#F5803F"/>
+    <text class="eyebrow" x="934" y="76">DESCRIBE IT</text>
+    <rect x="912.5" y="90.5" width="343" height="84" rx="12" fill="#161A22" stroke="#2F3542"/>
+    <text x="928" y="115" font-size="15" fill="#E6E8EC">When Dependabot’s security scans fail,</text>
+    <text x="928" y="136" font-size="15" fill="#E6E8EC">fix it in the background and tell me</text>
+    <text x="928" y="157" font-size="15" fill="#E6E8EC">how it went</text>
+    <rect x="1186" y="141" width="56" height="25" rx="7" fill="url(#button)"/>
+    <text class="btn" x="1214" y="158.5" text-anchor="middle" fill="#1A0E06">Send</text>
+    <text x="912" y="200" font-size="14.5" fill="#9AA3B2"><tspan font-weight="600" fill="#D5D9E0">Claude</tspan> proposes cards you test and apply.</text>
+  </g>
+
+  <!-- The window -->
+  <g class="sans">
+    <g filter="url(#shadow)"><rect x="64" y="224" width="808" height="536" rx="14" fill="#13161D"/></g>
+    <path d="M78 224H858A14 14 0 0 1 872 238V274H64V238A14 14 0 0 1 78 224Z" fill="#191D26"/>
+    <rect x="64.5" y="224.5" width="807" height="535" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="64" y1="274.5" x2="872" y2="274.5" stroke="#2A303C"/>
+    <circle cx="88" cy="249" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="106" cy="249" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="124" cy="249" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <use href="#mark" transform="translate(150 239) scale(0.039)" fill="url(#glyph)"/>
+    <text x="172" y="255" font-size="17" font-weight="800" fill="#E6E8EC">nilbox</text>
+    <text class="tab" x="252" y="255">Inbox</text>
+    <text class="tab" x="314" y="255">Notifications</text>
+    <circle class="pulse" cx="434" cy="249.5" r="6" fill="#E8743B" fill-opacity="0.5" filter="url(#glow)"/>
+    <circle cx="434" cy="249.5" r="3.5" fill="#F5803F"/>
+    <text class="tab" x="446" y="255" style="fill:#E6E8EC;font-weight:600">Autopilot</text>
+    <rect x="534.5" y="240.5" width="44" height="18" rx="9" fill="#E8743B" fill-opacity="0.1" stroke="#E8743B" stroke-opacity="0.45"/>
+    <text x="556.5" y="254" text-anchor="middle" font-size="12.5" font-weight="700" letter-spacing="0.8" fill="#E8743B">BETA</text>
+    <rect x="424" y="271" width="162" height="3" rx="1.5" fill="#E8743B"/>
+    <text class="tab" x="612" y="255">Worktrees</text>
+
+    <!-- The routine -->
+    <g transform="translate(98 298)"><path d="M0-9.5L8-6.5V-0.5C8 4.8 4.6 8.4 0 10C-4.6 8.4-8 4.8-8-0.5V-6.5Z" fill="#E8743B" fill-opacity="0.15" stroke="#F5803F" stroke-width="1.7" stroke-linejoin="round"/></g>
+    <text x="116" y="304" font-size="18" font-weight="700" fill="#E6E8EC">Fix Dependabot security failures</text>
+    <rect x="524.5" y="284.5" width="240" height="29" rx="8" fill="#0F1218" stroke="#2F3542"/>
+    <rect x="599" y="287" width="82" height="24" rx="6" fill="#E8743B" fill-opacity="0.16" stroke="#E8743B" stroke-opacity="0.6"/>
+    <text x="562" y="304" text-anchor="middle" font-size="14.5" font-weight="600" fill="#8A93A3">Dry run</text>
+    <text x="640" y="304" text-anchor="middle" font-size="14.5" font-weight="600" fill="#F5803F">Ask first</text>
+    <text x="722" y="304" text-anchor="middle" font-size="14.5" font-weight="600" fill="#8A93A3">Autopilot</text>
+    <text class="mut" x="806" y="303.5" text-anchor="end">On</text>
+    <rect x="816" y="289" width="32" height="18" rx="9" fill="#E8743B"/>
+    <circle cx="839" cy="298" r="7" fill="#F2F3F5"/>
+
+    <!-- Watch -->
+    <line x1="88" y1="320.5" x2="848" y2="320.5" stroke="#2A303C"/>
+    <text class="cap" x="88" y="339">WATCH</text>
+    <text class="hint" x="88" y="356">Which items</text>
+    <rect class="field" x="232.5" y="328.5" width="134" height="27" rx="6"/>
+    <text class="ui" x="243" y="347">Pull requests</text>
+    <use href="#chev" x="354" y="342"/>
+    <text class="mut" x="380" y="347">by</text>
+    <rect class="tok" x="406.5" y="329.5" width="130" height="25" rx="6"/>
+    <text class="ui" x="416" y="347">Dependabot</text>
+    <text class="x" x="527" y="347" text-anchor="end">×</text>
+    <text class="mut" x="550" y="347">in</text>
+    <rect class="tok" x="576.5" y="329.5" width="134" height="25" rx="6"/>
+    <text class="ui" x="586" y="347">Your account</text>
+    <text class="x" x="701" y="347" text-anchor="end">×</text>
+    <rect class="tok" x="718.5" y="329.5" width="112" height="25" rx="6"/>
+    <text class="ui" x="728" y="347">acme-org</text>
+    <text class="x" x="821" y="347" text-anchor="end">×</text>
+
+    <!-- When -->
+    <line x1="88" y1="364.5" x2="848" y2="364.5" stroke="#2A303C"/>
+    <text class="cap" x="88" y="383">WHEN</text>
+    <text class="hint" x="88" y="400">What makes it fire</text>
+    <rect class="field" x="232.5" y="372.5" width="122" height="27" rx="6"/>
+    <text class="ui" x="243" y="391">Checks fail</text>
+    <use href="#chev" x="342" y="386"/>
+    <rect x="372" y="379" width="15" height="15" rx="3.5" fill="#E8743B"/>
+    <path d="M375.6 386.6L378.4 389.4L383.6 383.8" fill="none" stroke="#1A0E06" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="ui" x="396" y="391">Wait until every check has finished</text>
+
+    <!-- If -->
+    <line x1="88" y1="408.5" x2="848" y2="408.5" stroke="#2A303C"/>
+    <text class="cap" x="88" y="427">IF</text>
+    <text class="hint" x="88" y="444">Which of those count</text>
+    <rect class="field" x="232.5" y="416.5" width="194" height="27" rx="6"/>
+    <text class="ui" x="243" y="435">A failed check's name</text>
+    <use href="#chev" x="414" y="430"/>
+    <rect class="field" x="434.5" y="416.5" width="152" height="27" rx="6"/>
+    <text class="ui" x="445" y="435">contains any of</text>
+    <use href="#chev" x="574" y="430"/>
+    <g>
+      <rect class="tok" x="232.5" y="451.5" width="101" height="24" rx="6"/>
+      <text class="ui" x="242" y="468">security</text>
+      <text class="x" x="324" y="468" text-anchor="end">×</text>
+      <rect class="tok" x="338.5" y="451.5" width="95" height="24" rx="6"/>
+      <text class="ui" x="348" y="468">codeql</text>
+      <text class="x" x="424" y="468" text-anchor="end">×</text>
+      <rect class="tok" x="438.5" y="451.5" width="132" height="24" rx="6"/>
+      <text class="ui" x="448" y="468">govulncheck</text>
+      <text class="x" x="561" y="468" text-anchor="end">×</text>
+      <rect class="tok" x="575.5" y="451.5" width="98" height="24" rx="6"/>
+      <text class="ui" x="585" y="468">gitleaks</text>
+      <text class="x" x="664" y="468" text-anchor="end">×</text>
+      <rect class="tok" x="678.5" y="451.5" width="87" height="24" rx="6"/>
+      <text class="ui" x="688" y="468">nancy</text>
+      <text class="x" x="756" y="468" text-anchor="end">×</text>
+      <rect class="tok" x="770.5" y="451.5" width="71" height="24" rx="6"/>
+      <text class="ui" x="780" y="468">osv</text>
+      <text class="x" x="832" y="468" text-anchor="end">×</text>
+    </g>
+
+    <!-- Then -->
+    <line x1="88" y1="486.5" x2="848" y2="486.5" stroke="#2A303C"/>
+    <text class="cap" x="88" y="505">THEN</text>
+    <text class="hint" x="88" y="522">What it does, in order</text>
+    <text x="242" y="512" text-anchor="end" font-size="13" font-weight="700" fill="#7D8595">1</text>
+    <text class="step" x="252" y="512">Run a coding agent</text>
+    <rect class="field" x="410.5" y="494.5" width="154" height="26" rx="6"/>
+    <text class="ui" x="420" y="512">Fix dep security</text>
+    <use href="#chev" x="552" y="507"/>
+    <rect class="field" x="572.5" y="494.5" width="170" height="26" rx="6"/>
+    <text class="ui" x="582" y="512">In the background</text>
+    <use href="#chev" x="730" y="507"/>
+    <g transform="translate(253 530)" fill="none" stroke="#F5803F" stroke-width="1.6">
+      <rect x="0" y="0" width="12" height="9.5" rx="2.2" fill="#F5803F" fill-opacity="0.2"/>
+      <path d="M2.6 0V-3A3.4 3.4 0 0 1 9.4-3V0"/>
+    </g>
+    <text class="mut" x="272" y="539"><tspan font-weight="600" fill="#C4CAD4">Fence</tspan><tspan dx="10">$3.00 · 30 min · Edit, test, and push to the PR's branch</tspan></text>
+    <text x="242" y="566" text-anchor="end" font-size="13" font-weight="700" fill="#7D8595">2</text>
+    <text class="step" x="252" y="566">Wait for the checks</text>
+    <rect class="field" x="414.5" y="548.5" width="156" height="26" rx="6"/>
+    <text class="ui" x="424" y="566">only if it pushed</text>
+    <use href="#chev" x="558" y="561"/>
+    <text x="242" y="594" text-anchor="end" font-size="13" font-weight="700" fill="#7D8595">3</text>
+    <text class="step" x="252" y="594">Tell me</text>
+    <rect class="field" x="322.5" y="576.5" width="248" height="26" rx="6"/>
+    <text class="ui" x="332" y="594">how the steps before it ended</text>
+    <use href="#chev" x="558" y="589"/>
+
+    <!-- Test -->
+    <line x1="88" y1="612.5" x2="848" y2="612.5" stroke="#2A303C"/>
+    <text class="cap" x="88" y="638">TEST</text>
+    <text class="ui" x="148" y="638">3 of 7 open pull requests match now</text>
+    <rect x="690.5" y="619.5" width="158" height="29" rx="7" fill="#161A22" stroke="#3A4150"/>
+    <g transform="translate(709 634)" fill="none" stroke="#9AA3B2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.3-3.6A5.6 5.6 0 1 0 5.6 0.4"/>
+      <path d="M4.9-7.2L4.4-3.4L0.7-4.1"/>
+    </g>
+    <text class="btn" x="722" y="639" fill="#E6E8EC">Test (3 points)</text>
+
+    <use href="#tick" x="98" y="666"/>
+    <text class="mono" x="114" y="671" font-size="13.5" fill="#9AA3B2">acme-org/api #231</text>
+    <text class="ui" x="296" y="671">Bump golang.org/x/crypto to 0.35</text>
+    <text x="772" y="671" text-anchor="end" font-size="14.5" font-weight="600" fill="#3DBE8B">would run</text>
+    <use href="#chev" x="794" y="666" style="stroke:#9AA3B2"/>
+    <text class="mut" x="806" y="671">Why</text>
+
+    <use href="#tick-s" x="126" y="689"/>
+    <text class="ui" x="138" y="694">Checks fail: has a failed or errored check on its head commit<tspan class="mut" dx="7">· 1 check failed on 0a1b2c3</tspan></text>
+    <use href="#tick-s" x="126" y="711"/>
+    <text class="ui" x="138" y="716">a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv,</text>
+    <text class="ui" x="138" y="737">or security<tspan class="mut" dx="7">· "CodeQL / Analyze (go)"</tspan></text>
+  </g>
+
+  <!-- The trust ladder -->
+  <g class="sans">
+    <path d="M926 268V518" fill="none" stroke="url(#trust)" stroke-opacity="0.5" stroke-width="3" stroke-linecap="round"/>
+    <path class="flow" d="M926 270V516"/>
+
+    <circle cx="926" cy="252" r="15" fill="#11141B"/><circle cx="926" cy="252" r="12.5" fill="#8FA4C4"/><text class="num" x="926" y="257.5" text-anchor="middle">1</text>
+    <text class="co-t" x="954" y="258">Dry run</text>
+    <text class="co-d" x="954" y="284">Records what it would do,</text>
+    <text class="co-d" x="954" y="306">and does nothing else.</text>
+    <rect x="954.5" y="320.5" width="118" height="26" rx="13" fill="#8FA4C4" fill-opacity="0.1" stroke="#8FA4C4" stroke-opacity="0.45"/>
+    <use href="#bolt" x="971" y="333.5" fill="#AFC0DA"/>
+    <text x="983" y="338.5" font-size="14.5" font-weight="700" fill="#AFC0DA">Would run</text>
+    <text class="mono" x="1086" y="338" font-size="13.5" fill="#7D8595">acme-org/api #231</text>
+
+    <circle cx="926" cy="388" r="15" fill="#11141B"/><circle cx="926" cy="388" r="12.5" fill="#F5803F"/><text class="num" x="926" y="393.5" text-anchor="middle">2</text>
+    <text class="co-t" x="954" y="394">Ask first</text>
+    <text class="co-d" x="954" y="420">Each match waits for your Run</text>
+    <text class="co-d" x="954" y="442">under Needs you.</text>
+    <rect x="954.5" y="456.5" width="300" height="40" rx="9" fill="#1A1E27" stroke="#E8743B" stroke-opacity="0.45"/>
+    <circle cx="972" cy="476.5" r="3.5" fill="#F5803F"/>
+    <text class="ui" x="984" y="481.5">Waiting for your OK</text>
+    <rect class="pulse" x="1184" y="460" width="64" height="33" rx="9" fill="#E8743B" fill-opacity="0.5" filter="url(#glow)"/>
+    <rect x="1186" y="463" width="60" height="27" rx="7" fill="url(#button)"/>
+    <text class="btn" x="1216" y="481.5" text-anchor="middle" fill="#1A0E06">Run</text>
+
+    <circle cx="926" cy="534" r="15" fill="#11141B"/><circle cx="926" cy="534" r="12.5" fill="#3DBE8B"/><text class="num" x="926" y="539.5" text-anchor="middle">3</text>
+    <text class="co-t" x="954" y="540">Autopilot</text>
+    <text class="co-d" x="954" y="566">Runs every step at once,</text>
+    <text class="co-d" x="954" y="588">within your limits.</text>
+    <rect x="954.5" y="602.5" width="88" height="26" rx="13" fill="#3DBE8B" fill-opacity="0.12" stroke="#3DBE8B" stroke-opacity="0.45"/>
+    <use href="#bolt" x="971" y="615.5" fill="#3DBE8B"/>
+    <text x="983" y="620.5" font-size="14.5" font-weight="700" fill="#3DBE8B">Fixed</text>
+    <text class="mut" x="1056" y="620.5">checks pass on 4f2a9c1</text>
+
+    <!-- Pause -->
+    <rect x="904.5" y="660.5" width="351" height="99" rx="12" fill="#E9B44C" fill-opacity="0.06" stroke="#E9B44C" stroke-opacity="0.38"/>
+    <circle cx="938" cy="710" r="17" fill="#E9B44C" fill-opacity="0.14" stroke="#E9B44C" stroke-width="1.6"/>
+    <rect x="931.5" y="702" width="4.5" height="16" rx="1.5" fill="#E9B44C"/>
+    <rect x="940" y="702" width="4.5" height="16" rx="1.5" fill="#E9B44C"/>
+    <text class="co-t" x="968" y="692">Pause Autopilot</text>
+    <text class="co-d" x="968" y="718">Stops every new start at once,</text>
+    <text class="co-d" x="968" y="740">from the tab or the menu bar.</text>
+  </g>
+</svg>

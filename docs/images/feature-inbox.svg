@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="764" viewBox="0 0 1320 764" role="img" aria-labelledby="inbox-title inbox-desc">
+  <title id="inbox-title">Your inbox: hundreds of repos, one clear inbox</title>
+  <desc id="inbox-desc">The Nilbox inbox window with two lists, Review requested and Yours, and four cards. Numbered callouts explain how to read a card: the left edge's color says whose move it is (orange yours, green ready to ship, red blocked, blue an agent is on it); one line says why it's here, such as Re-review, Approved and ready to merge, or 2 of 14 checks failing; a track shows checks, review, and merge with the size underneath; and two buttons hold your next move and one click to hand it to Claude Code or Codex.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <path id="spark" d="M0-7C0.9-2.2 2.2-0.9 7 0C2.2 0.9 0.9 2.2 0 7C-0.9 2.2-2.2 0.9-7 0C-2.2-0.9-0.9-2.2 0-7Z"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="764" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="520" cy="470" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="764" rx="28"/></clipPath>
+    <clipPath id="c1"><rect x="80" y="318" width="848" height="80" rx="10"/></clipPath>
+    <clipPath id="c2"><rect x="80" y="408" width="848" height="80" rx="10"/></clipPath>
+    <clipPath id="c3"><rect x="80" y="536" width="848" height="80" rx="10"/></clipPath>
+    <clipPath id="c4"><rect x="80" y="626" width="848" height="80" rx="10"/></clipPath>
+    <clipPath id="avatar"><circle r="18"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <g id="ok"><circle r="10" fill="#3DBE8B" fill-opacity="0.12" stroke="#3DBE8B" stroke-width="1.8"/><path d="M-4.2 0.3L-1.2 3.3L4.4-2.6" fill="none" stroke="#3DBE8B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="fail"><circle r="10" fill="#F05D5E" fill-opacity="0.12" stroke="#F05D5E" stroke-width="1.8"/><path d="M-3.4-3.4L3.4 3.4M3.4-3.4L-3.4 3.4" stroke="#F05D5E" stroke-width="2" stroke-linecap="round"/></g>
+    <g id="wait"><circle r="10" fill="none" stroke="#5B6372" stroke-width="1.6" stroke-dasharray="3.2 3.2"/></g>
+    <g id="you"><circle r="10" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B" stroke-width="1.8"/><circle r="3.6" fill="#F5803F"/></g>
+    <g id="go"><circle r="10" fill="#3DBE8B" fill-opacity="0.14" stroke="#3DBE8B" stroke-width="1.8"/><circle r="3.6" fill="#3DBE8B"/></g>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 44px; font-weight: 800; letter-spacing: -0.6px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .lede b, .lede .b { font-weight: 600; fill: #D5D9E0; }
+    .tab { font-size: 15.5px; fill: #8A93A3; }
+    .card { fill: #1A1E27; stroke: #2A303C; }
+    .ttl { font-size: 17px; font-weight: 700; fill: #E6E8EC; }
+    .by { font-size: 15px; fill: #7D8595; }
+    .story { font-weight: 650; }
+    .lbl { font-size: 13px; fill: #D5D9E0; }
+    .grade { font-size: 11px; font-weight: 800; fill: #C4CAD4; }
+    .btn { font-size: 14.5px; font-weight: 700; }
+    .num { font-size: 15px; font-weight: 800; fill: #1A0E06; }
+    .co-t { font-size: 18px; font-weight: 700; fill: #F2F3F5; }
+    .co-d { font-size: 15.5px; fill: #9AA3B2; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="764" fill="url(#bg)"/>
+    <rect width="1320" height="764" fill="url(#dots)"/>
+    <rect width="1320" height="764" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="763" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Headline -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="76">YOUR INBOX</text>
+    <text class="headline" x="62" y="128">Hundreds of repos.<tspan dx="14">One clear inbox.</tspan></text>
+    <text class="lede" x="64" y="166">Review requests, your pull requests, and assignments, each card <tspan class="b">read in a second</tspan>.</text>
+    <text class="lede" x="64" y="194">Filter with ⌘F. Snooze, dismiss, and pin: <tspan class="b">your triage never leaves your Mac</tspan>.</text>
+  </g>
+
+  <!-- The window -->
+  <g class="sans">
+    <g filter="url(#shadow)"><rect x="64" y="224" width="880" height="492" rx="14" fill="#13161D"/></g>
+    <path d="M78 224H930A14 14 0 0 1 944 238V274H64V238A14 14 0 0 1 78 224Z" fill="#191D26"/>
+    <rect x="64.5" y="224.5" width="879" height="491" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="64" y1="274.5" x2="944" y2="274.5" stroke="#2A303C"/>
+    <circle cx="88" cy="249" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="106" cy="249" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="124" cy="249" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <use href="#mark" transform="translate(150 239) scale(0.039)" fill="url(#glyph)"/>
+    <text x="172" y="255" font-size="17" font-weight="800" fill="#E6E8EC">nilbox</text>
+    <text class="tab" x="252" y="255" fill="#E6E8EC" style="fill:#E6E8EC;font-weight:600">Inbox</text>
+    <rect x="297" y="240" width="22" height="20" rx="10" fill="#2A303C"/>
+    <text x="308" y="254.5" text-anchor="middle" font-size="12.5" font-weight="700" fill="#C4CAD4">4</text>
+    <rect x="246" y="271" width="80" height="3" rx="1.5" fill="#E8743B"/>
+    <text class="tab" x="350" y="255">Notifications</text>
+    <text class="tab" x="470" y="255">Autopilot</text>
+    <text class="tab" x="562" y="255">Worktrees</text>
+    <rect x="716.5" y="236.5" width="211" height="27" rx="7" fill="#0F1218" stroke="#2F3542"/>
+    <circle cx="734" cy="249" r="5" fill="none" stroke="#6E7686" stroke-width="1.6"/>
+    <path d="M737.6 252.6L741 256" stroke="#6E7686" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="748" y="255" font-size="14.5" fill="#6E7686">Filter inbox</text>
+    <text x="914" y="254.5" text-anchor="end" font-size="13" fill="#6E7686">⌘F</text>
+
+    <!-- Review requested -->
+    <text x="82" y="304" font-size="15" font-weight="700" fill="#C4CAD4">Review requested</text>
+    <rect x="222" y="290" width="22" height="20" rx="10" fill="#2A303C"/>
+    <text x="233" y="304.5" text-anchor="middle" font-size="12.5" font-weight="700" fill="#C4CAD4">2</text>
+
+    <!-- Card 1: your move -->
+    <rect class="card" x="80" y="318" width="848" height="80" rx="10"/>
+    <rect x="80" y="318" width="4" height="80" fill="#E8743B" clip-path="url(#c1)"/>
+    <g transform="translate(118 358)"><g clip-path="url(#avatar)"><circle r="18" fill="#8FA4C4"/><circle cy="-5" r="6.5" fill="#0F1218" fill-opacity="0.32"/><ellipse cy="15" rx="12" ry="9.5" fill="#0F1218" fill-opacity="0.32"/></g></g>
+    <text class="ttl" x="150" y="351">Retry failed webhook deliveries</text>
+    <rect x="448.5" y="335.5" width="51" height="21" rx="10.5" fill="#F05D5E" fill-opacity="0.1" stroke="#F05D5E" stroke-opacity="0.35"/>
+    <circle cx="460" cy="346" r="3.5" fill="#F05D5E"/>
+    <text class="lbl" x="468" y="350.5">bug</text>
+    <circle cx="154" cy="372" r="3.5" fill="#F5803F"/>
+    <text class="by" x="164" y="377"><tspan class="story" fill="#F5803F">Re-review</tspan> · acme-org/api #412 · alice · 2h</text>
+    <line x1="632" y1="348" x2="646" y2="348" stroke="#3A4150" stroke-width="1.5"/>
+    <line x1="666" y1="348" x2="680" y2="348" stroke="#3A4150" stroke-width="1.5"/>
+    <use href="#ok" x="622" y="348"/>
+    <use href="#you" x="656" y="348" class="pulse"/>
+    <use href="#wait" x="690" y="348"/>
+    <rect x="608.5" y="366.5" width="23" height="17" rx="4" fill="none" stroke="#3A4150"/>
+    <text class="grade" x="620" y="379" text-anchor="middle">M</text>
+    <g fill="#3DBE8B"><rect x="640" y="370" width="6" height="10" rx="1.5"/><rect x="649" y="370" width="6" height="10" rx="1.5"/><rect x="658" y="370" width="6" height="10" rx="1.5"/></g>
+    <g fill="#3A4150"><rect x="667" y="370" width="6" height="10" rx="1.5"/><rect x="676" y="370" width="6" height="10" rx="1.5"/></g>
+    <rect x="710.5" y="341.5" width="87" height="33" rx="8" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B"/>
+    <text class="btn" x="754" y="363" text-anchor="middle" fill="#F5803F">Re-review</text>
+    <rect x="806.5" y="341.5" width="115" height="33" rx="8" fill="#161A22" stroke="#3A4150"/>
+    <use href="#spark" x="823" y="358" fill="#F5803F"/>
+    <text class="btn" x="836" y="363" fill="#E6E8EC">Re-review</text>
+
+    <!-- Card 2: ready to ship -->
+    <rect class="card" x="80" y="408" width="848" height="80" rx="10"/>
+    <rect x="80" y="408" width="4" height="80" fill="#3DBE8B" clip-path="url(#c2)"/>
+    <rect x="100" y="430" width="36" height="36" rx="8" fill="#22362F"/>
+    <rect x="108" y="441" width="20" height="14" rx="4" fill="none" stroke="#3DBE8B" stroke-width="1.8"/>
+    <circle cx="114" cy="448" r="1.8" fill="#3DBE8B"/>
+    <circle cx="122" cy="448" r="1.8" fill="#3DBE8B"/>
+    <path d="M118 441V436" stroke="#3DBE8B" stroke-width="1.8" stroke-linecap="round"/>
+    <text class="ttl" x="150" y="441">Bump golang.org/x/net to 0.38</text>
+    <rect x="432.5" y="425.5" width="117" height="21" rx="10.5" fill="#4A90E2" fill-opacity="0.1" stroke="#4A90E2" stroke-opacity="0.4"/>
+    <circle cx="444" cy="436" r="3.5" fill="#4A90E2"/>
+    <text class="lbl" x="452" y="440.5">dependencies</text>
+    <circle cx="154" cy="462" r="3.5" fill="#3DBE8B"/>
+    <text class="by" x="164" y="467"><tspan class="story" fill="#3DBE8B">Approved · ready to merge</tspan> · acme-org/web #88 · 5h</text>
+    <line x1="632" y1="438" x2="646" y2="438" stroke="#3A4150" stroke-width="1.5"/>
+    <line x1="666" y1="438" x2="680" y2="438" stroke="#3A4150" stroke-width="1.5"/>
+    <use href="#ok" x="622" y="438"/>
+    <use href="#ok" x="656" y="438"/>
+    <use href="#go" x="690" y="438"/>
+    <rect x="608.5" y="456.5" width="23" height="17" rx="4" fill="none" stroke="#3A4150"/>
+    <text class="grade" x="620" y="469" text-anchor="middle">XS</text>
+    <rect x="640" y="460" width="6" height="10" rx="1.5" fill="#3DBE8B"/>
+    <g fill="#3A4150"><rect x="649" y="460" width="6" height="10" rx="1.5"/><rect x="658" y="460" width="6" height="10" rx="1.5"/><rect x="667" y="460" width="6" height="10" rx="1.5"/><rect x="676" y="460" width="6" height="10" rx="1.5"/></g>
+    <rect x="710.5" y="431.5" width="87" height="33" rx="8" fill="#3DBE8B" fill-opacity="0.14" stroke="#3DBE8B"/>
+    <text class="btn" x="754" y="453" text-anchor="middle" fill="#3DBE8B">Merge</text>
+    <rect x="806.5" y="431.5" width="115" height="33" rx="8" fill="#161A22" stroke="#3A4150"/>
+    <use href="#spark" x="823" y="448" fill="#F5803F"/>
+    <text class="btn" x="836" y="453" fill="#E6E8EC">Codex</text>
+
+    <!-- Yours -->
+    <text x="82" y="522" font-size="15" font-weight="700" fill="#C4CAD4">Yours</text>
+    <rect x="132" y="508" width="22" height="20" rx="10" fill="#2A303C"/>
+    <text x="143" y="522.5" text-anchor="middle" font-size="12.5" font-weight="700" fill="#C4CAD4">2</text>
+
+    <!-- Card 3: blocked -->
+    <rect class="card" x="80" y="536" width="848" height="80" rx="10"/>
+    <rect x="80" y="536" width="4" height="80" fill="#F05D5E" clip-path="url(#c3)"/>
+    <g transform="translate(118 576)"><g clip-path="url(#avatar)"><circle r="18" fill="#E9B44C"/><circle cy="-5" r="6.5" fill="#0F1218" fill-opacity="0.32"/><ellipse cy="15" rx="12" ry="9.5" fill="#0F1218" fill-opacity="0.32"/></g></g>
+    <text class="ttl" x="150" y="569">Stream search results to the client</text>
+    <rect x="482.5" y="553.5" width="77" height="21" rx="10.5" fill="#A78BFA" fill-opacity="0.1" stroke="#A78BFA" stroke-opacity="0.4"/>
+    <circle cx="494" cy="564" r="3.5" fill="#A78BFA"/>
+    <text class="lbl" x="502" y="568.5">feature</text>
+    <circle cx="154" cy="590" r="3.5" fill="#F05D5E"/>
+    <text class="by" x="164" y="595"><tspan class="story" fill="#F05D5E">2 of 14 checks failing</tspan> · acme-org/search #57 · you · 1d</text>
+    <line x1="632" y1="566" x2="646" y2="566" stroke="#3A4150" stroke-width="1.5"/>
+    <line x1="666" y1="566" x2="680" y2="566" stroke="#3A4150" stroke-width="1.5"/>
+    <use href="#fail" x="622" y="566"/>
+    <use href="#ok" x="656" y="566"/>
+    <use href="#wait" x="690" y="566"/>
+    <rect x="608.5" y="584.5" width="23" height="17" rx="4" fill="none" stroke="#3A4150"/>
+    <text class="grade" x="620" y="597" text-anchor="middle">L</text>
+    <g fill="#3DBE8B"><rect x="640" y="588" width="6" height="10" rx="1.5"/><rect x="649" y="588" width="6" height="10" rx="1.5"/><rect x="658" y="588" width="6" height="10" rx="1.5"/><rect x="667" y="588" width="6" height="10" rx="1.5"/></g>
+    <rect x="676" y="588" width="6" height="10" rx="1.5" fill="#3A4150"/>
+    <rect x="710.5" y="559.5" width="87" height="33" rx="8" fill="#F05D5E" fill-opacity="0.12" stroke="#F05D5E"/>
+    <text class="btn" x="754" y="581" text-anchor="middle" fill="#F05D5E">Open</text>
+    <rect x="806.5" y="559.5" width="115" height="33" rx="8" fill="#161A22" stroke="#3A4150"/>
+    <use href="#spark" x="823" y="576" fill="#F5803F"/>
+    <text class="btn" x="836" y="581" fill="#E6E8EC">Fix checks</text>
+
+    <!-- Card 4: an agent is on it -->
+    <rect class="card" x="80" y="626" width="848" height="80" rx="10"/>
+    <rect x="80" y="626" width="4" height="80" fill="#8FA4C4" clip-path="url(#c4)"/>
+    <g transform="translate(118 666)"><g clip-path="url(#avatar)"><circle r="18" fill="#A78BFA"/><circle cy="-5" r="6.5" fill="#0F1218" fill-opacity="0.32"/><ellipse cy="15" rx="12" ry="9.5" fill="#0F1218" fill-opacity="0.32"/></g></g>
+    <text class="ttl" x="150" y="659">Dark mode flickers on first load</text>
+    <rect x="452.5" y="643.5" width="43" height="21" rx="10.5" fill="#E9B44C" fill-opacity="0.1" stroke="#E9B44C" stroke-opacity="0.4"/>
+    <circle cx="464" cy="654" r="3.5" fill="#E9B44C"/>
+    <text class="lbl" x="472" y="658.5">ui</text>
+    <circle cx="154" cy="680" r="3.5" fill="#8FA4C4"/>
+    <text class="by" x="164" y="685"><tspan class="story" fill="#8FA4C4">Claude is on it</tspan> · acme-org/app #201 · assigned · 20m</text>
+    <rect x="600.5" y="641.5" width="103" height="21" rx="10.5" fill="#E9B44C" fill-opacity="0.12" stroke="#E9B44C" stroke-opacity="0.4"/>
+    <text x="652" y="656.5" text-anchor="middle" font-size="12.5" font-weight="700" fill="#E9B44C">In progress</text>
+    <text x="602" y="687" font-size="12.5" font-weight="700" fill="#9AA3B2">3/5</text>
+    <rect x="630" y="679" width="72" height="6" rx="3" fill="#2A303C"/>
+    <rect x="630" y="679" width="43" height="6" rx="3" fill="#3DBE8B"/>
+    <rect x="710.5" y="649.5" width="87" height="33" rx="8" fill="#161A22" stroke="#3A4150"/>
+    <text class="btn" x="754" y="671" text-anchor="middle" fill="#C4CAD4">Open</text>
+    <rect x="806.5" y="649.5" width="115" height="33" rx="8" fill="#8FA4C4" fill-opacity="0.12" stroke="#8FA4C4" stroke-opacity="0.55"/>
+    <circle class="pulse" cx="823" cy="666" r="4.5" fill="#8FA4C4"/>
+    <text x="835" y="671" font-size="14" font-weight="700" fill="#AFC0DA">Claude</text>
+  </g>
+
+  <!-- Numbered markers on the first card -->
+  <g class="sans">
+    <circle cx="80" cy="358" r="15" fill="#11141B"/><circle cx="80" cy="358" r="12.5" fill="#F5803F"/><text class="num" x="80" y="363.5" text-anchor="middle">1</text>
+    <circle cx="300" cy="403" r="15" fill="#11141B"/><circle cx="300" cy="403" r="12.5" fill="#F5803F"/><text class="num" x="300" y="408.5" text-anchor="middle">2</text>
+    <circle cx="656" cy="318" r="15" fill="#11141B"/><circle cx="656" cy="318" r="12.5" fill="#F5803F"/><text class="num" x="656" y="323.5" text-anchor="middle">3</text>
+    <circle cx="864" cy="318" r="15" fill="#11141B"/><circle cx="864" cy="318" r="12.5" fill="#F5803F"/><text class="num" x="864" y="323.5" text-anchor="middle">4</text>
+  </g>
+
+  <!-- Callouts -->
+  <g class="sans">
+    <circle cx="998" cy="252" r="14" fill="#F5803F"/><text class="num" x="998" y="257.5" text-anchor="middle">1</text>
+    <text class="co-t" x="1024" y="258">Whose move</text>
+    <text class="co-d" x="1024" y="286">The edge says it: orange is</text>
+    <text class="co-d" x="1024" y="308">yours, green ready to ship,</text>
+    <text class="co-d" x="1024" y="330">red blocked, blue an agent's.</text>
+
+    <circle cx="998" cy="372" r="14" fill="#F5803F"/><text class="num" x="998" y="377.5" text-anchor="middle">2</text>
+    <text class="co-t" x="1024" y="378">Why it's here</text>
+    <text class="co-d" x="1024" y="406">One line: Re-review, Approved,</text>
+    <text class="co-d" x="1024" y="428">or 2 of 14 checks failing.</text>
+
+    <circle cx="998" cy="470" r="14" fill="#F5803F"/><text class="num" x="998" y="475.5" text-anchor="middle">3</text>
+    <text class="co-t" x="1024" y="476">Where it stands</text>
+    <text class="co-d" x="1024" y="504">Checks, review, and merge,</text>
+    <text class="co-d" x="1024" y="526">with the size underneath.</text>
+
+    <circle cx="998" cy="568" r="14" fill="#F5803F"/><text class="num" x="998" y="573.5" text-anchor="middle">4</text>
+    <text class="co-t" x="1024" y="574">Two buttons</text>
+    <text class="co-d" x="1024" y="602">Your next move, and one click</text>
+    <text class="co-d" x="1024" y="624">to hand it to Claude or Codex.</text>
+  </g>
+</svg>

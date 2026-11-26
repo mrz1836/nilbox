@@ -1,0 +1,317 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="784" viewBox="0 0 1320 784" role="img" aria-labelledby="agents-title agents-desc">
+  <title id="agents-title">Coding agents: see it first, follow it live</title>
+  <desc id="agents-desc">One launch in four steps. A card's Claude button opens the launch options for acme-org/api #412, already on what the item's settings choose: Claude as the agent, the Review prompt from the app default, the work profile, Opus from the repository's default, High effort from the org's default, and a worktree from the app default, with plan mode ticked for this launch, a preview, and buttons to save the choices as the default for api or all of acme-org, Cancel, and Open in Claude. The terminal opens in the item's own worktree, ~/projects/.nilbox/worktrees/api/pr-412, with the Review prompt loaded. Back on the card, the session is followed live: Claude is on it in a new worktree, then Claude needs approval with a Show terminal button, then Claude's done and the review is yours. Beside it, the guard rails: an outside contributor's pull request that changes agent configuration carries a red chip and a locked agent button, starts in plan mode whatever the profile says, and waits until you confirm.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <path id="spark" d="M0-7C0.9-2.2 2.2-0.9 7 0C2.2 0.9 0.9 2.2 0 7C-0.9 2.2-2.2 0.9-7 0C-2.2-0.9-0.9-2.2 0-7Z"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="784" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="600" cy="500" r="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="784" rx="28"/></clipPath>
+    <clipPath id="c1"><rect x="64" y="256" width="260" height="140" rx="10"/></clipPath>
+    <clipPath id="c2"><rect x="64" y="456" width="260" height="136" rx="10"/></clipPath>
+    <clipPath id="c4"><rect x="876" y="506" width="380" height="244" rx="12"/></clipPath>
+    <clipPath id="avatar"><circle r="16"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <marker id="head" viewBox="0 0 12 12" refX="6" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1.5L10.5 6L1 10.5Z" fill="#F5803F"/>
+    </marker>
+    <path id="chev" d="M-4-2L0 2L4-2" fill="none" stroke="#9AA3B2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g id="term" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="-7" y="-6" width="14" height="12" rx="2.5"/><path d="M-3.8-2L-1.3 0.3L-3.8 2.6M0.6 2.8H3.6"/></g>
+    <g id="star"><path d="M0-6L1.6-2.1L5.7-1.8L2.6 0.9L3.5 5L0 2.8L-3.5 5L-2.6 0.9L-5.7-1.8L-1.6-2.1Z" fill="none" stroke="#9AA3B2" stroke-width="1.2" stroke-linejoin="round"/></g>
+    <g id="lock"><path d="M-2.6-1.2V-3.4A2.6 2.6 0 0 1 2.6-3.4V-1.2" fill="none" stroke="#E9B44C" stroke-width="1.5"/><rect x="-4.2" y="-1.4" width="8.4" height="6.6" rx="1.6" fill="#E9B44C"/></g>
+    <g id="shield"><path d="M0-7L5.8-4.8V-0.4C5.8 3.4 3.4 5.9 0 7.2C-3.4 5.9-5.8 3.4-5.8-0.4V-4.8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M0-3.4V0.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cy="3.1" r="0.95" fill="currentColor"/></g>
+    <g id="cbon"><rect width="16" height="16" rx="4" fill="#E8743B"/><path d="M4 8.3L6.9 11L12 5.2" fill="none" stroke="#1A0E06" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 44px; font-weight: 800; letter-spacing: -0.6px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .lede .b { font-weight: 600; fill: #D5D9E0; }
+    .step-t { font-size: 17px; font-weight: 700; fill: #F2F3F5; }
+    .step-s { font-weight: 400; fill: #8A93A3; }
+    .num { font-size: 15px; font-weight: 800; fill: #1A0E06; }
+    .card { fill: #1A1E27; stroke: #2A303C; }
+    .ttl { font-size: 15.5px; font-weight: 700; fill: #E6E8EC; }
+    .by { font-size: 14.5px; fill: #7D8595; }
+    .story { font-size: 14.5px; font-weight: 650; }
+    .btn { font-size: 14.5px; font-weight: 700; }
+    .cap { font-size: 12.5px; font-weight: 700; letter-spacing: 1.3px; fill: #8A93A3; }
+    .ui { font-size: 14.5px; fill: #E6E8EC; }
+    .lbl { font-size: 14px; fill: #9AA3B2; }
+    .src { font-size: 13px; fill: #8A93A3; }
+    .term { font-size: 14px; }
+    .note { font-size: 15.5px; fill: #9AA3B2; }
+    .note .b { font-weight: 600; fill: #D5D9E0; }
+    .flow { fill: none; stroke: #F5803F; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0.1 11; animation: flow 0.9s linear infinite; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    .breathe { animation: breathe 2.2s ease-in-out infinite; }
+    .run { stroke-dasharray: 40 368; animation: run 2.6s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -11.1; } }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @keyframes breathe { 50% { opacity: 0.15; } }
+    @keyframes run { to { stroke-dashoffset: -408; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .pulse, .breathe, .run { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="784" fill="url(#bg)"/>
+    <rect width="1320" height="784" fill="url(#dots)"/>
+    <rect width="1320" height="784" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="783" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- Headline -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="76">CODING AGENTS</text>
+    <text class="headline" x="62" y="128">See it first.<tspan dx="14">Follow it live.</tspan></text>
+    <text class="lede" x="64" y="166">Each card's launch options open on the item's own settings, so you <tspan class="b">see what will run first</tspan>.</text>
+    <text class="lede" x="64" y="194">Claude Code or Codex starts in the item's own worktree, and its card <tspan class="b">follows the session</tspan>.</text>
+  </g>
+
+  <!-- Step labels -->
+  <g class="sans">
+    <circle cx="76" cy="234" r="12.5" fill="#F5803F"/><text class="num" x="76" y="239.5" text-anchor="middle">1</text>
+    <text class="step-t" x="96" y="240">One click<tspan class="step-s" dx="8" font-size="15.5">· on any card</tspan></text>
+    <circle cx="364" cy="234" r="12.5" fill="#F5803F"/><text class="num" x="364" y="239.5" text-anchor="middle">2</text>
+    <text class="step-t" x="384" y="240">See what will run<tspan class="step-s" dx="8" font-size="15.5">· change any for this launch</tspan></text>
+    <circle cx="888" cy="234" r="12.5" fill="#F5803F"/><text class="num" x="888" y="239.5" text-anchor="middle">3</text>
+    <text class="step-t" x="908" y="240">Its own worktree<tspan class="step-s" dx="8" font-size="15.5">· no trust dialog</tspan></text>
+    <circle cx="888" cy="488" r="12.5" fill="#F5803F"/><text class="num" x="888" y="493.5" text-anchor="middle">4</text>
+    <text class="step-t" x="908" y="494">Followed on the card<tspan class="step-s" dx="8" font-size="15.5">· live</tspan></text>
+  </g>
+
+  <!-- 1 · The card -->
+  <g class="sans">
+    <rect class="card" x="64.5" y="256.5" width="259" height="139" rx="10"/>
+    <rect x="64" y="256" width="4" height="140" fill="#E8743B" clip-path="url(#c1)"/>
+    <g transform="translate(98 290)"><g clip-path="url(#avatar)"><circle r="16" fill="#8FA4C4"/><circle cy="-4.5" r="6" fill="#0F1218" fill-opacity="0.32"/><ellipse cy="13.5" rx="11" ry="8.5" fill="#0F1218" fill-opacity="0.32"/></g></g>
+    <text class="ttl" x="124" y="287">Add webhook retries</text>
+    <text class="by" x="124" y="308">acme-org/api #412 · alice</text>
+    <circle cx="84" cy="333" r="3.5" fill="#F5803F"/>
+    <text class="story" x="94" y="338" fill="#F5803F">Your review</text>
+    <rect x="80.5" y="352.5" width="72" height="29" rx="7" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B"/>
+    <text class="btn" x="116.5" y="372" text-anchor="middle" fill="#F5803F">Review</text>
+    <rect x="158" y="350" width="133" height="34" rx="9" fill="none" stroke="#E8743B" stroke-width="3" stroke-opacity="0.5" filter="url(#glow)"/>
+    <rect x="160.5" y="352.5" width="128" height="29" rx="7" fill="#161A22" stroke="#E8743B" stroke-opacity="0.8"/>
+    <line x1="262.5" y1="353" x2="262.5" y2="381" stroke="#3A4150"/>
+    <use href="#spark" x="176" y="367" fill="#F5803F"/>
+    <text class="btn" x="188" y="372" fill="#E6E8EC">Claude</text>
+    <use href="#chev" x="275.5" y="367"/>
+    <path d="M246 372L246 389L250.2 385L253 391.5L255.6 390.4L252.9 384H258.5Z" fill="#F2F3F5" stroke="#0F1218" stroke-width="1.2" stroke-linejoin="round"/>
+  </g>
+
+  <!-- 1 → 2 -->
+  <path d="M296 367H344" fill="none" stroke="#E8743B" stroke-opacity="0.45" stroke-width="2.5" marker-end="url(#head)"/>
+  <path class="flow" d="M296 367H340"/>
+
+  <!-- 2 · The launch options -->
+  <g class="sans">
+    <g filter="url(#shadow)"><rect x="352" y="256" width="496" height="494" rx="14" fill="#161A22"/></g>
+    <rect x="352.5" y="256.5" width="495" height="493" rx="13.5" fill="none" stroke="#2F3542"/>
+    <text x="370" y="281" font-size="18" font-weight="700" fill="#F2F3F5">Open in Claude</text>
+    <path d="M819 271L829 281M829 271L819 281" stroke="#9AA3B2" stroke-width="1.6" stroke-linecap="round"/>
+    <g transform="translate(376 297)" fill="none" stroke="#9AA3B2" stroke-width="1.4" stroke-linecap="round">
+      <circle cx="-3.5" cy="-4" r="1.8"/><circle cx="-3.5" cy="4.5" r="1.8"/><path d="M-3.5-2.2V2.7"/>
+      <circle cx="4" cy="4.5" r="1.8"/><path d="M4 2.7V-1.2Q4-4 1.2-4H-0.2M1.2-5.6L-0.4-4L1.2-2.4"/>
+    </g>
+    <text class="ui" x="388" y="302"><tspan font-weight="600">acme-org/api#412</tspan><tspan dx="6" fill="#9AA3B2">· Add webhook retries</tspan></text>
+    <line x1="352" y1="314.5" x2="848" y2="314.5" stroke="#2A303C"/>
+
+    <text class="cap" x="370" y="334">AGENT</text>
+    <rect x="370.5" y="341.5" width="225" height="27" rx="7" fill="#E8743B" fill-opacity="0.1" stroke="#E8743B"/>
+    <text class="ui" x="483" y="360" text-anchor="middle" font-weight="600">Claude</text>
+    <rect x="603.5" y="341.5" width="226" height="27" rx="7" fill="none" stroke="#2F3542"/>
+    <text class="ui" x="716.5" y="360" text-anchor="middle" fill="#9AA3B2">Codex</text>
+    <line x1="352" y1="379.5" x2="848" y2="379.5" stroke="#2A303C"/>
+
+    <text class="cap" x="370" y="399">PROMPT</text>
+    <text x="830" y="399" text-anchor="end" font-size="13.5" fill="#9AA3B2">Manage</text>
+    <rect x="370.5" y="406.5" width="459" height="29" rx="7" fill="#1A1E27" stroke="#2F3542"/>
+    <text class="ui" x="382" y="426" font-weight="600">Review · app default</text>
+    <use href="#chev" x="814" y="421"/>
+    <line x1="352" y1="446.5" x2="848" y2="446.5" stroke="#2A303C"/>
+
+    <text class="cap" x="370" y="466">PROFILE</text>
+    <rect x="370.5" y="473.5" width="70" height="24" rx="12" fill="none" stroke="#2F3542"/>
+    <text class="ui" x="405.5" y="490" text-anchor="middle" fill="#9AA3B2">default</text>
+    <rect x="448.5" y="473.5" width="58" height="24" rx="12" fill="#E8743B" fill-opacity="0.1" stroke="#E8743B"/>
+    <text class="ui" x="477.5" y="490" text-anchor="middle">work</text>
+    <line x1="352" y1="508.5" x2="848" y2="508.5" stroke="#2A303C"/>
+
+    <text class="lbl" x="370" y="535">Model</text>
+    <rect x="436.5" y="517.5" width="393" height="27" rx="7" fill="#1A1E27" stroke="#2F3542"/>
+    <text class="ui" x="448" y="536">Default · Opus (repo default)</text>
+    <use href="#chev" x="814" y="531"/>
+    <text class="lbl" x="370" y="569">Effort</text>
+    <rect x="436.5" y="551.5" width="393" height="27" rx="7" fill="#1A1E27" stroke="#2F3542"/>
+    <text class="ui" x="448" y="570">Default · High (org default)</text>
+    <use href="#chev" x="814" y="565"/>
+
+    <use href="#cbon" x="370" y="589"/>
+    <text class="ui" x="396" y="602">Start in a worktree</text>
+    <text class="src" x="830" y="602" text-anchor="end">app default</text>
+    <use href="#cbon" x="370" y="615"/>
+    <text class="ui" x="396" y="628">Start in plan mode</text>
+    <text class="src" x="830" y="628" text-anchor="end">this launch</text>
+    <line x1="352" y1="643.5" x2="848" y2="643.5" stroke="#2A303C"/>
+
+    <path d="M374 654L378 658L374 662" fill="none" stroke="#9AA3B2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="ui" x="388" y="663" fill="#9AA3B2">Preview</text>
+    <line x1="352" y1="676.5" x2="848" y2="676.5" stroke="#2A303C"/>
+
+    <text class="src" x="370" y="694" font-size="12.5">Save these choices as</text>
+    <text class="src" x="370" y="709" font-size="12.5">the default for</text>
+    <rect x="370.5" y="716.5" width="56" height="24" rx="6" fill="#161A22" stroke="#3A4150"/>
+    <use href="#star" x="383" y="728.5"/>
+    <text x="394" y="733.5" font-size="13.5" font-weight="600" fill="#E6E8EC">api</text>
+    <rect x="432.5" y="716.5" width="146" height="24" rx="6" fill="#161A22" stroke="#3A4150"/>
+    <use href="#star" x="445" y="728.5"/>
+    <text x="456" y="733.5" font-size="13.5" font-weight="600" fill="#E6E8EC">all of acme-org</text>
+    <rect x="594.5" y="698.5" width="70" height="30" rx="8" fill="#161A22" stroke="#3A4150"/>
+    <text class="ui" x="629.5" y="718.5" text-anchor="middle" font-weight="600">Cancel</text>
+    <rect x="670" y="696" width="163" height="35" rx="10" fill="none" stroke="#E8743B" stroke-width="3" stroke-opacity="0.45" filter="url(#glow)"/>
+    <rect x="672.5" y="698.5" width="158" height="30" rx="8" fill="#E8743B" fill-opacity="0.2" stroke="#E8743B" stroke-opacity="0.8"/>
+    <use href="#term" x="691" y="713.5" stroke="#F5803F"/>
+    <text class="ui" x="707" y="718.5" font-weight="700" fill="#F2F3F5">Open in Claude</text>
+  </g>
+
+  <!-- 2 → 3 -->
+  <path d="M836 713.5H848Q862 713.5 862 699.5V376Q862 362 870 362" fill="none" stroke="#E8743B" stroke-opacity="0.45" stroke-width="2.5" marker-end="url(#head)"/>
+  <path class="flow" d="M836 713.5H848Q862 713.5 862 699.5V376Q862 362 866 362"/>
+
+  <!-- 3 · The terminal -->
+  <g>
+    <g filter="url(#shadow)"><rect x="876" y="256" width="380" height="212" rx="14" fill="#0C0E13"/></g>
+    <path d="M890 256H1242A14 14 0 0 1 1256 270V288H876V270A14 14 0 0 1 890 256Z" fill="#161A22"/>
+    <rect x="876.5" y="256.5" width="379" height="211" rx="13.5" fill="none" stroke="#2F3542"/>
+    <line x1="876" y1="288.5" x2="1256" y2="288.5" stroke="#2A303C"/>
+    <circle cx="896" cy="272" r="5.5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="914" cy="272" r="5.5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="932" cy="272" r="5.5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <text class="sans" x="1086" y="277" text-anchor="middle" font-size="13.5" fill="#9AA3B2">Review · api#412</text>
+    <g class="mono term">
+      <text x="894" y="316" fill="#7D8595">~/projects/.nilbox/worktrees/api/pr-412</text>
+      <g transform="translate(900 333)" fill="none" stroke="#3DBE8B" stroke-width="1.4" stroke-linecap="round">
+        <circle cx="-3" cy="-5" r="1.8"/><circle cx="-3" cy="5" r="1.8"/><circle cx="3.5" cy="-3" r="1.8"/><path d="M-3-3.2V3.2M3.5-1.2C3.5 1.6-3 1-3 3.2"/>
+      </g>
+      <text x="912" y="338" fill="#3DBE8B">worktree-pr-412</text>
+      <line x1="894" y1="352.5" x2="1238" y2="352.5" stroke="#1F242E"/>
+      <text x="894" y="378" fill="#F5803F" font-weight="700">&gt;</text>
+      <text x="912" y="378" fill="#E6E8EC">Review pull request #412 in</text>
+      <text x="912" y="400" fill="#E6E8EC">acme-org/api: Add webhook retries</text>
+      <text x="912" y="422" fill="#7D8595">Read the pull request, its…</text>
+      <circle class="pulse" cx="899" cy="444" r="4.5" fill="#8FA4C4"/>
+      <text x="912" y="449" fill="#C4CAD4">gh pr diff 412 --repo acme-org/api</text>
+    </g>
+  </g>
+
+  <!-- 3 → 4 -->
+  <path d="M1236 474V500" fill="none" stroke="#E8743B" stroke-opacity="0.45" stroke-width="2.5" marker-end="url(#head)"/>
+  <path class="flow" d="M1236 474V496"/>
+
+  <!-- 4 · The card follows the session -->
+  <g class="sans">
+    <rect class="card" x="876.5" y="506.5" width="379" height="243" rx="12"/>
+    <g clip-path="url(#c4)">
+      <rect x="876" y="506" width="4" height="81" fill="#8FA4C4"/>
+      <rect x="876" y="587" width="4" height="81" fill="#E9B44C"/>
+      <rect x="876" y="668" width="4" height="82" fill="#E8743B"/>
+    </g>
+    <line x1="892" y1="587.5" x2="1240" y2="587.5" stroke="#262B35"/>
+    <line x1="892" y1="668.5" x2="1240" y2="668.5" stroke="#262B35"/>
+
+    <!-- Working -->
+    <circle class="pulse" cx="900" cy="527" r="7.5" fill="none" stroke="#8FA4C4" stroke-opacity="0.6"/>
+    <circle cx="900" cy="527" r="3.8" fill="#8FA4C4"/>
+    <text class="story" x="914" y="532"><tspan fill="#8FA4C4">Claude is on it</tspan><tspan dx="6" fill="#7D8595" font-weight="400">· new worktree</tspan></text>
+    <rect x="892.5" y="545.5" width="72" height="27" rx="7" fill="none" stroke="#3A4150"/>
+    <text class="btn" x="928.5" y="564" text-anchor="middle" fill="#E6E8EC">Review</text>
+    <rect x="972.5" y="545.5" width="234" height="27" rx="7" fill="#161A22" stroke="#3A4150"/>
+    <path d="M979.5 545.5H1152.5V572.5H979.5A7 7 0 0 1 972.5 565.5V552.5A7 7 0 0 1 979.5 545.5Z" fill="#8FA4C4" fill-opacity="0.1" stroke="#8FA4C4" stroke-opacity="0.35"/>
+    <path class="run" d="M979.5 545.5H1152.5V572.5H979.5A7 7 0 0 1 972.5 565.5V552.5A7 7 0 0 1 979.5 545.5Z" fill="none" stroke="#AFC0DA" stroke-width="1.5"/>
+    <circle cx="987" cy="559" r="3.8" fill="#8FA4C4"/>
+    <text x="998" y="564" font-size="14.5" font-weight="600"><tspan fill="#AFC0DA">Claude working</tspan><tspan dx="5" fill="#7D8595" font-weight="500">2m</tspan></text>
+    <line x1="1180.5" y1="546" x2="1180.5" y2="572" stroke="#3A4150"/>
+    <use href="#term" x="1166.5" y="559" stroke="#9AA3B2"/>
+    <use href="#chev" x="1193.5" y="559"/>
+
+    <!-- Needs approval -->
+    <circle class="pulse" cx="900" cy="608" r="7.5" fill="none" stroke="#E9B44C" stroke-opacity="0.6"/>
+    <circle cx="900" cy="608" r="3.8" fill="#E9B44C"/>
+    <text class="story" x="914" y="613" fill="#E9B44C">Claude needs approval</text>
+    <rect class="breathe" x="889" y="623" width="139" height="34" rx="10" fill="none" stroke="#E9B44C" stroke-width="4" stroke-opacity="0.3"/>
+    <rect x="892.5" y="626.5" width="132" height="27" rx="7" fill="#E9B44C" fill-opacity="0.14" stroke="#E9B44C" stroke-opacity="0.45"/>
+    <text class="btn" x="958.5" y="645" text-anchor="middle" fill="#E9B44C">Show terminal</text>
+    <rect x="1032.5" y="626.5" width="26" height="27" rx="7" fill="#161A22" stroke="#3A4150"/>
+    <use href="#chev" x="1045.5" y="640"/>
+
+    <!-- Done -->
+    <circle cx="900" cy="689" r="3.8" fill="#F5803F"/>
+    <text class="story" x="914" y="694" fill="#F5803F">Your review</text>
+    <rect x="892.5" y="707.5" width="72" height="27" rx="7" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B"/>
+    <text class="btn" x="928.5" y="726" text-anchor="middle" fill="#F5803F">Review</text>
+    <rect x="972.5" y="707.5" width="206" height="27" rx="7" fill="#161A22" stroke="#3A4150"/>
+    <path d="M979.5 707.5H1152.5V734.5H979.5A7 7 0 0 1 972.5 727.5V714.5A7 7 0 0 1 979.5 707.5Z" fill="#3DBE8B" fill-opacity="0.1" stroke="#3DBE8B" stroke-opacity="0.3"/>
+    <circle cx="987" cy="721" r="3.8" fill="#3DBE8B"/>
+    <text x="998" y="726" font-size="14.5" font-weight="600"><tspan fill="#3DBE8B">Claude’s done</tspan><tspan dx="5" fill="#7D8595" font-weight="500">· 2m</tspan></text>
+    <use href="#chev" x="1165.5" y="721"/>
+  </g>
+
+  <!-- Guard rails -->
+  <g class="sans" transform="translate(0 30)">
+    <circle cx="76" cy="434" r="12.5" fill="#1D222C" stroke="#E8743B" stroke-opacity="0.7"/>
+    <use href="#shield" x="76" y="434" color="#F5803F" transform="translate(76 434) scale(0.85) translate(-76 -434)"/>
+    <text class="step-t" x="96" y="440">Plan mode for outsiders</text>
+
+    <rect class="card" x="64.5" y="456.5" width="259" height="135" rx="10"/>
+    <rect x="64" y="456" width="4" height="136" fill="#E8743B" clip-path="url(#c2)"/>
+    <g transform="translate(98 490)"><g clip-path="url(#avatar)"><circle r="16" fill="#A78BFA"/><circle cy="-4.5" r="6" fill="#0F1218" fill-opacity="0.32"/><ellipse cy="13.5" rx="11" ry="8.5" fill="#0F1218" fill-opacity="0.32"/></g></g>
+    <text class="ttl" x="124" y="487">Speed up CI caching</text>
+    <text class="by" x="124" y="508">acme-org/web #91 · carol</text>
+    <rect x="80.5" y="520.5" width="186" height="21" rx="10.5" fill="#F05D5E" fill-opacity="0.1" stroke="#F05D5E" stroke-opacity="0.45"/>
+    <use href="#shield" x="94" y="531" color="#F05D5E" transform="translate(94 531) scale(0.8) translate(-94 -531)"/>
+    <text x="104" y="535.5" font-size="13" font-weight="600" fill="#F05D5E">Outside · Agent config</text>
+    <rect x="80.5" y="552.5" width="72" height="27" rx="7" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B"/>
+    <text class="btn" x="116.5" y="571" text-anchor="middle" fill="#F5803F">Review</text>
+    <rect x="160.5" y="552.5" width="138" height="27" rx="7" fill="#161A22" stroke="#3A4150"/>
+    <line x1="272.5" y1="553" x2="272.5" y2="579" stroke="#3A4150"/>
+    <use href="#spark" x="176" y="566" fill="#F5803F"/>
+    <text class="btn" x="188" y="571" fill="#E6E8EC">Claude</text>
+    <use href="#lock" x="259" y="567"/>
+    <use href="#chev" x="285.5" y="566"/>
+
+    <use href="#lock" x="71" y="616"/>
+    <text class="note" x="88" y="621">Starts in <tspan class="b">plan mode</tspan>,</text>
+    <text class="note" x="88" y="643">whatever the profile says.</text>
+    <use href="#shield" x="71" y="672" color="#F05D5E"/>
+    <text class="note" x="88" y="677">Changes <tspan class="b">agent config</tspan>?</text>
+    <text class="note" x="88" y="699">It waits until you confirm.</text>
+  </g>
+</svg>

@@ -1,0 +1,234 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="730" viewBox="0 0 1320 730" role="img" aria-labelledby="nil-title nil-desc">
+  <title id="nil-title">Inbox at nil: clear every list, then celebrate</title>
+  <desc id="nil-desc">When every list is empty, Nilbox throws a party: confetti, the heading inbox == nil, an Achievement unlocked chip for a 7-day streak, and a terminal that runs nilbox status and checks off each list (review requested 0, clear; yours 0, clear; snoozed 3, they'll be back; dismissed 18, rest in peace; streak 7, days running, a new best) before a playful panic, goroutine 1 vibing, Developer.TouchGrass, and exit status 0. Beside it, the achievements you can unlock and the replay button, go run ./party.</desc>
+  <defs>
+    <path id="mark" d="M201.8 52L206.2 52C264.3 52 293.4 52 319.6 60.6C358.8 73.4 386.6 101.2 399.4 140.4C408 166.6 408 195.7 408 253.8L408 258.2C408 316.3 408 345.4 399.4 371.6C386.6 410.8 358.8 438.6 319.6 451.4C293.4 460 264.3 460 206.2 460L201.8 460C143.7 460 114.6 460 88.4 451.4C49.2 438.6 21.4 410.8 8.6 371.6C0 345.4 0 316.3 0 258.2L0 253.8C0 195.7 0 166.6 8.6 140.4C21.4 101.2 49.2 73.4 88.4 60.6C114.6 52 143.7 52 201.8 52ZM162.7 126C137.1 126 124.4 126 112.9 129.8C95.6 135.4 83.4 147.6 77.8 164.9C74 176.4 74 189.1 74 214.7L74 297.3C74 322.9 74 335.6 77.8 347.1C83.4 364.4 95.6 376.6 112.9 382.2C124.4 386 137.1 386 162.7 386L245.3 386C270.9 386 283.6 386 295.1 382.2C312.4 376.6 324.6 364.4 330.2 347.1C334 335.6 334 322.9 334 297.3L334 214.7C334 189.1 334 176.4 330.2 164.9C324.6 147.6 312.4 135.4 295.1 129.8C283.6 126 270.9 126 245.3 126L162.7 126ZM320.3 0H407.6L87.7 512H0.4Z"/>
+    <g id="trophy">
+      <path d="M-5.5-6.5H5.5V-2.2A5.5 5.5 0 0 1-5.5-2.2Z"/>
+      <path d="M-5.5-5H-8.2A2.6 2.6 0 0 0-5.2 0.2M5.5-5H8.2A2.6 2.6 0 0 1 5.2 0.2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="-1.2" y="2.6" width="2.4" height="3.2"/>
+      <rect x="-4.2" y="5.6" width="8.4" height="2.2" rx="1"/>
+    </g>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="730" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1F29"/>
+      <stop offset="0.55" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="930" cy="120" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#E8743B" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="930" cy="104" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8743B" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#E8743B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.45" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#D24F1B"/>
+    </linearGradient>
+    <linearGradient id="hot" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFC690"/>
+      <stop offset="0.5" stop-color="#F5803F"/>
+      <stop offset="1" stop-color="#E8743B"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    </pattern>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#FFFFFF" stroke-opacity="0.035"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1320" height="730" rx="28"/></clipPath>
+    <clipPath id="panel"><rect x="604" y="36" width="652" height="658" rx="18"/></clipPath>
+    <filter id="feather" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+    <mask id="calm" maskUnits="userSpaceOnUse" x="0" y="0" width="1320" height="730">
+      <rect width="1320" height="730" fill="#FFFFFF"/>
+      <g fill="#000000" filter="url(#feather)">
+        <rect x="40" y="112" width="480" height="568" rx="24"/>
+        <rect x="730" y="138" width="400" height="166" rx="24"/>
+      </g>
+    </mask>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <style>
+    .sans { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 2.8px; fill: #E8743B; }
+    .headline { font-size: 50px; font-weight: 800; letter-spacing: -0.8px; fill: #F2F3F5; }
+    .lede { font-size: 19px; fill: #9AA3B2; }
+    .pill { font-size: 14.5px; font-weight: 600; fill: #C4CAD4; }
+    .term { font-size: 15px; fill: #C4CAD4; }
+    .m { fill: #6E7686; }
+    .ok { fill: #3DBE8B; }
+    .f { animation: fall linear infinite; }
+    .s { transform-box: fill-box; transform-origin: center; animation: spin linear infinite; }
+    .ring { transform-box: fill-box; transform-origin: center; animation: ring 3s ease-out infinite; }
+    .ring2 { animation-delay: 1.5s; }
+    .blink { animation: blink 1.1s steps(1) infinite; }
+    @keyframes fall { from { transform: translateY(-730px); } to { transform: translateY(730px); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes ring { 0% { transform: scale(0.85); opacity: 0.7; } 100% { transform: scale(1.7); opacity: 0; } }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .f, .s, .ring, .blink { animation: none; } }
+  </style>
+
+  <!-- Backdrop -->
+  <g clip-path="url(#frame)">
+    <rect width="1320" height="730" fill="url(#bg)"/>
+    <rect width="1320" height="730" fill="url(#dots)"/>
+    <rect width="1320" height="730" fill="url(#ember)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1319" height="729" rx="27.5" fill="none" stroke="#2A303C"/>
+
+  <!-- The party's panel -->
+  <g filter="url(#shadow)"><rect x="604" y="36" width="652" height="658" rx="18" fill="#161A22"/></g>
+  <g clip-path="url(#panel)">
+    <rect x="604" y="36" width="652" height="658" fill="url(#grid)"/>
+    <rect x="604" y="36" width="652" height="658" fill="url(#halo)"/>
+  </g>
+  <rect x="604.5" y="36.5" width="651" height="657" rx="17.5" fill="none" stroke="#2F3542"/>
+
+  <!-- Confetti, kept clear of every word -->
+  <g clip-path="url(#frame)" mask="url(#calm)" opacity="0.85">
+    <g class="f" style="animation-duration:11.5s;animation-delay:-5.3s"><g transform="rotate(90 1205 373)"><rect class="s" x="1205" y="373" width="9" height="12" rx="1.5" fill="#3DBE8B" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:9.2s;animation-delay:-6.7s"><g transform="rotate(6 116 181)"><rect class="s" x="116" y="181" width="7" height="14" rx="1.5" fill="#3DBE8B" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:9.8s;animation-delay:-9.2s"><g transform="rotate(3 328 555)"><rect class="s" x="328" y="555" width="7" height="15" rx="1.5" fill="#F5803F" style="animation-duration:3.4s"/></g></g>
+    <g class="f" style="animation-duration:12.2s;animation-delay:-1.8s"><g transform="rotate(88 251 260)"><rect class="s" x="251" y="260" width="6" height="14" rx="1.5" fill="#3DBE8B" style="animation-duration:3.8s"/></g></g>
+    <g class="f" style="animation-duration:9.8s;animation-delay:-4.5s"><g transform="rotate(17 939 311)"><rect class="s" x="939" y="311" width="8" height="11" rx="1.5" fill="#E8743B" style="animation-duration:3.1s"/></g></g>
+    <g class="f" style="animation-duration:12.8s;animation-delay:-5.8s"><g transform="rotate(60 226 664)"><circle class="s" cx="226" cy="664" r="4.3" fill="#E8743B" style="animation-duration:1.7s"/></g></g>
+    <g class="f" style="animation-duration:12.7s;animation-delay:-2.5s"><g transform="rotate(151 630 393)"><rect class="s" x="630" y="393" width="5" height="10" rx="1.5" fill="#F05D5E" style="animation-duration:3.3s"/></g></g>
+    <g class="f" style="animation-duration:11.8s;animation-delay:-10.9s"><g transform="rotate(158 587 572)"><rect class="s" x="587" y="572" width="7" height="14" rx="1.5" fill="#A78BFA" style="animation-duration:2.4s"/></g></g>
+    <g class="f" style="animation-duration:10.8s;animation-delay:-3.6s"><g transform="rotate(143 1104 458)"><rect class="s" x="1104" y="458" width="6" height="12" rx="1.5" fill="#E8743B" style="animation-duration:3.4s"/></g></g>
+    <g class="f" style="animation-duration:10.8s;animation-delay:-12.4s"><g transform="rotate(53 788 557)"><rect class="s" x="788" y="557" width="5" height="13" rx="1.5" fill="#E8743B" style="animation-duration:2.8s"/></g></g>
+    <g class="f" style="animation-duration:9.2s;animation-delay:-2.4s"><g transform="rotate(17 479 341)"><circle class="s" cx="479" cy="341" r="3.8" fill="#3DBE8B" style="animation-duration:3.8s"/></g></g>
+    <g class="f" style="animation-duration:9.6s;animation-delay:-12.5s"><g transform="rotate(7 519 350)"><circle class="s" cx="519" cy="350" r="4.8" fill="#F5803F" style="animation-duration:3.2s"/></g></g>
+    <g class="f" style="animation-duration:11.9s;animation-delay:-2.5s"><g transform="rotate(65 995 29)"><rect class="s" x="995" y="29" width="5" height="10" rx="1.5" fill="#F5803F" style="animation-duration:3.2s"/></g></g>
+    <g class="f" style="animation-duration:11.0s;animation-delay:-1.4s"><g transform="rotate(27 1036 135)"><rect class="s" x="1036" y="135" width="6" height="11" rx="1.5" fill="#A78BFA" style="animation-duration:2.2s"/></g></g>
+    <g class="f" style="animation-duration:11.7s;animation-delay:-8.0s"><g transform="rotate(40 959 433)"><circle class="s" cx="959" cy="433" r="3.7" fill="#8FA4C4" style="animation-duration:3.2s"/></g></g>
+    <g class="f" style="animation-duration:10.9s;animation-delay:-5.5s"><g transform="rotate(72 499 334)"><path class="s" d="M499 334q6 -7 12 0t12 0" fill="none" stroke="#E8743B" stroke-width="3" stroke-linecap="round" style="animation-duration:2.1s"/></g></g>
+    <g class="f" style="animation-duration:9.8s;animation-delay:-2.2s"><g transform="rotate(41 123 478)"><circle class="s" cx="123" cy="478" r="5.1" fill="#E8743B" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:7.4s;animation-delay:-7.7s"><g transform="rotate(63 99 614)"><circle class="s" cx="99" cy="614" r="5.0" fill="#F5803F" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:10.3s;animation-delay:-11.1s"><g transform="rotate(89 979 186)"><circle class="s" cx="979" cy="186" r="3.6" fill="#E9B44C" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:7.7s;animation-delay:-2.1s"><g transform="rotate(83 811 29)"><rect class="s" x="811" y="29" width="8" height="13" rx="1.5" fill="#E9B44C" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:7.8s;animation-delay:-4.1s"><g transform="rotate(63 390 189)"><rect class="s" x="390" y="189" width="9" height="14" rx="1.5" fill="#E9B44C" style="animation-duration:3.3s"/></g></g>
+    <g class="f" style="animation-duration:8.2s;animation-delay:-12.0s"><g transform="rotate(16 1092 510)"><rect class="s" x="1092" y="510" width="9" height="11" rx="1.5" fill="#E9B44C" style="animation-duration:3.1s"/></g></g>
+    <g class="f" style="animation-duration:12.8s;animation-delay:-5.1s"><g transform="rotate(144 427 358)"><rect class="s" x="427" y="358" width="8" height="13" rx="1.5" fill="#FFC690" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:9.2s;animation-delay:-12.9s"><g transform="rotate(90 75 23)"><rect class="s" x="75" y="23" width="5" height="14" rx="1.5" fill="#F5803F" style="animation-duration:3.6s"/></g></g>
+    <g class="f" style="animation-duration:7.7s;animation-delay:-8.5s"><g transform="rotate(31 980 29)"><circle class="s" cx="980" cy="29" r="4.8" fill="#E9B44C" style="animation-duration:1.8s"/></g></g>
+    <g class="f" style="animation-duration:8.8s;animation-delay:-10.9s"><g transform="rotate(87 1274 25)"><circle class="s" cx="1274" cy="25" r="5.0" fill="#E8743B" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:9.7s;animation-delay:-3.2s"><g transform="rotate(164 1133 303)"><path class="s" d="M1133 303q6 -7 12 0t12 0" fill="none" stroke="#3DBE8B" stroke-width="3" stroke-linecap="round" style="animation-duration:2.6s"/></g></g>
+    <g class="f" style="animation-duration:12.8s;animation-delay:-8.4s"><g transform="rotate(77 326 172)"><rect class="s" x="326" y="172" width="9" height="13" rx="1.5" fill="#F5803F" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:12.3s;animation-delay:-4.8s"><g transform="rotate(141 106 638)"><rect class="s" x="106" y="638" width="8" height="13" rx="1.5" fill="#3DBE8B" style="animation-duration:3.6s"/></g></g>
+    <g class="f" style="animation-duration:11.8s;animation-delay:-11.0s"><g transform="rotate(125 1076 267)"><rect class="s" x="1076" y="267" width="5" height="10" rx="1.5" fill="#E9B44C" style="animation-duration:3.1s"/></g></g>
+    <g class="f" style="animation-duration:11.6s;animation-delay:-2.9s"><g transform="rotate(171 97 242)"><rect class="s" x="97" y="242" width="8" height="12" rx="1.5" fill="#FFC690" style="animation-duration:3.0s"/></g></g>
+    <g class="f" style="animation-duration:9.9s;animation-delay:-2.8s"><g transform="rotate(28 1052 492)"><rect class="s" x="1052" y="492" width="7" height="11" rx="1.5" fill="#3DBE8B" style="animation-duration:2.9s"/></g></g>
+    <g class="f" style="animation-duration:7.7s;animation-delay:-4.9s"><g transform="rotate(76 1257 297)"><circle class="s" cx="1257" cy="297" r="4.6" fill="#8FA4C4" style="animation-duration:2.3s"/></g></g>
+    <g class="f" style="animation-duration:7.0s;animation-delay:-8.3s"><g transform="rotate(127 493 525)"><rect class="s" x="493" y="525" width="6" height="14" rx="1.5" fill="#F05D5E" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:12.8s;animation-delay:-8.6s"><g transform="rotate(100 1121 457)"><rect class="s" x="1121" y="457" width="5" height="12" rx="1.5" fill="#8FA4C4" style="animation-duration:1.7s"/></g></g>
+    <g class="f" style="animation-duration:12.8s;animation-delay:-9.7s"><g transform="rotate(35 1021 280)"><rect class="s" x="1021" y="280" width="5" height="10" rx="1.5" fill="#3DBE8B" style="animation-duration:2.3s"/></g></g>
+    <g class="f" style="animation-duration:7.6s;animation-delay:-10.3s"><g transform="rotate(116 1255 276)"><circle class="s" cx="1255" cy="276" r="3.0" fill="#A78BFA" style="animation-duration:2.3s"/></g></g>
+    <g class="f" style="animation-duration:11.6s;animation-delay:-5.7s"><g transform="rotate(29 679 190)"><rect class="s" x="679" y="190" width="7" height="11" rx="1.5" fill="#F5803F" style="animation-duration:1.9s"/></g></g>
+    <g class="f" style="animation-duration:7.9s;animation-delay:-4.0s"><g transform="rotate(0 804 587)"><path class="s" d="M804 587q6 -7 12 0t12 0" fill="none" stroke="#F5803F" stroke-width="3" stroke-linecap="round" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:8.7s;animation-delay:-3.9s"><g transform="rotate(118 817 229)"><path class="s" d="M817 229q6 -7 12 0t12 0" fill="none" stroke="#E8743B" stroke-width="3" stroke-linecap="round" style="animation-duration:2.7s"/></g></g>
+    <g class="f" style="animation-duration:8.5s;animation-delay:-9.4s"><g transform="rotate(172 525 167)"><rect class="s" x="525" y="167" width="9" height="15" rx="1.5" fill="#FFC690" style="animation-duration:2.1s"/></g></g>
+    <g class="f" style="animation-duration:9.1s;animation-delay:-0.3s"><g transform="rotate(8 738 29)"><rect class="s" x="738" y="29" width="5" height="10" rx="1.5" fill="#E9B44C" style="animation-duration:3.7s"/></g></g>
+    <g class="f" style="animation-duration:8.9s;animation-delay:-11.1s"><g transform="rotate(72 1016 12)"><circle class="s" cx="1016" cy="12" r="3.4" fill="#E8743B" style="animation-duration:1.7s"/></g></g>
+    <g class="f" style="animation-duration:11.5s;animation-delay:-6.7s"><g transform="rotate(130 658 377)"><rect class="s" x="658" y="377" width="8" height="10" rx="1.5" fill="#8FA4C4" style="animation-duration:3.9s"/></g></g>
+    <g class="f" style="animation-duration:7.8s;animation-delay:-9.1s"><g transform="rotate(70 483 508)"><rect class="s" x="483" y="508" width="7" height="11" rx="1.5" fill="#F05D5E" style="animation-duration:3.4s"/></g></g>
+    <g class="f" style="animation-duration:10.4s;animation-delay:-5.1s"><g transform="rotate(35 265 439)"><rect class="s" x="265" y="439" width="7" height="10" rx="1.5" fill="#E8743B" style="animation-duration:2.8s"/></g></g>
+  </g>
+
+  <!-- Left: the pitch -->
+  <g class="sans">
+    <text class="eyebrow" x="64" y="150">INBOX AT NIL</text>
+    <text class="headline" x="61" y="210">Clear every list.</text>
+    <text class="headline" x="61" y="266">Then <tspan fill="url(#hot)">celebrate.</tspan></text>
+    <text class="lede" x="64" y="318">Empty every list and the inbox throws a party:</text>
+    <text class="lede" x="64" y="346">confetti, a terminal that checks off each list,</text>
+    <text class="lede" x="64" y="374">and achievements to unlock along the way.</text>
+
+    <!-- Achievements -->
+    <rect x="64" y="410" width="168" height="34" rx="17" fill="#E8743B" fill-opacity="0.16" stroke="#E8743B"/>
+    <use href="#trophy" x="86" y="427" fill="#F5803F" color="#F5803F"/>
+    <text x="102" y="432" font-size="14.5" font-weight="700" fill="#F5803F">7-day streak</text>
+    <rect x="244.5" y="410.5" width="99" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="294" y="432" text-anchor="middle">First nil</text>
+    <rect x="355.5" y="410.5" width="125" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="418" y="432" text-anchor="middle">Clean sweep</text>
+    <rect x="64.5" y="454.5" width="113" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="121" y="476" text-anchor="middle">Early bird</text>
+    <rect x="189.5" y="454.5" width="133" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="256" y="476" text-anchor="middle">Friday finish</text>
+    <rect x="334.5" y="454.5" width="111" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="390" y="476" text-anchor="middle">Night owl</text>
+    <rect x="64.5" y="498.5" width="165" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="147" y="520" text-anchor="middle">Weekend warrior</text>
+    <rect x="241.5" y="498.5" width="89" height="33" rx="16.5" fill="#161A22" stroke="#2F3542"/>
+    <text class="pill" x="286" y="520" text-anchor="middle">25 nils</text>
+
+    <!-- Replay -->
+    <rect x="64.5" y="574.5" width="183" height="39" rx="9" fill="#E8743B" fill-opacity="0.1" stroke="#E8743B" stroke-opacity="0.5"/>
+    <path d="M84 587L94 594L84 601Z" fill="#F5803F"/>
+    <text class="mono" x="104" y="599" font-size="14.5" font-weight="600" fill="#E6E8EC">go run ./party</text>
+    <text x="264" y="599" font-size="15.5" fill="#7D8595">Replay it. Each run escalates.</text>
+    <text x="64" y="660" font-size="15" fill="#6E7686">With Reduce motion on, it all holds still.</text>
+  </g>
+
+  <!-- Right: the party -->
+  <g class="sans">
+    <circle cx="930" cy="104" r="62" fill="#E8743B" fill-opacity="0.16" filter="url(#bloom)"/>
+    <circle class="ring" cx="930" cy="104" r="44" fill="none" stroke="#E8743B" stroke-opacity="0.45" stroke-width="1.5"/>
+    <circle class="ring ring2" cx="930" cy="104" r="58" fill="none" stroke="#E8743B" stroke-opacity="0.2" stroke-width="1.5"/>
+    <use href="#mark" transform="translate(906.1 74) scale(0.117)" fill="url(#glyph)"/>
+
+    <rect x="776" y="150" width="308" height="30" rx="15" fill="#E8743B" fill-opacity="0.14" stroke="#E8743B" stroke-opacity="0.55"/>
+    <use href="#trophy" x="797" y="165" fill="#F5803F" color="#F5803F"/>
+    <text x="814" y="170" font-size="14" font-weight="700" fill="#F5803F">Achievement unlocked<tspan fill="#C9744A" dx="6">·</tspan><tspan dx="6">7-day streak</tspan></text>
+
+    <text class="mono" x="930" y="246" text-anchor="middle" font-size="54" font-weight="800" letter-spacing="-1"><tspan fill="#F2F3F5">inbox</tspan><tspan fill="#6E7686" dx="18">==</tspan><tspan fill="url(#hot)" dx="18">nil</tspan></text>
+    <text x="930" y="284" text-anchor="middle" font-size="17" fill="#9AA3B2">Zero items. Zero notifications. Zero regrets.</text>
+
+    <!-- Terminal -->
+    <rect x="652" y="310" width="556" height="366" rx="12" fill="#0C0E13"/>
+    <path d="M664 310H1196A12 12 0 0 1 1208 322V342H652V322A12 12 0 0 1 664 310Z" fill="#161A22"/>
+    <rect x="652.5" y="310.5" width="555" height="365" rx="11.5" fill="none" stroke="#2A303C"/>
+    <line x1="652" y1="342.5" x2="1208" y2="342.5" stroke="#2A303C"/>
+    <circle cx="672" cy="326" r="5" fill="#F05D5E" fill-opacity="0.8"/>
+    <circle cx="690" cy="326" r="5" fill="#E9B44C" fill-opacity="0.8"/>
+    <circle cx="708" cy="326" r="5" fill="#3DBE8B" fill-opacity="0.8"/>
+    <text class="mono" x="930" y="331" text-anchor="middle" font-size="13" fill="#7D8595">~/inbox</text>
+
+    <g class="mono term">
+      <text x="676" y="376"><tspan fill="#F5803F" font-weight="700">$</tspan><tspan dx="10" fill="#E6E8EC">nilbox status</tspan></text>
+
+      <g stroke="#3A4150" stroke-dasharray="1 5" stroke-linecap="round" stroke-width="1.5">
+        <line x1="848" y1="400" x2="878" y2="400"/>
+        <line x1="752" y1="426" x2="878" y2="426"/>
+        <line x1="770" y1="452" x2="878" y2="452"/>
+        <line x1="788" y1="478" x2="862" y2="478"/>
+        <line x1="762" y1="504" x2="878" y2="504"/>
+      </g>
+      <text x="696" y="405">review requested</text><text x="896" y="405" text-anchor="end" font-weight="700">0</text><text class="ok" x="912" y="405">✓ clear</text>
+      <text x="696" y="431">yours</text><text x="896" y="431" text-anchor="end" font-weight="700">0</text><text class="ok" x="912" y="431">✓ clear</text>
+      <text x="696" y="457">snoozed</text><text x="896" y="457" text-anchor="end" font-weight="700">3</text><text x="912" y="457" fill="#E9B44C">// they'll be back</text>
+      <text x="696" y="483">dismissed</text><text x="896" y="483" text-anchor="end" font-weight="700">18</text><text class="m" x="912" y="483">// rest in peace</text>
+      <text x="696" y="509">streak</text><text x="896" y="509" text-anchor="end" font-weight="700">7</text><text class="ok" x="912" y="509">// days running, a new best</text>
+
+      <text x="676" y="548" fill="#F05D5E">panic: runtime error: nothing left to do</text>
+      <text class="m" x="676" y="578">goroutine 1 [vibing]:</text>
+      <text class="m" x="676" y="602">main.(*Developer).TouchGrass(0xc0ffee)</text>
+      <text class="m" x="712" y="626">~/outside/grass.go:42 +0x1337</text>
+      <text x="676" y="656"><tspan class="ok">exit status 0</tspan></text>
+      <rect class="blink" x="806" y="642" width="9" height="18" fill="#E6E8EC" fill-opacity="0.85"/>
+    </g>
+  </g>
+</svg>
