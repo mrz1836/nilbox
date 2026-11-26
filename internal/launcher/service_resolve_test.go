@@ -178,7 +178,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	}, preview.Worktree, "a preview says the worktree would be made, and from what")
 	assert.Equal(t, "claude <prompt> --model opus --permission-mode acceptEdits '--name=Review · example-repo#7'",
 		preview.Command)
-	assert.Equal(t, []string{"unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR=~/.claude_work"},
+	assert.Equal(t, append(unsetLines("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), "CLAUDE_CONFIG_DIR=~/.claude_work"),
 		preview.Env, "an API key never signs the agent in while its setting is off")
 	assert.Equal(t, "permission mode acceptEdits", preview.Permission)
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
@@ -190,8 +190,14 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 
 	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR", "unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN"},
-		preview.Env)
+	assert.Equal(t, []string{
+		"unset CLAUDE_CONFIG_DIR", "unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN",
+		"unset CLAUDECODE", "unset CLAUDE_CODE_CHILD_SESSION", "unset CLAUDE_CODE_CHILD_NOTES_DIR",
+		"unset CLAUDE_CODE_ENTRYPOINT", "unset CLAUDE_CODE_EXECPATH", "unset CLAUDE_CODE_MESSAGING_SOCKET",
+		"unset CLAUDE_CODE_MESSAGING_TOKEN", "unset CLAUDE_CODE_SESSION_ATTENDED", "unset CLAUDE_CODE_SESSION_ID",
+		"unset CLAUDE_EFFORT", "unset CLAUDE_PID", "unset CLAUDE_TMPDIR",
+		"unset CODEX_SANDBOX", "unset CODEX_SANDBOX_NETWORK_DISABLED", "unset CODEX_THREAD_ID",
+	}, preview.Env, "the default profile's config folder, the keys, then every agent session's variables")
 	assert.Nil(t, preview.Worktree)
 	assert.Equal(t, "~/projects/example-repo", preview.Dir)
 	assert.Contains(t, preview.Prompt, "Work on issue #3")
@@ -199,7 +205,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	codex, err := h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Profile: "work"})
 	require.NoError(t, err)
 	assert.Equal(t, "codex --sandbox workspace-write -- <prompt>", codex.Command, "Codex's prompt comes last")
-	assert.Equal(t, []string{"unset OPENAI_API_KEY", "unset CODEX_API_KEY", "unset CODEX_ACCESS_TOKEN", "CODEX_HOME=~/.codex_work"}, codex.Env)
+	assert.Equal(t, append(unsetLines("OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"), "CODEX_HOME=~/.codex_work"),
+		codex.Env, "a Codex session unsets Claude Code's sessions' variables too")
 	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 

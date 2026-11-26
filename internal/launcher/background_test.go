@@ -99,8 +99,9 @@ func TestPlanBackgroundRunsFencedInTheWorktreeWithNoTerminal(t *testing.T) {
 		"--system-prompt-snapshot", "off",
 	}, bp.Plan.Args, "the default profile's full access never reaches a background run: the fence's flags do")
 	assert.Equal(t, "fenced: Read only", bp.Plan.Permission)
-	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}, bp.Plan.Unset,
-		"the default profile unsets the config folder, and no API key signs it in unless the user lets it (AgentEnv)")
+	assert.Equal(t, sessionEnv("CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"), bp.Plan.Unset,
+		"the default profile unsets the config folder, no API key signs it in unless the user lets it, and no "+
+			"session's variables make it another's child (AgentEnv)")
 	assert.True(t, strings.HasSuffix(bp.Command, "< prompt.md"), bp.Command)
 	assert.NotEmpty(t, bp.Prompt)
 }

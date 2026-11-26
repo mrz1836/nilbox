@@ -189,3 +189,13 @@ func (codex) promptLast() bool { return true }
 func (codex) modelHint() string {
 	return `A model is one word, such as "gpt-6-sol", that doesn't start with "-".`
 }
+
+// sessionEnv names, conservatively, what codex-cli sets for each command it runs, which
+// tells the command it runs inside that session: CODEX_SANDBOX ("seatbelt", under its
+// macOS sandbox) and CODEX_SANDBOX_NETWORK_DISABLED, set where it spawns a command, and
+// CODEX_THREAD_ID, the session's thread, which its shell environment policy adds. Its other
+// variables (CODEX_HOME, its keys, CODEX_CA_CERTIFICATE, CODEX_URL) are the user's
+// settings, and any it may set for one tool call alone are left until seen to leak.
+func (codex) sessionEnv() []string {
+	return []string{"CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_THREAD_ID"}
+}

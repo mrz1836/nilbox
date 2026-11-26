@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -624,7 +625,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// review, a comment, or a push the agent made shows at once.
 	rereads := inbox.NewRereads(inboxSvc, logger)
 
-	registry := terminal.DefaultRegistry(runner)
+	// The terminal drivers run open and osascript without any agent session's variables,
+	// so a terminal app they start never hands them to its tabs (terminalRunner).
+	registry := terminal.DefaultRegistry(terminalRunner(opts, search, os.Environ()))
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads,
 		backgroundTokens{engine: engine})
 	followed.watcher = follow.watcher

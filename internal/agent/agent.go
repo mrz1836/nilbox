@@ -174,6 +174,10 @@ type spec interface {
 	// modelHint is the sentence the editors show for a model name the agent would
 	// misread.
 	modelHint() string
+
+	// sessionEnv names the variables a running session of the agent sets for the
+	// processes it starts, by whole name (SessionEnv).
+	sessionEnv() []string
 }
 
 // specs returns every backend, the default first.
@@ -242,6 +246,25 @@ func Lookup(id ID) (Agent, error) {
 // Known reports whether id names an agent; Inherit names none.
 func Known(id ID) bool {
 	return slices.Contains(IDs(), id)
+}
+
+// SessionEnv returns the variables a running session of any agent sets for the processes
+// it starts, each agent's in its spec's order, the default agent's first: Claude Code's
+// CLAUDECODE, CLAUDE_CODE_CHILD_SESSION, CLAUDE_CODE_SESSION_ID, and the like, and Codex's
+// CODEX_SANDBOX, CODEX_SANDBOX_NETWORK_DISABLED, and CODEX_THREAD_ID. A session started
+// with them takes itself for that session's child (Claude Code then saves no transcript,
+// which the app follows a session by), so no session the app starts carries any agent's
+// (launcher.AgentEnv unsets them), and nor does a terminal app the app starts, which would
+// hand them to every tab opened in it. They are whole names, never a prefix, so the user's
+// own settings beside them, such as CLAUDE_CODE_MAX_OUTPUT_TOKENS, still reach a session.
+// Each call returns a fresh list, never nil.
+func SessionEnv() []string {
+	out := []string{}
+	for _, s := range specs() {
+		out = append(out, s.sessionEnv()...)
+	}
+
+	return out
 }
 
 // PromptLast reports whether the agent's prompt follows its flags, after "--", rather than

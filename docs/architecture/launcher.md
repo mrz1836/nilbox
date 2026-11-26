@@ -78,10 +78,24 @@ and writable folders, no fence hook, and `--ask-for-approval on-request` rather 
 `TakeOver` stops a background run first through its `TakeOvers` (core's `backgroundAgents`), then
 resumes it so, in its worktree, held back as a launch is.
 
-`launcher.AgentEnv` is the one rule for every agent start's environment: the profile's config
-variable set (or unset for the default profile), and, unless the user's per-agent setting
-(`settings.Settings.ClaudeAPIKey`, `CodexAPIKey`, off by default) lets a key through, the agent's
-`KeyEnv` unset, so the profile's own sign-in is used.
+`launcher.AgentEnv` is the one rule for every agent start's environment (a launch, a resume, a
+take-over, a routine's run in the terminal, a background run, and Describe it's turns): the
+profile's config variable set (or unset for the default profile); unless the user's per-agent
+setting (`settings.Settings.ClaudeAPIKey`, `CodexAPIKey`, off by default) lets a key through, the
+agent's `KeyEnv` unset, so the profile's own sign-in is used; and every agent's session variables
+unset, whichever agent starts (`agent.SessionEnv`: Claude Code's `CLAUDECODE`,
+`CLAUDE_CODE_CHILD_SESSION`, and the rest a session sets for its children; Codex's `CODEX_SANDBOX`,
+`CODEX_SANDBOX_NETWORK_DISABLED`, and `CODEX_THREAD_ID`), by whole name, so a user's
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` still passes. A terminal app started from a shell inside a session
+hands those to its tabs (macOS's `open` passes on the caller's whole environment), and a Claude Code
+session that inherits `CLAUDE_CODE_CHILD_SESSION` saves no transcript, which `internal/sessions`
+follows it by. The profile's env can't set a key (with the setting off) or a session variable
+either. `Plan.Unset` holds them in that order, each agent's session variables in its spec's order,
+and the Preview lists them as `unset` lines before the `NAME=value` ones. The terminal drivers' own
+`open` and `osascript` run without the session variables too: core hands `terminal.DefaultRegistry`
+its `terminalRunner`, an `execpath.Exec` whose `Env` is this process's environment, read once at
+startup, minus `agent.SessionEnv`, so a terminal app the app starts never takes them on; every
+other program runs as before.
 
 An Autopilot routine's launch is a click's launch with `LaunchRequest.Routine` set (Go-only,
 `json:"-"`), which only holds it back more: its files are checked under the unattended scope, only

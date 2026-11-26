@@ -91,6 +91,40 @@ func TestAllReturnsCopies(t *testing.T) {
 	assert.NotEmpty(t, again[0].EffortLevels)
 }
 
+func TestSessionEnvNamesWholeVariablesAndNoUserSetting(t *testing.T) {
+	t.Parallel()
+
+	got := agent.SessionEnv()
+	require.NotEmpty(t, got)
+	assert.Contains(t, got, "CLAUDE_CODE_CHILD_SESSION", "the marker over which Claude Code saves no transcript")
+	assert.Contains(t, got, "CODEX_SANDBOX")
+
+	seen := map[string]bool{}
+
+	for _, name := range got {
+		assert.Regexp(t, `^[A-Z_][A-Z0-9_]*$`, name, "a whole name, never a prefix")
+		assert.False(t, seen[name], "%s is named once", name)
+
+		seen[name] = true
+	}
+
+	for _, a := range agent.All() {
+		for _, name := range append(append([]string{a.ConfigEnv}, a.KeyEnv...), a.AuthEnv...) {
+			assert.NotContains(t, got, name, "the profile and the API key setting decide %s", name)
+		}
+	}
+
+	for _, setting := range []string{
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CODEX_CA_CERTIFICATE",
+	} {
+		assert.NotContains(t, got, setting, "the user's own setting reaches a session")
+	}
+
+	got[0] = "changed"
+
+	assert.Equal(t, "CLAUDECODE", agent.SessionEnv()[0], "each call returns a fresh list")
+}
+
 func TestPromptLast(t *testing.T) {
 	t.Parallel()
 

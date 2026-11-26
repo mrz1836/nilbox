@@ -51,8 +51,26 @@ over a ChatGPT sign-in), which a profile's own environment can't set either; the
 Preview lists them (`unset ANTHROPIC_API_KEY`). **Use an API key for Claude Code when one is set**
 and **Use an API key for Codex when one is set**, under **Settings → Launching**, off at first,
 each lets a key from your shell through for that
-agent's launches, billed to that key. The same rule decides the environment of every launch: from
-the launch menu, a resume, and an Autopilot routine's. Nothing logs a variable's value.
+agent's launches, billed to that key.
+
+## Another session's variables
+
+A running agent session sets variables for the programs it starts, which tell them they run
+inside it: Claude Code's `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_EFFORT`, `CLAUDE_PID`, and the like, and Codex's
+`CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, and `CODEX_THREAD_ID`. macOS's `open` hands an
+app it starts the whole environment of whoever started it, so a terminal started from a shell inside
+such a session (or started by the app while the app itself was) carries them into every tab, and an
+agent started there takes itself for that session's child: Claude Code then saves no transcript
+("inherited CLAUDE_CODE_CHILD_SESSION marker"), and its card reads *status unavailable*. So every
+launch unsets every agent's, whichever agent it starts, and the app starts your terminal without
+them. Only those names go: your own settings beside them, such as
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, still reach the
+session. The launch menu's Preview lists these after the keys (`unset CLAUDECODE`, ...,
+`unset CODEX_THREAD_ID`).
+
+The same rules decide the environment of every launch: from the launch menu, a resume, a Take
+over, and an Autopilot routine's. Nothing logs a variable's value.
 
 ## The terminal
 

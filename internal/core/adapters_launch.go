@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -40,6 +41,21 @@ func agentFinder(opts Options, search execpath.Search) execpath.Finder {
 	}
 
 	return search
+}
+
+// terminalRunner is what the terminal drivers run open and osascript with: opts' Runner,
+// else environ, this process's environment, without the variables any agent's running
+// session sets for the processes it starts (agent.SessionEnv). macOS's open hands an app it
+// starts the caller's whole environment, so a terminal app the app starts while it runs
+// from a shell inside such a session (as a build from source often does) would otherwise
+// pass that session's variables to every tab opened in it. The rest of the environment is
+// kept as it is, and every other program runs as before.
+func terminalRunner(opts Options, search execpath.Search, environ []string) execpath.Runner {
+	if opts.Runner != nil {
+		return opts.Runner
+	}
+
+	return execpath.Exec{Search: search, Env: shellenv.Without(environ, agent.SessionEnv()...)}
 }
 
 // launchFiles checks the files of the pull requests a launch is for (launcher.FileChecker):

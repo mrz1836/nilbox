@@ -14,7 +14,10 @@ Services share their building blocks rather than keep copies:
   the flags no background run's extras set; `KeepsPreset`, each spec's own: Codex keeps every preset
   but GitHub tasks only), its version, sign-in, and login commands with their parsers
   (`ParseVersion`, `ParseSignIn`, which keep no email), the API key variables a launch unsets unless
-  the user's setting lets a key through (`KeyEnv`), the status page part it depends on
+  the user's setting lets a key through (`KeyEnv`), the variables its running sessions set for
+  the programs they start, by whole name, which every agent start and the terminal drivers' own
+  programs leave out whichever agent it is (`SessionEnv`, every spec's `sessionEnv`, outside the
+  bound `Agent`), the status page part it depends on
   (`StatusPart`), the conversation half Describe it talks with Claude Code through
   (`conversation.go`, `claude_conversation.go`: a turn's flags, `ConversationArgs`, which take no
   extra arguments, its MCP config, `ConversationFiles`, the plugin's files and commands,

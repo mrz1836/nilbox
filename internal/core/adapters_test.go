@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -352,6 +353,42 @@ func TestWorktreeRunnerTurnsGitsTerminalPromptsOff(t *testing.T) {
 	assert.Equal(t, []string{"GIT_TERMINAL_PROMPT=0"}, prompts, "in place of the process's own")
 	assert.Len(t, runner.Env, len(os.Environ()), "the rest of the process's environment, as it is")
 	assert.Contains(t, runner.Env, "PATH="+os.Getenv("PATH"))
+}
+
+func TestTheTerminalRunnerStartsATerminalWithoutAnyAgentSessionsVariables(t *testing.T) {
+	t.Parallel()
+
+	search := execpath.Search{Path: "/opt/fake/bin"}
+	environ := []string{
+		"PATH=/opt/tools/bin:/usr/bin", "HOME=/srv/home", "CLAUDECODE=1", "CLAUDE_CODE_CHILD_SESSION=1",
+		"CLAUDE_CODE_SESSION_ID=0b8f", "CLAUDE_PID=4100", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CONFIG_DIR=/srv/home/.claude_work",
+		"CODEX_SANDBOX=seatbelt", "CODEX_SANDBOX_NETWORK_DISABLED=1", "CODEX_THREAD_ID=019a", "CODEX_HOME=/srv/home/.codex",
+		"LANG=C",
+	}
+	given := slices.Clone(environ)
+
+	runner, ok := terminalRunner(Options{}, search, environ).(execpath.Exec)
+	require.True(t, ok, "the app's own runner, with an environment of its own")
+	assert.Equal(t, search, runner.Search)
+	assert.Equal(t, []string{
+		"PATH=/opt/tools/bin:/usr/bin", "HOME=/srv/home", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", "CLAUDE_CONFIG_DIR=/srv/home/.claude_work",
+		"CODEX_HOME=/srv/home/.codex", "LANG=C",
+	}, runner.Env, "every agent session's variables go, and the rest stays as it was, in its order")
+	assert.Equal(t, given, environ, "the environment it is given is left alone")
+
+	for _, kv := range runner.Env {
+		name, _, _ := strings.Cut(kv, "=")
+		assert.NotContains(t, agent.SessionEnv(), name)
+	}
+
+	none, ok := terminalRunner(Options{}, search, nil).(execpath.Exec)
+	require.True(t, ok)
+	assert.NotNil(t, none.Env, "an empty environment is still the terminal's whole one, never this process's")
+
+	fake := noPrograms()
+	assert.Same(t, fake, terminalRunner(Options{Runner: fake}, search, environ), "a test's runner runs the terminals")
 }
 
 func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {
