@@ -967,7 +967,7 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
   ready to clean up, and filter by them. While it lists, the head shows how far it has got.
 - **What removing it would cost:** a row unfolds into a drawer that says so in one sentence, then
   lists its changed files, its commits not on GitHub, its branch and how far behind it is, and
-  where it came from, with **Open in Terminal** and **Reveal in Finder**.
+  where it came from, with **Open in terminal** and **Reveal in Finder**.
 - **Kept track of:** Nilbox records each worktree it makes, with the agent and time of its latest
   session, and checks every record against git each time it lists or sweeps: a worktree moved is
   followed, one removed outside the app is forgotten, and one on an item's `worktree-<item>`
