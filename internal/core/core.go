@@ -659,7 +659,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, touch: workLog, changes: inboxStore,
 	}, logger)
 
-	// A worktree's Open in Terminal goes through the terminal the runs open in, which is
+	// A worktree's Open in terminal goes through the terminal the runs open in, which is
 	// built once the launcher is, below.
 	worktreeTerm := &worktreeTerminal{}
 

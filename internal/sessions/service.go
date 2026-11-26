@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -17,11 +15,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// psBin is ps's fixed path on macOS and Linux; it names the terminal a process runs in.
-const psBin = "/bin/ps"
 
 var (
 	// ErrEnded is returned by Focus for a session that has ended.
@@ -247,17 +243,12 @@ func (s *Service) Forget(ctx context.Context, id string) error {
 // TTY returns the terminal device the process pid runs on, such as /dev/ttys004, asking
 // ps through run. A process with no terminal, or none at all, is ErrNoTerminal.
 func TTY(ctx context.Context, run execpath.Runner, pid int) (string, error) {
-	out, _, err := run.Run(ctx, psBin, "-o", "tty=", "-p", strconv.Itoa(pid))
+	tty, err := procs.TTY(ctx, run, pid)
 	if err != nil {
-		return "", fmt.Errorf("%w: ps: %w", ErrNoTerminal, err)
+		return "", fmt.Errorf("%w: %w", ErrNoTerminal, err)
 	}
 
-	name := strings.TrimSpace(execpath.FirstLine(out))
-	if name == "" || strings.Trim(name, "?") == "" || strings.ContainsAny(name, " \t") {
-		return "", fmt.Errorf("%w: process %d has no terminal", ErrNoTerminal, pid)
-	}
-
-	return "/dev/" + strings.TrimPrefix(name, "/dev/"), nil
+	return tty, nil
 }
 
 // Ledger records the sessions launches start, and the background runs' sessions, and

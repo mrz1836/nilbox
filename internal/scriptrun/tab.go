@@ -3,16 +3,12 @@ package scriptrun
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// psBin is ps's fixed path on macOS and Linux; it names the terminal a process runs on.
-const psBin = "/bin/ps"
 
 // lostTab is what Show in terminal says of a run whose shell is gone, or runs on no
 // terminal.
@@ -50,15 +46,10 @@ func (e *Engine) showable(rec Record) error {
 // that runs a run's script in the terminal runs on its tab's device. A process with no
 // terminal, or none at all, is ErrNoTab.
 func shellTTY(ctx context.Context, run execpath.Runner, pid int) (string, error) {
-	out, _, err := run.Run(ctx, psBin, "-o", "tty=", "-p", strconv.Itoa(pid))
+	tty, err := procs.TTY(ctx, run, pid)
 	if err != nil {
-		return "", fmt.Errorf("%w: ps: %w", ErrNoTab, err)
+		return "", fmt.Errorf("%w: %w", ErrNoTab, err)
 	}
 
-	name := strings.TrimSpace(execpath.FirstLine(out))
-	if name == "" || strings.Trim(name, "?") == "" || strings.ContainsAny(name, " \t") {
-		return "", fmt.Errorf("%w: process %d runs on no terminal", ErrNoTab, pid)
-	}
-
-	return "/dev/" + strings.TrimPrefix(name, "/dev/"), nil
+	return tty, nil
 }
