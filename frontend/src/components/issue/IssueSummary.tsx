@@ -21,6 +21,9 @@ export interface IssueSummaryProps {
   assignees?: AssigneesEditing | undefined
   // onShowSubIssues shows the sheet's Sub-issues tab; without it, the details don't offer to.
   onShowSubIssues?: (() => void) | undefined
+  // onUnassignMe takes the user off the issue, as the action menu's Unassign me does, from ×
+  // on their own line in Assignees; without it, their line offers none.
+  onUnassignMe?: (() => void) | undefined
 }
 
 // mentionsShownUpTo is how many mentions the details list open; past it, they fold away
@@ -269,7 +272,7 @@ function Milestone({ issue }: { issue: Issue }) {
 // fix it and what mentioned it, who it is assigned to (AssigneesSection, as the review sheet
 // shows a pull request's), its labels and projects, its milestone, the issue it duplicates,
 // and who took part.
-export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues }: IssueSummaryProps) {
+export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues, onUnassignMe }: IssueSummaryProps) {
   const editing = issue.canEdit && onEdit !== undefined
 
   return (
@@ -292,6 +295,7 @@ export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues }: Issu
         assignees={issue.assignees}
         more={issue.moreAssignees}
         editing={issue.canEdit ? assignees : undefined}
+        onUnassignMe={onUnassignMe}
       />
       <Part title="Labels" action={editing && <LabelPicker issue={issue} onEdit={onEdit} />}>
         {issue.labels.length === 0 ? (

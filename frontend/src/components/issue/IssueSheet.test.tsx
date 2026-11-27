@@ -604,6 +604,17 @@ describe('IssueSheet', () => {
     expect(await screen.findByText('GitHub refused it.')).toBeInTheDocument()
   })
 
+  it('takes the user off the issue from × beside their name in Assignees', async () => {
+    const onUnassign = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('')
+    renderAt(<Harness onUnassign={onUnassign} />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Unassign me' }))
+
+    expect(onUnassign).toHaveBeenCalledExactlyOnceWith(card(1))
+    expect(platform.editIssue, 'not through the edit').not.toHaveBeenCalled()
+  })
+
   it('offers no unassign for an issue the user isn’t assigned to', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ assigned: false }))
     renderAt(<Harness onUnassign={vi.fn()} />)
@@ -612,6 +623,9 @@ describe('IssueSheet', () => {
     await waitFor(() => {
       expect(screen.queryByRole('menuitem', { name: 'Unassign me' })).not.toBeInTheDocument()
     })
+    expect(
+      within(screen.getByRole('region', { name: 'Assignees' })).queryByRole('button', { name: 'Unassign me' }),
+    ).not.toBeInTheDocument()
   })
 
   it('quotes a comment into the reply', async () => {

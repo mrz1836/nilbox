@@ -68,7 +68,9 @@ items.
   checks every answer, since GitHub ignores a change an account can't make rather than refusing
   it, and reads the issue again once GitHub made any of it; the picker stays open until GitHub
   answers, and a step that failed says why there, while those before it stand. You take
-  yourself off with **Unassign me**, in the action menu, never here.
+  yourself off with **×** beside your own name (shown on hover), or **Unassign me** in the action
+  menu, both of which work as the card's Unassign me does; never in the picker, which keeps your
+  own row checked.
 - **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
 
 ## Links between the sheets

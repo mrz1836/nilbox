@@ -75,7 +75,7 @@ const assigneeReads: AssigneeReads = {
 
 // ownAssignment says where the user takes themselves off an issue: never in the picker,
 // which keeps their own row checked.
-const ownAssignment = 'Take yourself off with Unassign me, in the action menu.'
+const ownAssignment = 'Take yourself off with × beside your name, or Unassign me in the action menu.'
 
 // Notice is what the sheet says of one issue after an action on it: a close refused for a
 // comment since, or why taking the user off it failed. It says it only while that issue
@@ -472,6 +472,7 @@ export function IssueSheet({
                         onShowSubIssues={() => {
                           chooseTab('subissues')
                         }}
+                        onUnassignMe={unassign}
                         onEdit={edit}
                         assignees={{
                           reads: assigneeReads,

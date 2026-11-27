@@ -89,6 +89,34 @@ describe('AssigneesSection', () => {
     })
   })
 
+  it('takes the user off with × on their own line, as Unassign me, whether or not they may edit', async () => {
+    const onUnassignMe = vi.fn()
+    const { rerender } = section(assigned)
+
+    expect(screen.queryByRole('button', { name: 'Unassign me' }), 'without Unassign me, none').not.toBeInTheDocument()
+
+    rerender(
+      <AssigneesSection
+        look="details"
+        itemId={1}
+        repo="acme-org/example-repo"
+        noun="issue"
+        url="https://github.com/acme-org/example-repo/issues/12"
+        assignees={assigned}
+        more={0}
+        onUnassignMe={onUnassignMe}
+      />,
+    )
+
+    const mine = screen.getByRole('button', { name: 'Unassign me' })
+    expect(mine.closest('li')).toHaveTextContent('octo-user (you)')
+    expect(mine).toHaveAttribute('title', 'Take yourself off this issue on GitHub. Uses one REST request.')
+    expect(screen.queryByRole('button', { name: 'Unassign octo-other' }), 'the others only while editing').toBeNull()
+
+    await userEvent.click(mine)
+    expect(onUnassignMe).toHaveBeenCalledOnce()
+  })
+
   it('says why an edit failed', async () => {
     section(assigned, editing(vi.fn().mockResolvedValue('GitHub kept octo-other assigned.')))
 
