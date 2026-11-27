@@ -66,7 +66,9 @@ func NewScheduler(r Refresher, every periodic.Every, logger *slog.Logger) *Sched
 	s := &Scheduler{every: every, r: r}
 	refresh := refreshThrough(r)
 	s.job = periodic.NewJob(s.due, schedulerJob, func(ctx context.Context) error {
-		defer s.ended.Store(time.Now().UnixNano())
+		// The time is read as the refresh returns, inside the deferred func: a deferred
+		// call's arguments are read at the defer, which would store when it started.
+		defer func() { s.ended.Store(time.Now().UnixNano()) }()
 
 		return refresh(ctx)
 	}, logger)

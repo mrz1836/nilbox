@@ -35,17 +35,21 @@ func (r *countingRefresher) retryAt() time.Time { return time.Time{} }
 func (r *countingRefresher) onRetry(func()) {}
 
 // plannedRefresher answers each refresh with the next of errs, nil once they run out,
-// counting them, and plans the tries of the failed ones as the Service does, on the
-// time.Now of the test's synctest bubble.
+// counting them as they start, and plans the tries of the failed ones as the Service
+// does, on the time.Now of the test's synctest bubble. Each refresh takes took, none
+// when zero.
 type plannedRefresher struct {
 	mu    sync.Mutex
 	errs  []error
+	took  time.Duration
 	count atomic.Int32
 	plan  retries
 }
 
 func (r *plannedRefresher) Refresh(context.Context) (Snapshot, error) {
 	r.count.Add(1)
+
+	time.Sleep(r.took)
 
 	r.mu.Lock()
 
@@ -121,6 +125,32 @@ func TestSchedulerTriesAFailedRefreshAgainSoonerAndSoonerLess(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
 		assert.Equal(t, int32(5), r.count.Load())
+	})
+}
+
+// A refresh can take minutes before it fails, as one in flight while the Mac sleeps does
+// until the connection it waited on is reset on waking. Its try is due retryFirst after
+// it failed, and the scheduler starts it then, not retryFirst plus the refresh's length.
+func TestSchedulerTriesASlowFailedRefreshAgainFromItsEnd(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const took = 3 * time.Minute
+
+		r := &plannedRefresher{errs: []error{errBadGateway}, took: took}
+		runScheduler(t, NewScheduler(r, nil, nil))
+
+		time.Sleep(took + time.Second)
+		synctest.Wait()
+		assert.Equal(t, int32(1), r.count.Load(), "the first refresh fails three minutes in")
+
+		time.Sleep(retryFirst - 2*time.Second)
+		synctest.Wait()
+		assert.Equal(t, int32(1), r.count.Load(), "not tried again before its try is due")
+
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		assert.Equal(t, int32(2), r.count.Load(), "tried again 15 seconds after it failed, not after it started")
 	})
 }
 
