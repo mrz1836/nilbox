@@ -221,6 +221,49 @@ describe('ReviewerPicker', () => {
     expect(platform.learnReviewers, 'nothing to learn: the read isn’t due').not.toHaveBeenCalled()
   })
 
+  it('takes the user off with Remove me as reviewer once the rest of the edit went, never through the edit', async () => {
+    const edit = vi.fn().mockResolvedValue('')
+    const onRemoveMe = vi.fn()
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} onRemoveMe={onRemoveMe} />)
+
+    const panel = await picker()
+    const me = panel.getByRole('checkbox', { name: /octo-user/ })
+    expect(me).toBeEnabled()
+
+    await userEvent.click(me)
+    await userEvent.click(panel.getByRole('button', { name: /^Remove 1$/ }))
+
+    expect(edit, 'nothing else changed').not.toHaveBeenCalled()
+    expect(onRemoveMe).toHaveBeenCalledOnce()
+
+    await userEvent.click(await picker().then((p) => p.getByRole('checkbox', { name: /octo-user/ })))
+    await userEvent.click(screen.getByRole('checkbox', { name: /octo-asked/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Remove 2$/ }))
+
+    expect(edit).toHaveBeenCalledExactlyOnceWith([], ['octo-asked'])
+    expect(onRemoveMe).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the user asked when the rest of the edit fails', async () => {
+    const onRemoveMe = vi.fn()
+    renderAt(
+      <ReviewSummary
+        review={editable()}
+        item={undefined}
+        reviewers={editing(vi.fn().mockResolvedValue('GitHub kept octo-asked.'))}
+        onRemoveMe={onRemoveMe}
+      />,
+    )
+
+    const panel = await picker()
+    await userEvent.click(panel.getByRole('checkbox', { name: /octo-user/ }))
+    await userEvent.click(panel.getByRole('checkbox', { name: /octo-asked/ }))
+    await userEvent.click(panel.getByRole('button', { name: /^Remove 2$/ }))
+
+    expect(await panel.findByText('GitHub kept octo-asked.')).toBeInTheDocument()
+    expect(onRemoveMe).not.toHaveBeenCalled()
+  })
+
   it('filters on this Mac as the user types, and sends people and teams apart', async () => {
     const edit = vi.fn().mockResolvedValue('')
     renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)

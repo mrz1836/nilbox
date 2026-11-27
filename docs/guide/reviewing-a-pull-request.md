@@ -319,10 +319,10 @@ request (for someone without access to the repository, say). In the summary, hov
 **×** to take it off, or someone who reviewed and isn't asked now for **↻** to ask them again
 (never you, the author, a bot, or a team); while no one has reviewed it or is asked to, it says
 **No one is asked to review yet.** in amber, beside an empty place for a picture, and offers up to
-three of the picker's people, each asked in one click, and **More…** for the picker. Your own
-request stays checked in the picker: ask for your
-review again with [Re-request my review](#re-request-my-review), and take yourself off with
-[Remove me as reviewer](#remove-me-as-reviewer). The people you ask rank higher among those who
+three of the picker's people, each asked in one click, and **More…** for the picker. Ask for your
+review again with [Re-request my review](#re-request-my-review). Unchecking your own request in
+the picker takes you off with [Remove me as reviewer](#remove-me-as-reviewer), once the rest of what
+you changed went. The people you ask rank higher among those who
 work on the repository from then on ([People](#people)).
 
 ## Assignees
@@ -343,9 +343,11 @@ assigns everyone added in one more, so a swap works at GitHub's cap of ten, and 
 GitHub's answer at once, without reading the pull request again. Hover a line for **×** to unassign
 that person; with no one assigned, the summary says **No one is assigned.** in amber, beside an
 empty place for a picture, and offers **Assign yourself**, the author, and one more in one click,
-and **More…** for the picker. You take yourself off with **Unassign me**, in the card's menu,
-never here; the sheet shows it at once, even opened a moment after. Your own row in the picker
-stays checked. A pull request read by an older
+and **More…** for the picker. Take yourself off with **×** beside your own name, by unchecking
+your own row in the picker, or with **Unassign me** in the card's menu: all three run the card's
+Unassign me (one REST request), the picker's once the rest of what you changed went, and the sheet
+closes with a toast once GitHub took you off, or stays and says why it couldn't; the sheet shows it
+at once, even opened a moment after. A pull request read by an older
 Nilbox shows its assignees once it is read again. Once GitHub takes it, the card shows at
 once that you assigned yourself.
 
@@ -435,8 +437,8 @@ GitHub asks only collaborators to review.
 ## Remove me as reviewer
 
 While a pull request asks for your review by name, hover your own **awaiting review** line under
-**Reviewers** for **×**, or pick **Remove me as reviewer** at the foot of the action menu; the
-card's menu offers the same. It needs no triage access, since anyone asked may take themselves off,
+**Reviewers** for **×**, uncheck your own row in the reviewer picker, or pick **Remove me as
+reviewer** at the foot of the action menu; the card's menu offers the same. It needs no triage access, since anyone asked may take themselves off,
 and costs one REST request. While it runs, the sheet shows the step and takes no input; once GitHub
 takes you off, the sheet closes and a toast confirms it, naming the team the pull request still
 asks when it asked one too. When GitHub refuses, the sheet stays open and says why. A request made

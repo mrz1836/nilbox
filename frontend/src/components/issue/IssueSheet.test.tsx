@@ -615,6 +615,40 @@ describe('IssueSheet', () => {
     expect(platform.editIssue, 'not through the edit').not.toHaveBeenCalled()
   })
 
+  it('takes the user off the issue from the assignee picker, after the rest of the edit', async () => {
+    platform.refreshIssue.mockResolvedValue(
+      issue({
+        assignees: [
+          { login: 'octo-user', mine: true },
+          { login: 'octo-other', mine: false },
+        ],
+      }),
+    )
+    const onUnassign = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('')
+    renderAt(<Harness onUnassign={onUnassign} />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await waitFor(() => {
+      expect(within(assignees).getByRole('button', { name: 'Edit assignees' })).toBeInTheDocument()
+    })
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Edit assignees' }))
+    const picker = within(await screen.findByRole('dialog', { name: 'Assignees' }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-user/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-other/ }))
+    await userEvent.click(picker.getByRole('button', { name: 'Unassign 2' }))
+
+    await waitFor(() => {
+      expect(onUnassign).toHaveBeenCalledExactlyOnceWith(card(1))
+    })
+    expect(platform.editIssue).toHaveBeenCalledExactlyOnceWith({
+      itemId: 1,
+      addLabels: [],
+      removeLabels: [],
+      addAssignees: [],
+      removeAssignees: ['octo-other'],
+    })
+  })
+
   it('offers no unassign for an issue the user isn’t assigned to', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ assigned: false }))
     renderAt(<Harness onUnassign={vi.fn()} />)

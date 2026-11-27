@@ -12,6 +12,7 @@ import {
 } from '../lib/assignees'
 import { PicturesContext, usePictures } from '../lib/pictures'
 import { filtered } from '../lib/reviewers'
+import { applyTakingSelfOff } from '../lib/sheet'
 import { useNow } from '../lib/useNow'
 import { useQuery } from '../lib/useQuery'
 import type { AssigneeCandidates } from '../platform'
@@ -49,8 +50,10 @@ export interface AssigneePickerProps {
   candidates: AssigneeCandidates | undefined
   onLearned: (learned: AssigneeCandidates) => void
   reads: AssigneeReads
-  // ownLock says why the user's own row can't be unchecked here, and where they take
-  // themselves off instead.
+  // onUnassignMe takes the user off the item, as the sheet's Unassign me does, once the rest
+  // of an edit that unchecks their own row went; without it, their row stays checked, and
+  // ownLock says why, and where they take themselves off instead.
+  onUnassignMe?: (() => void) | undefined
   ownLock: string
   onEdit: OnAssignees
   onClose: () => void
@@ -65,8 +68,8 @@ export interface AssigneePickerProps {
 // while the app's list of who can be assigned is cut short, a pause in typing also searches,
 // which asks GitHub only when no earlier search answers the words. It opens on what the sheet
 // read before, with no request; when the app's knowledge of the repository is due a read
-// (stale), it reads it once as it opens. The user's own assignment is theirs to take off with
-// Unassign me.
+// (stale), it reads it once as it opens. Unchecking the user's own row takes them off with
+// Unassign me (onUnassignMe), after the rest of the edit, never through the edit itself.
 export function AssigneePicker({
   itemId,
   repo,
@@ -75,6 +78,7 @@ export function AssigneePicker({
   candidates,
   onLearned,
   reads,
+  onUnassignMe,
   ownLock,
   onEdit,
   onClose,
@@ -108,7 +112,7 @@ export function AssigneePicker({
     label: personLabel(a.login, '', a.mine),
     icon: <PersonAvatar login={a.login} />,
     hint: '',
-    locked: a.mine ? ownLock : '',
+    locked: a.mine && onUnassignMe === undefined ? ownLock : '',
     section: 'Assigned',
   }))
   const choices: Choice[] = [
@@ -158,7 +162,11 @@ export function AssigneePicker({
         busy={busy}
         current={assigned.map((a) => a.login)}
         applyLabel={assignLabel}
-        onApply={onEdit}
+        onApply={(add, remove) =>
+          onUnassignMe === undefined
+            ? onEdit(add, remove)
+            : applyTakingSelfOff(add, remove, assigned.find((a) => a.mine)?.login ?? '', onEdit, onUnassignMe)
+        }
         onClose={onClose}
       />
     </PicturesContext>

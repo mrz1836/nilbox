@@ -151,7 +151,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     onClose?.()
   }
 
-  const { triage, edits, seen, ended, nudgeDialog } = useItemActions({
+  const { triage, edits, seen, ended, nudgeDialog, unassignOn, removeReviewOn } = useItemActions({
     inbox: kit.inbox,
     snoozeDays: kit.snoozeDays,
     onSnoozeSettings: kit.onSnoozeSettings,
@@ -200,6 +200,20 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     close()
     showToast({ text: message, detail: title, tone })
   }
+  // closingOnce runs the user's taking themselves off an item from its sheet (take), which
+  // closes the sheet once GitHub made it, the toast saying so, and resolves with why it
+  // couldn't, which the sheet shows, or ''.
+  const closingOnce =
+    (take: (item: InboxItem) => Promise<string>) =>
+    async (item: InboxItem): Promise<string> => {
+      const error = await take(item)
+
+      if (error === '') {
+        close()
+      }
+
+      return error
+    }
   // sheetProps are what both sheets take alike, for the item the sheet shows.
   const sheetProps: SheetCommonProps | null =
     viewing === null
@@ -240,6 +254,8 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
             onFilesSettings={kit.onFilesSettings}
             onToast={showToast}
             ignoring={kit.ignoring}
+            onRemoveReview={closingOnce(removeReviewOn)}
+            onUnassign={closingOnce(unassignOn)}
           />
         )}
         {sheetProps !== null && viewing?.kind === 'issue' && (
@@ -249,6 +265,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
             onDone={(result, issue) => {
               done(result.message, issue.title, issueTone(result))
             }}
+            onUnassign={closingOnce(unassignOn)}
           />
         )}
       </Suspense>

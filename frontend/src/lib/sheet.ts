@@ -400,6 +400,39 @@ export function useTabPlaces<T extends string>(id: number, openOn: T, onTab?: (t
   return { tab, chooseTab, jumpTo, scroller }
 }
 
+// applyTakingSelfOff applies a picker's edit that may take the user (self, their key, as the
+// picker names them) off the item, which no edit does: the user takes themselves off with
+// their own action (takeSelfOff, the sheet's Unassign me or Remove me as reviewer), which
+// takes the item out of their inbox and closes the sheet. The rest of the edit goes first,
+// through edit; once GitHub made all of it, takeSelfOff runs. It resolves with why the edit
+// failed, when it stops there, or ''.
+export async function applyTakingSelfOff(
+  add: readonly string[],
+  remove: readonly string[],
+  self: string,
+  edit: (add: string[], remove: string[]) => Promise<string>,
+  takeSelfOff: () => void,
+): Promise<string> {
+  const isSelf = (key: string) => self !== '' && key.toLowerCase() === self.toLowerCase()
+  const rest = remove.filter((key) => !isSelf(key))
+
+  if (rest.length === remove.length) {
+    return edit([...add], [...remove])
+  }
+
+  if (add.length + rest.length > 0) {
+    const failed = await edit([...add], rest)
+
+    if (failed !== '') {
+      return failed
+    }
+  }
+
+  takeSelfOff()
+
+  return ''
+}
+
 // Progress is an action under way: what it is, the item it acts on, the steps the backend
 // reported so far, and whether the sheet stays open once it is done.
 export interface Progress {

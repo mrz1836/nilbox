@@ -11,6 +11,7 @@ import {
   teamKey,
   teamName,
 } from '../../lib/reviewers'
+import { applyTakingSelfOff } from '../../lib/sheet'
 import { useNow } from '../../lib/useNow'
 import { useQuery } from '../../lib/useQuery'
 import { learnReviewers, type Review, type ReviewEntry, type Reviewers, type TeamCandidate } from '../../platform'
@@ -31,6 +32,10 @@ export interface ReviewerPickerProps {
   // sheet to show too.
   candidates: Reviewers | undefined
   onLearned: (learned: Reviewers) => void
+  // onRemoveMe takes the user off the requested reviewers, as the sheet's Remove me as
+  // reviewer does, once the rest of an edit that unchecks their own row went; without it,
+  // their row stays checked.
+  onRemoveMe?: (() => void) | undefined
   onEdit: OnReviewers
   onClose: () => void
 }
@@ -64,9 +69,10 @@ function TeamGlyph() {
 // them at once, on this Mac alone, by login, name, or slug, those that start with it first.
 // It opens on what the sheet read before, with no request; when the app's knowledge of the
 // repository is due a read (stale), it reads it once as it opens, and its answer replaces
-// the list in place, keeping what the user checked. The user's own request is theirs to take
-// off with Remove me as reviewer, beside their name in Reviewers or in the action menu.
-export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose }: ReviewerPickerProps) {
+// the list in place, keeping what the user checked. Unchecking the user's own request takes
+// them off with Remove me as reviewer (onRemoveMe), after the rest of the edit, never through
+// the edit itself.
+export function ReviewerPicker({ review, candidates, onLearned, onRemoveMe, onEdit, onClose }: ReviewerPickerProps) {
   const id = useId()
   const now = useNow()
   const [query, setQuery] = useState('')
@@ -98,7 +104,10 @@ export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose 
     icon: r.team ? <TeamGlyph /> : <PersonAvatar login={r.author} />,
     hint: '',
     aside: r.state === '' ? '' : 'asked again',
-    locked: r.mine ? 'Take yourself off with Remove me as reviewer, beside your name or in the action menu.' : '',
+    locked:
+      r.mine && (r.team || onRemoveMe === undefined)
+        ? 'Take yourself off with Remove me as reviewer, beside your name or in the action menu.'
+        : '',
     section: 'Requested',
   }))
   const personRows = (list: typeof people, section: string): Choice[] =>
@@ -155,7 +164,11 @@ export function ReviewerPicker({ review, candidates, onLearned, onEdit, onClose 
         busy={busy}
         current={asks.map(requestKey)}
         applyLabel={applyLabel}
-        onApply={onEdit}
+        onApply={(add, remove) =>
+          onRemoveMe === undefined
+            ? onEdit(add, remove)
+            : applyTakingSelfOff(add, remove, asks.find((r) => r.mine && !r.team)?.author ?? '', onEdit, onRemoveMe)
+        }
         onClose={onClose}
       />
     </PicturesContext>

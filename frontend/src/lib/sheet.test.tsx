@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { item } from '../test/fixtures'
 import { emit, listening, send } from '../test/platform'
 import {
+  applyTakingSelfOff,
   cameBy,
   endedState,
   endedText,
@@ -541,5 +542,49 @@ describe('useTabPlaces', () => {
     await userEvent.click(screen.getByRole('button', { name: 'one' }))
 
     expect(log).toEqual([])
+  })
+})
+
+describe('applyTakingSelfOff', () => {
+  it('sends an edit that leaves the user be as it is', async () => {
+    const edit = vi.fn().mockResolvedValue('')
+    const takeSelfOff = vi.fn()
+
+    expect(await applyTakingSelfOff(['octo-new'], ['octo-other'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit).toHaveBeenCalledExactlyOnceWith(['octo-new'], ['octo-other'])
+    expect(takeSelfOff).not.toHaveBeenCalled()
+
+    await applyTakingSelfOff([], ['octo-user'], '', edit, takeSelfOff)
+    expect(edit, 'no user to tell apart').toHaveBeenLastCalledWith([], ['octo-user'])
+    expect(takeSelfOff).not.toHaveBeenCalled()
+  })
+
+  it('takes the user off with their own action, after the rest of the edit, in any case', async () => {
+    const edit = vi.fn().mockResolvedValue('')
+    const takeSelfOff = vi.fn()
+
+    expect(await applyTakingSelfOff(['octo-new'], ['Octo-User', 'octo-other'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit).toHaveBeenCalledExactlyOnceWith(['octo-new'], ['octo-other'])
+    expect(takeSelfOff).toHaveBeenCalledOnce()
+    expect(edit.mock.invocationCallOrder[0]).toBeLessThan(takeSelfOff.mock.invocationCallOrder[0] ?? 0)
+
+    expect(await applyTakingSelfOff([], ['octo-user'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit, 'nothing else to send').toHaveBeenCalledOnce()
+    expect(takeSelfOff).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops at an edit that failed, leaving the user on', async () => {
+    const takeSelfOff = vi.fn()
+
+    expect(
+      await applyTakingSelfOff(
+        [],
+        ['octo-user', 'octo-other'],
+        'octo-user',
+        vi.fn().mockResolvedValue('GitHub kept octo-other.'),
+        takeSelfOff,
+      ),
+    ).toBe('GitHub kept octo-other.')
+    expect(takeSelfOff).not.toHaveBeenCalled()
   })
 })

@@ -41,8 +41,9 @@ export interface AssigneesSectionProps {
 // AssigneesSection lists who an issue or a pull request is assigned to, each in a line with
 // their picture, the user's marked. While the user may change them (editing), it has Edit,
 // which opens the assignee picker, and a line offers × to unassign anyone but the user, a
-// line fading while its edit runs. The user's own assignment is never the picker's to take
-// off: given onUnassignMe, their line offers × for Unassign me instead. With no one
+// line fading while its edit runs. The user's own assignment is never the edit's to take
+// off: given onUnassignMe, their line offers × for Unassign me, and unchecking their row in
+// the picker runs it once the rest of the edit went. With no one
 // assigned, it offers its first few suggestions as one-click assignments, the user's first
 // ("Assign yourself"). Whom it suggests it reads from what the app learned, asking GitHub
 // nothing. In the summary's look, a pull request no one is assigned to that the user can't
@@ -207,6 +208,7 @@ export function AssigneesSection({
             candidates.set(() => learned)
           }}
           reads={editing.reads}
+          onUnassignMe={onUnassignMe}
           ownLock={editing.ownLock}
           onEdit={async (add, remove) => {
             const why = await editing.onEdit(add, remove)

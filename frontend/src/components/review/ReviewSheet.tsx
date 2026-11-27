@@ -92,6 +92,10 @@ export interface ReviewSheetProps extends SheetCommonProps {
   // resolves with why it couldn't, or '' once it did, when the inbox closes the sheet;
   // without it the sheet doesn't offer it.
   onRemoveReview?: ((item: InboxItem) => Promise<string>) | undefined
+  // onUnassign takes the user off the pull request's assignees on GitHub, and resolves with
+  // why it couldn't, or '' once it did, when the inbox closes the sheet; without it the
+  // sheet doesn't offer it.
+  onUnassign?: ((item: InboxItem) => Promise<string>) | undefined
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -192,6 +196,7 @@ export function ReviewSheet({
   onToast,
   ignoring = null,
   onRemoveReview,
+  onUnassign,
 }: ReviewSheetProps) {
   const titleId = useId()
   const tabsId = useId()
@@ -221,6 +226,7 @@ export function ReviewSheet({
   const [pushed, setPushed] = useState<Notice | null>(null)
   const [approved, setApproved] = useState<Notice | null>(null)
   const [unrequestFailed, setUnrequestFailed] = useState<Notice | null>(null)
+  const [unassignFailed, setUnassignFailed] = useState<Notice | null>(null)
   // actedOn is the pull request the last action ran on, and the action, whose error the
   // composer shows, or, for an approval of held runs, their bar.
   const [actedOn, setActedOn] = useState<{ id: number; action: ReviewAction }>({ id: 0, action: '' })
@@ -228,6 +234,7 @@ export function ReviewSheet({
   const pushedHere = pushed?.id === id ? pushed.message : ''
   const approvedHere = approved?.id === id ? approved.message : ''
   const unrequestFailedHere = unrequestFailed?.id === id ? unrequestFailed.message : ''
+  const unassignFailedHere = unassignFailed?.id === id ? unassignFailed.message : ''
   const actError = actedOn.id === id ? act.error : ''
   const approving = actedOn.action === 'approve_runs'
 
@@ -405,6 +412,25 @@ export function ReviewSheet({
           })
         }
 
+  // unassignMe takes the user off the pull request's assignees, from their own line in
+  // Assignees or the assignee picker, while the card says it is assigned to them, as the
+  // card's menu offers it.
+  const unassignMe =
+    onUnassign === undefined || item?.assigned !== true
+      ? undefined
+      : () => {
+          setProgress({ title: 'Unassign me', target, steps: ['Unassigning you on GitHub'] })
+          setUnassignFailed(null)
+
+          void onUnassign(item).then((error) => {
+            setProgress(null)
+
+            if (error !== '') {
+              setUnassignFailed({ id, message: error })
+            }
+          })
+        }
+
   const run = (action: ReviewAction) => {
     if (review === null) {
       return
@@ -482,7 +508,11 @@ export function ReviewSheet({
 
   // A read that finds the pull request merged or closed since the inbox read it hands it to
   // the host, which moves on from it, unless an action runs or left its notice here.
-  useEnded(review, working || pushedHere !== '' || approvedHere !== '' || unrequestFailedHere !== '', onEnded)
+  useEnded(
+    review,
+    working || pushedHere !== '' || approvedHere !== '' || unrequestFailedHere !== '' || unassignFailedHere !== '',
+    onEnded,
+  )
 
   const close = () => {
     if (!working) {
@@ -538,6 +568,15 @@ export function ReviewSheet({
               }}
             >
               Couldn’t remove you as a reviewer: {unrequestFailedHere}
+            </ErrorBanner>
+          )}
+          {unassignFailedHere !== '' && (
+            <ErrorBanner
+              onClose={() => {
+                setUnassignFailed(null)
+              }}
+            >
+              Couldn’t unassign you: {unassignFailedHere}
             </ErrorBanner>
           )}
           {(pushedHere !== '' || (review?.stale === true && !loaded.checking && review.fetchedAt !== '')) && (
@@ -762,6 +801,7 @@ export function ReviewSheet({
                         onIgnore={ignoreWorkflow}
                         mark={mark}
                         onRemoveMe={removeMe}
+                        onUnassignMe={unassignMe}
                         reviewers={
                           canEditReviewers
                             ? {
