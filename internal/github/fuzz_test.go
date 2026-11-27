@@ -188,8 +188,10 @@ func FuzzDecodeIssueView(f *testing.F) {
 		`{"data": {"node": {"__typename": "Issue", "id": "I_1", "number": 12, "issueState": "OPEN",
 			"repository": {"name": "example-repo", "owner": {"login": "acme-org"}}, "comments": {"totalCount": 2},
 			"labels": {"nodes": []}, "assignees": {"totalCount": 1, "nodes": [{"login": "octo-user"}]},
-			"subIssueList": {"nodes": [{"__typename": "Issue", "number": 3,
-				"repository": {"nameWithOwner": "acme-org/example-repo"}}, null]},
+			"subIssueList": {"nodes": [{"__typename": "Issue", "number": 3, "issueState": "CLOSED",
+				"repository": {"nameWithOwner": "acme-org/example-repo"}, "closedAt": "2026-11-10T08:00:00+02:00",
+				"assignees": {"totalCount": 4, "nodes": [{"login": "octo-user"}, null]},
+				"subIssuesSummary": {"total": 2, "completed": 5}}, null]},
 			"fixes": {"totalCount": 1, "nodes": [{"__typename": "PullRequest", "number": 4, "prState": "MERGED",
 				"repository": {"nameWithOwner": "acme-org/example-repo"}, "mergedAt": "2026-11-10T08:00:00+02:00"}]},
 			"reactionGroups": [{"content": "HEART", "reactors": {"totalCount": 2}}, null],
@@ -258,6 +260,14 @@ func checkIssueView(t *testing.T, view *IssueView) {
 			TimelineRenamed, TimelineMarkedAsDuplicate,
 		}, it.Type)
 		assert.Equal(t, time.UTC, it.CreatedAt.Location())
+	}
+
+	for _, sub := range view.SubIssues {
+		assert.False(t, sub.Ref.IsPR)
+		assert.NotNil(t, sub.Assignees.Logins)
+		assert.GreaterOrEqual(t, sub.Assignees.Total, len(sub.Assignees.Logins))
+		assert.LessOrEqual(t, sub.SubIssues.Completed, sub.SubIssues.Total)
+		assert.Equal(t, time.UTC, sub.ClosedAt.Location())
 	}
 
 	for _, fix := range view.Fixes {

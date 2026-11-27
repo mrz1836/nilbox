@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react'
 
-import { counted, refText } from '../../lib/format'
+import { refText } from '../../lib/format'
 import { dayPassed, formatDay } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePerson } from '../../platform'
 import { AssigneesSection, type AssigneesEditing } from '../Assignees'
 import { PersonAvatar } from '../Avatar'
-import { captionClass, inkLinkClass } from '../controls'
+import { captionClass, inkLinkClass, quietButtonClass } from '../controls'
+import { Fold } from '../Fold'
 import { ItemLink } from '../ItemLink'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
+import { RefMark } from '../RefMark'
 import { LabelPicker, type OnEdit } from './IssuePickers'
 
 export interface IssueSummaryProps {
@@ -17,14 +19,32 @@ export interface IssueSummaryProps {
   // to while the user may (Issue.canEdit); without them, they don't.
   onEdit?: OnEdit | undefined
   assignees?: AssigneesEditing | undefined
+  // onShowSubIssues shows the sheet's Sub-issues tab; without it, the details don't offer to.
+  onShowSubIssues?: (() => void) | undefined
 }
 
-// Part is one titled part of the details, with a control beside its title, if any.
-function Part({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+// mentionsShownUpTo is how many mentions the details list open; past it, they fold away
+// under their count until the user opens them.
+const mentionsShownUpTo = 3
+
+// PartProps are a titled part of the details: its title, how many it holds beside it (none
+// for 0 or none given), and a control beside them, if any.
+interface PartProps {
+  title: string
+  count?: number
+  action?: ReactNode
+  children: ReactNode
+}
+
+// Part is one titled part of the details.
+function Part({ title, count = 0, action, children }: PartProps) {
   return (
     <section aria-label={title} className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className={captionClass}>{title}</h3>
+        <h3 className={`${captionClass} flex items-center gap-1.5`}>
+          {title}
+          {count > 0 && <span className="font-medium tabular-nums">{String(count)}</span>}
+        </h3>
         {action}
       </div>
       {children}
@@ -111,13 +131,23 @@ function fixState(fix: IssueFix): string {
   return parts.join(' · ')
 }
 
-// Links lists linked items, each on its line, with their titles.
-function Links({ links, repo }: { links: readonly IssueLinked[]; repo: string }) {
+// Linked is a linked item on its line: its state's mark, then its name and title.
+function Linked({ linked, repo }: { linked: IssueLinked; repo: string }) {
   return (
-    <ul className="space-y-1 text-sm">
+    <span className="flex min-w-0 items-center gap-1.5">
+      <RefMark linked={linked} />
+      <ItemLink linked={linked} from={repo} titled />
+    </span>
+  )
+}
+
+// Links lists linked items, each on its line, with its state's mark and its title.
+function Links({ links, repo, label }: { links: readonly IssueLinked[]; repo: string; label?: string }) {
+  return (
+    <ul aria-label={label} className="space-y-1 text-sm">
       {links.map((l) => (
-        <li key={refText(l)} className="flex min-w-0">
-          <ItemLink linked={l} from={repo} titled />
+        <li key={refText(l)} className="min-w-0">
+          <Linked linked={l} repo={repo} />
         </li>
       ))}
     </ul>
@@ -125,7 +155,8 @@ function Links({ links, repo }: { links: readonly IssueLinked[]; repo: string })
 }
 
 // Development is the pull requests that close the issue once merged, where each stands,
-// and the pull requests and issues that mentioned it.
+// and the pull requests and issues that mentioned it, folded away under their count past a
+// few (mentionsShownUpTo).
 function Development({ issue }: { issue: Issue }) {
   if (issue.fixes.length === 0 && issue.mentioned.length === 0) {
     return <p className="text-sm text-muted">No pull request is linked to it.</p>
@@ -137,20 +168,43 @@ function Development({ issue }: { issue: Issue }) {
         <ul className="space-y-1.5 text-sm">
           {issue.fixes.map((fix) => (
             <li key={refText(fix.pr)} className="min-w-0">
-              <ItemLink linked={fix.pr} from={issue.repo} titled />
-              <p className="text-xs text-muted">{fixState(fix)}</p>
+              <Linked linked={fix.pr} repo={issue.repo} />
+              <p className="pl-5 text-xs text-muted">{fixState(fix)}</p>
             </li>
           ))}
         </ul>
       )}
       <More count={issue.moreFixes} url={issue.url} />
       {issue.mentioned.length > 0 && (
-        <>
-          <p className="text-xs text-muted">Mentioned in</p>
-          <Links links={issue.mentioned} repo={issue.repo} />
-        </>
+        <Fold title="Mentioned in" count={issue.mentioned.length} auto={issue.mentioned.length <= mentionsShownUpTo}>
+          <Links links={issue.mentioned} repo={issue.repo} label="Mentioned in" />
+        </Fold>
       )}
     </>
+  )
+}
+
+// SubIssuesLine is how far along the issue's sub-issues are, in one line, under a title
+// whose Show button shows them in the Sub-issues tab.
+function SubIssuesLine({ issue, onShow }: { issue: Issue; onShow: (() => void) | undefined }) {
+  return (
+    <Part
+      title="Sub-issues"
+      action={
+        onShow !== undefined && (
+          <button type="button" onClick={onShow} className={quietButtonClass}>
+            Show
+          </button>
+        )
+      }
+    >
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <ProgressBar done={issue.subIssuesDone} total={issue.subIssuesTotal} className="flex-1" />
+        <span className="shrink-0">
+          {String(issue.subIssuesDone)} of {String(issue.subIssuesTotal)} done
+        </span>
+      </div>
+    </Part>
   )
 }
 
@@ -189,16 +243,23 @@ function Milestone({ issue }: { issue: Issue }) {
   )
 }
 
-// IssueSummary is the details beside the conversation: the pull requests that fix the
-// issue, who it is assigned to (AssigneesSection, as the review sheet shows a pull
-// request's), its labels and projects, its milestone, its sub-issues and the issue it is
-// part of, and who took part.
-export function IssueSummary({ issue, onEdit, assignees }: IssueSummaryProps) {
+// IssueSummary is the details beside the conversation: where the issue sits among others
+// first, its sub-issues' progress and the issue it is part of, then the pull requests that
+// fix it and what mentioned it, who it is assigned to (AssigneesSection, as the review sheet
+// shows a pull request's), its labels and projects, its milestone, the issue it duplicates,
+// and who took part.
+export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues }: IssueSummaryProps) {
   const editing = issue.canEdit && onEdit !== undefined
 
   return (
     <div className="space-y-4">
-      <Part title="Development">
+      {issue.subIssuesTotal > 0 && <SubIssuesLine issue={issue} onShow={onShowSubIssues} />}
+      {issue.parent !== null && (
+        <Part title="Part of">
+          <Links links={[issue.parent]} repo={issue.repo} />
+        </Part>
+      )}
+      <Part title="Development" count={issue.fixes.length + issue.moreFixes}>
         <Development issue={issue} />
       </Part>
       <AssigneesSection
@@ -234,29 +295,12 @@ export function IssueSummary({ issue, onEdit, assignees }: IssueSummaryProps) {
         </Part>
       )}
       <Milestone issue={issue} />
-      {issue.subIssuesTotal > 0 && (
-        <Part title="Sub-issues">
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <ProgressBar done={issue.subIssuesDone} total={issue.subIssuesTotal} />
-            <span>
-              {String(issue.subIssuesDone)} of {counted(issue.subIssuesTotal, 'sub-issue', 'sub-issues')} done
-            </span>
-          </div>
-          <Links links={issue.subIssues} repo={issue.repo} />
-          <More count={issue.subIssuesTotal - issue.subIssues.length} url={issue.url} />
-        </Part>
-      )}
-      {issue.parent !== null && (
-        <Part title="Part of">
-          <Links links={[issue.parent]} repo={issue.repo} />
-        </Part>
-      )}
       {issue.duplicateOf !== null && (
         <Part title="Duplicate of">
           <Links links={[issue.duplicateOf]} repo={issue.repo} />
         </Part>
       )}
-      <Part title="Participants">
+      <Part title="Participants" count={issue.participants.length + issue.moreParticipants}>
         <People people={issue.participants} more={issue.moreParticipants} url={issue.url} none="No one yet" />
       </Part>
     </div>

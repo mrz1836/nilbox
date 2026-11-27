@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem, PictureBot } from '../platform'
 import { deferred, nextTask } from '../test/async'
-import { issue, issueComment, issueEvent, issueTimeline, item, review } from '../test/fixtures'
+import { issue, issueComment, issueEvent, issueTimeline, item, review, subIssue } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
   cardAuthors,
@@ -41,6 +41,24 @@ describe('pictureLogins', () => {
       ),
       'a bot, a hidden comment, a deleted account, and an event show no picture',
     ).toEqual(['amy-user', 'kim-user', 'zed-user'])
+  })
+
+  it('names who each sub-issue is assigned to', () => {
+    expect(
+      pictureLogins(
+        issue({
+          subIssues: [
+            subIssue({
+              assignees: [
+                { login: 'amy-user', mine: false },
+                { login: 'octo-user', mine: true },
+              ],
+            }),
+            subIssue({ assignees: [{ login: 'kim-user', mine: false }] }),
+          ],
+        }),
+      ),
+    ).toEqual(['amy-user', 'kim-user', 'octo-other', 'octo-user'])
   })
 
   it('leaves out a bot that opened it', () => {

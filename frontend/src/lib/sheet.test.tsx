@@ -17,6 +17,7 @@ import {
   useEnded,
   useSheetKeys,
   useSheetVisits,
+  useTabPlaces,
   withStep,
   type EndedItem,
   type ProgressEvent,
@@ -416,5 +417,129 @@ describe('useActionProgress', () => {
 
     send('issue:progress', { itemId: 7, step: 'Closing' })
     expect(result.current[0]?.steps).toEqual(['Closing'])
+  })
+})
+
+describe('useTabPlaces', () => {
+  type Tab = 'one' | 'two'
+
+  // Tabbed is a sheet of two tabs, each a scrolling box holding an element to jump to.
+  function Tabbed({ id, onTab }: { id: number; onTab?: (tab: Tab) => void }) {
+    const { tab, chooseTab, jumpTo, scroller } = useTabPlaces<Tab>(id, 'one', onTab)
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            chooseTab('one')
+          }}
+        >
+          one
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            chooseTab('two')
+          }}
+        >
+          two
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            jumpTo('one', 'in-one')
+          }}
+        >
+          jump one
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            jumpTo('two', 'in-two')
+          }}
+        >
+          jump two
+        </button>
+        <p>showing {tab}</p>
+        <div ref={scroller('one')} hidden={tab !== 'one'} data-testid="one">
+          <span id="in-one" />
+        </div>
+        <div ref={scroller('two')} hidden={tab !== 'two'} data-testid="two">
+          <span id="in-two" />
+        </div>
+      </>
+    )
+  }
+
+  // scrolls records each scrollTop set, by the box and its value, and each scrollIntoView,
+  // by the ID of what it shows; tops holds each box's scrollTop.
+  function scrolls() {
+    const log: string[] = []
+    const tops = new WeakMap<Element, number>()
+
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      log.push(`intoView:${this.id}`)
+    })
+    vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(function (this: Element) {
+      return tops.get(this) ?? 0
+    })
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, value: number) {
+      log.push(`${this.getAttribute('data-testid') ?? ''}=${String(value)}`)
+      tops.set(this, value)
+    })
+
+    return { log, tops }
+  }
+
+  it('opens on its tab, and tells each choice of another', async () => {
+    const onTab = vi.fn()
+    render(<Tabbed id={1} onTab={onTab} />)
+
+    expect(screen.getByText('showing one')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+    expect(onTab).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    expect(screen.getByText('showing two')).toBeInTheDocument()
+    expect(onTab).toHaveBeenCalledExactlyOnceWith('two')
+  })
+
+  it('puts a tab back where it was left, but leaves one never left where it is', async () => {
+    const { log, tops } = scrolls()
+    render(<Tabbed id={1} />)
+
+    tops.set(screen.getByTestId('one'), 120)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    expect(log).toEqual([])
+
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+    expect(log).toEqual(['one=120'])
+  })
+
+  it('jumps in the tab shown at once, and in another once it shows', async () => {
+    const { log, tops } = scrolls()
+    render(<Tabbed id={1} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'jump one' }))
+    expect(log).toEqual(['intoView:in-one'])
+
+    tops.set(screen.getByTestId('one'), 80)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    await userEvent.click(screen.getByRole('button', { name: 'jump one' }))
+    expect(screen.getByText('showing one')).toBeInTheDocument()
+    expect(log, 'the jump, not the place left').toEqual(['intoView:in-one', 'intoView:in-one'])
+  })
+
+  it('starts each item’s tabs with no place', async () => {
+    const { log, tops } = scrolls()
+    const { rerender } = render(<Tabbed id={1} />)
+
+    tops.set(screen.getByTestId('one'), 120)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    rerender(<Tabbed id={2} />)
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+
+    expect(log).toEqual([])
   })
 })

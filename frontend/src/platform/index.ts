@@ -775,6 +775,7 @@ export type IssueSeen = NonNullLists<issues.Seen>
 export type IssueStanding = NonNullLists<issues.Standing>
 export type IssueStandingState = issues.StandingState
 export type IssueStateReason = timeline.StateReason
+export type IssueSubIssue = NonNullLists<issues.SubIssue>
 export type IssueType = NonNullLists<issues.IssueType>
 export type ChecksWord = issues.ChecksWord
 export type RefState = timeline.RefState

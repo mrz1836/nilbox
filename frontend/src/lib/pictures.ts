@@ -37,8 +37,8 @@ function sorted(logins: Iterable<string>): string[] {
 }
 
 // pictureLogins are the people the issue sheet shows a picture beside: who opened it, its
-// assignees and participants, and the people its conversation shows (timelineLogins), but a
-// bot.
+// assignees and participants, its sub-issues' assignees, and the people its conversation
+// shows (timelineLogins), but a bot.
 export function pictureLogins(issue: Issue): string[] {
   const author = issue.author !== '' && !issue.isBot ? [issue.author] : []
 
@@ -46,6 +46,7 @@ export function pictureLogins(issue: Issue): string[] {
     ...author,
     ...issue.assignees.map((p) => p.login),
     ...issue.participants.map((p) => p.login),
+    ...issue.subIssues.flatMap((s) => s.assignees.map((p) => p.login)),
     ...timelineLogins(issue.timeline.items),
   ])
 }

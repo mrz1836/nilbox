@@ -108,6 +108,7 @@ import type {
   IssueRepoLabels,
   IssueReply,
   IssueResult,
+  IssueSubIssue,
   TimelineEntry,
   TimelineLineComment,
   TimelinePage,
@@ -3435,6 +3436,24 @@ export function issueRef(overrides: Partial<IssueLinked> = {}): IssueLinked {
     state: 'OPEN',
     stateReason: '',
     draft: false,
+    ...overrides,
+  }
+}
+
+// subIssue is issue 20 of example-repo as a sub-issue of issue 12: open, assigned to no one,
+// with no sub-issues of its own.
+export function subIssue(overrides: Partial<IssueSubIssue> = {}): IssueSubIssue {
+  return {
+    issue: issueRef({
+      number: 20,
+      title: 'Handle CRLF endings',
+      url: 'https://github.com/acme-org/example-repo/issues/20',
+    }),
+    assignees: [],
+    moreAssignees: 0,
+    subIssuesTotal: 0,
+    subIssuesDone: 0,
+    closedAt: '',
     ...overrides,
   }
 }

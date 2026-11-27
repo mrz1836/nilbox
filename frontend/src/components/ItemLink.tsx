@@ -30,14 +30,19 @@ export interface ItemLinkProps {
   // from is the repository the sheet shows, as "owner/name": a linked item in it is named
   // by its number alone.
   from: string
-  // titled shows the linked item's title after its name.
+  // titled shows the linked item's title after its name, and muted sets it in the muted ink,
+  // as for one that is done.
   titled?: boolean
+  muted?: boolean
 }
+
+// mutedLinkClass is inkLinkClass in the muted ink.
+const mutedLinkClass = 'text-muted hover:text-accent hover:underline'
 
 // ItemLink names a pull request or an issue a sheet links to, as in "#14" or
 // "acme-org/api#9", and opens it: in its sheet when the inbox holds it, else on GitHub,
 // which the mark beside it says.
-export function ItemLink({ linked, from, titled = false }: ItemLinkProps) {
+export function ItemLink({ linked, from, titled = false, muted = false }: ItemLinkProps) {
   const links = use(LinksContext)
   const here = links?.holds(linked.repo, linked.number) === true
   const name = linked.repo === from ? `#${String(linked.number)}` : refText(linked)
@@ -53,7 +58,7 @@ export function ItemLink({ linked, from, titled = false }: ItemLinkProps) {
           openExternal(linked.url)
         }
       }}
-      className={`${inkLinkClass} inline-flex min-w-0 items-center gap-1 rounded-sm text-left`}
+      className={`${muted ? mutedLinkClass : inkLinkClass} inline-flex min-w-0 items-center gap-1 rounded-sm text-left`}
     >
       <span className="shrink-0 font-medium">{name}</span>
       {/* A space keeps the name and the title apart when read aloud; the flex layout drops it. */}

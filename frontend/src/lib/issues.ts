@@ -5,10 +5,12 @@ import type {
   InboxItem,
   Issue,
   IssueAction,
+  IssueLinked,
   IssueOffer,
   IssueResult,
   IssueStandingState,
   IssueStateReason,
+  IssueSubIssue,
   RefState,
 } from '../platform'
 import { toneText, type Tone } from './tone'
@@ -43,6 +45,80 @@ export function issueLook(state: RefState, reason: IssueStateReason): IssueLook 
       return closedAsCompleted
     default:
       return unlisted(reason, closedAsCompleted)
+  }
+}
+
+// RefMarkKind is the mark a linked pull request or issue shows: an issue open, done, or
+// closed without being done (not planned, or a duplicate), and a pull request open (or a
+// draft), merged, or closed unmerged.
+export type RefMarkKind = 'issue' | 'issue-done' | 'issue-skipped' | 'pr' | 'pr-merged' | 'pr-closed'
+
+// RefLook is how a linked pull request or issue shows its state: its mark, the mark's color,
+// and what the mark says to a screen reader.
+export interface RefLook extends IssueLook {
+  mark: RefMarkKind
+}
+
+// issueMark is an issue's mark, as issueLook reads its state: closed as not planned or as a
+// duplicate is closed without being done, and any other close is done.
+function issueMark(state: RefState, reason: IssueStateReason): RefMarkKind {
+  if (state === 'OPEN') {
+    return 'issue'
+  }
+
+  return reason === 'NOT_PLANNED' || reason === 'DUPLICATE' ? 'issue-skipped' : 'issue-done'
+}
+
+// refLook is how any linked pull request or issue shows its state. An issue is colored as
+// issueLook colors it. A pull request is colored as a card's links are: open in the success
+// color, a draft muted, merged in the info color, and closed unmerged muted.
+export function refLook(ref: IssueLinked): RefLook {
+  if (ref.kind !== 'pr') {
+    return { ...issueLook(ref.state, ref.stateReason), mark: issueMark(ref.state, ref.stateReason) }
+  }
+
+  switch (ref.state) {
+    case 'MERGED':
+      return { mark: 'pr-merged', color: toneText.info, words: 'Merged pull request' }
+    case 'CLOSED':
+      return { mark: 'pr-closed', color: toneText.muted, words: 'Closed pull request' }
+    default:
+      return ref.draft
+        ? { mark: 'pr', color: toneText.muted, words: 'Draft pull request' }
+        : { mark: 'pr', color: toneText.success, words: 'Open pull request' }
+  }
+}
+
+// SubIssueGroups are an issue's sub-issues as its Sub-issues tab lists them: those still
+// open, then those done (closed as completed, as not planned, or as a duplicate), each in
+// GitHub's order.
+export interface SubIssueGroups {
+  open: IssueSubIssue[]
+  done: IssueSubIssue[]
+}
+
+// subIssueGroups sorts an issue's sub-issues into open and done.
+export function subIssueGroups(subIssues: readonly IssueSubIssue[]): SubIssueGroups {
+  return {
+    open: subIssues.filter((s) => s.issue.state === 'OPEN'),
+    done: subIssues.filter((s) => s.issue.state !== 'OPEN'),
+  }
+}
+
+// doneShownUpTo is how many done sub-issues the Sub-issues tab lists open; past it, they
+// fold away under their count until the user opens them.
+export const doneShownUpTo = 5
+
+// closedWords says how a done issue was closed when that was not as completed: "not
+// planned", or "duplicate"; '' for one completed.
+export function closedWords(reason: IssueStateReason): string {
+  switch (reason) {
+    case 'NOT_PLANNED':
+      return 'not planned'
+    case 'DUPLICATE':
+      return 'duplicate'
+    default:
+      return ''
   }
 }
 

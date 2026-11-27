@@ -402,8 +402,9 @@ the pull request's sensitive-file check when one is due.
 
 The [issue sheet](guide/reading-an-issue.md) spends nothing on the scheduler's budget either:
 it reads only when you open an issue. Its one read brings the description, the newest hundred
-entries of the conversation, and the details beside them, and costs 1 GraphQL point with the
-projects or without them (measured on a public issue of over a hundred entries).
+entries of the conversation, the details beside them, and the first 25 sub-issues, each with its
+first three assignees, its own sub-issues' progress, and when it closed, and costs 1 GraphQL point
+with the projects or without them (measured on a public issue of over a hundred entries).
 
 | What you do | Requests |
 |---|---|

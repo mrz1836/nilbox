@@ -110,6 +110,29 @@ export function FileListSkeleton() {
   )
 }
 
+// subIssueRows are the widths of the placeholder sub-issue titles, varied so they read as a
+// list.
+const subIssueRows = ['w-2/3', 'w-1/2', 'w-3/5', 'w-2/5'] as const
+
+// SubIssuesSkeleton stands in for an issue's sub-issues until they come: a progress line,
+// then rows shaped like sub-issues, each with its mark, its title, and an assignee.
+export function SubIssuesSkeleton() {
+  return (
+    <div aria-hidden="true" className="space-y-4">
+      <span className="skeleton block h-2 w-48" />
+      <ul className="space-y-3">
+        {subIssueRows.map((width, i) => (
+          <li key={width} className="flex items-center gap-2 px-2">
+            <span className="skeleton size-3.5 shrink-0 rounded-full" style={sweep(i)} />
+            <span className={`skeleton h-3 ${width}`} style={sweep(i)} />
+            <span className="skeleton ml-auto size-4 shrink-0 rounded-full" style={sweep(i)} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 // descriptionLines are the widths of the placeholder lines of the description.
 const descriptionLines = ['w-11/12', 'w-full', 'w-4/5', 'w-2/3'] as const
 

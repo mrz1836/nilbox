@@ -6,7 +6,15 @@ import { ignoreKey, type IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import { reviewersRequest } from '../../lib/reviewers'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
-import { placeIn, stepTo, useActionProgress, useEnded, useSheetKeys, type SheetCommonProps } from '../../lib/sheet'
+import {
+  placeIn,
+  stepTo,
+  useActionProgress,
+  useEnded,
+  useSheetKeys,
+  useTabPlaces,
+  type SheetCommonProps,
+} from '../../lib/sheet'
 import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
 import { attempt } from '../../lib/call'
 import { useMutation } from '../../lib/useMutation'
@@ -119,12 +127,6 @@ interface Notice {
   message: string
 }
 
-// Scrollers are the scrolling boxes of the two tabs, whose places the sheet keeps across a
-// switch, and Places those places: null for a tab the user hasn't left yet, which has no
-// place to go back to.
-type Scrollers = Record<ReviewTab, HTMLElement | null>
-type Places = Record<ReviewTab, number | null>
-
 // assigneeReads are the assignee picker's reads of a pull request.
 const assigneeReads: AssigneeReads = {
   candidates: reviewAssigneeCandidates,
@@ -209,13 +211,9 @@ export function ReviewSheet({
     log: 'Read who to suggest as reviewers',
   })
   const draft = drafts.get(id)
-  // tab shows at once on a click, and the window remembers it (onTab) behind it.
-  const [tab, setTab] = useState<ReviewTab>(openOn)
-  const scrollers = useRef<Scrollers>({ files: null, comments: null, commits: null })
-  const places = useRef<Places>({ files: null, comments: null, commits: null })
-  // goingTo is where a jump scrolls once the tab it is in shows: a file's block or an
-  // entry's row, by ID.
-  const goingTo = useRef('')
+  // tab shows at once on a click, and the window remembers it (onTab) behind it; each tab
+  // keeps its place while another shows.
+  const { tab, chooseTab, jumpTo, scroller } = useTabPlaces<ReviewTab>(id, openOn, onTab)
   const [reveal, setReveal] = useState<Reveal | null>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const act = useMutation(actOnReview)
@@ -452,57 +450,6 @@ export function ReviewSheet({
     textRef.current?.focus()
   })
 
-  // chooseTab shows the tab next, keeping the place of the one it leaves, and remembers it,
-  // so the sheet opens on it from then on.
-  const chooseTab = (next: ReviewTab) => {
-    if (next === tab) {
-      return
-    }
-
-    places.current[tab] = scrollers.current[tab]?.scrollTop ?? 0
-    setTab(next)
-    onTab(next)
-  }
-
-  // jumpTo shows the tab at and scrolls to the element with the ID anchor in it, once it
-  // shows.
-  const jumpTo = (at: ReviewTab, anchor: string) => {
-    if (at === tab) {
-      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
-
-      return
-    }
-
-    goingTo.current = anchor
-    chooseTab(at)
-  }
-
-  // Each pull request's tabs start with no place: one left on another isn't this one's.
-  useLayoutEffect(() => {
-    places.current = { files: null, comments: null, commits: null }
-  }, [id])
-
-  // The tab shown goes back to its place, or to where a jump to it goes, once its Activity
-  // has shown it. A tab shown for the first time has no place, and is left where its
-  // contents put it: the conversation scrolls to what is new as it first shows, in its own
-  // layout effect, which runs before this one.
-  useLayoutEffect(() => {
-    const anchor = goingTo.current
-
-    goingTo.current = ''
-
-    const scroller = scrollers.current[tab]
-    const place = places.current[tab]
-
-    if (anchor === '') {
-      if (scroller !== null && place !== null) {
-        scroller.scrollTop = place
-      }
-    } else {
-      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
-    }
-  }, [tab])
-
   // jump shows the file a line comment is on in Files, opening it if it is folded. It is
   // made once, as quote is, for the conversation's entries, and reads the sheet's jumpTo as
   // last rendered.
@@ -694,12 +641,7 @@ export function ReviewSheet({
                           <FileList review={review} viewed={draft.viewed} />
                         )}
                       </aside>
-                      <main
-                        ref={(el) => {
-                          scrollers.current.files = el
-                        }}
-                        className="min-h-0 space-y-4 overflow-y-auto p-4"
-                      >
+                      <main ref={scroller('files')} className="min-h-0 space-y-4 overflow-y-auto p-4">
                         {review === null ? (
                           <>
                             <div className="rounded-md border border-border p-3">
@@ -740,12 +682,7 @@ export function ReviewSheet({
                     </div>
                   </Activity>
                   <Activity mode={tab === 'comments' ? 'visible' : 'hidden'}>
-                    <div
-                      ref={(el) => {
-                        scrollers.current.comments = el
-                      }}
-                      className="min-h-0 flex-1 overflow-y-auto p-4"
-                    >
+                    <div ref={scroller('comments')} className="min-h-0 flex-1 overflow-y-auto p-4">
                       {review === null || reading ? (
                         <ConversationSkeleton />
                       ) : (
@@ -779,12 +716,7 @@ export function ReviewSheet({
                     </div>
                   </Activity>
                   <Activity mode={tab === 'commits' ? 'visible' : 'hidden'}>
-                    <div
-                      ref={(el) => {
-                        scrollers.current.commits = el
-                      }}
-                      className="min-h-0 flex-1 overflow-y-auto p-4"
-                    >
+                    <div ref={scroller('commits')} className="min-h-0 flex-1 overflow-y-auto p-4">
                       {review === null || reading ? (
                         <ConversationSkeleton />
                       ) : (

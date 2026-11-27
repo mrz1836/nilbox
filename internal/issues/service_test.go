@@ -25,7 +25,7 @@ func TestOpenBeforeAnyReadShowsTheCard(t *testing.T) {
 		ID: issueID, Repo: exampleRepo, Number: 12, Title: parserBug, URL: issueURL, State: timeline.StateOpen,
 		Author: octoOther, OpenedAt: stamp(openedAt), UpdatedAt: stamp(latestAt), Assigned: true,
 		Reactions: []timeline.Reaction{}, Labels: []timeline.Label{{Name: "bug", Color: "#d73a4a"}}, Projects: []Project{},
-		Assignees: []Person{}, Participants: []Person{}, SubIssues: []timeline.Ref{}, SubIssuesTotal: 3, SubIssuesDone: 1,
+		Assignees: []Person{}, Participants: []Person{}, SubIssues: []SubIssue{}, SubIssuesTotal: 3, SubIssuesDone: 1,
 		Fixes: []Fix{}, Mentioned: []timeline.Ref{}, Timeline: timeline.Page{Items: []timeline.Entry{}},
 		Seen:     Seen{Comments: 2},
 		Standing: Standing{State: StandingAssigned, Sentence: "Assigned to you", At: stamp(openedAt), Opened: true},

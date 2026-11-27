@@ -23,7 +23,7 @@ func viewOf(v *github.IssueView, viewer string) cachedView {
 		Parent: timeline.RefOf(v.Parent), DuplicateOf: timeline.RefOf(v.DuplicateOf),
 		Assignees: textutil.NonNil(v.Assignees.Logins), AssigneesTotal: v.Assignees.Total,
 		Participants: textutil.NonNil(v.Participants.Logins), ParticipantsTotal: v.Participants.Total,
-		SubIssues: timeline.RefsOf(v.SubIssues), Fixes: fixesOf(v.Fixes), FixCount: v.FixCount,
+		SubIssues: subIssuesOf(v.SubIssues), Fixes: fixesOf(v.Fixes), FixCount: v.FixCount,
 		Reactions: timeline.ReactionsOf(v.Reactions), Comments: v.Update.Details.Comments,
 		Timeline: timeline.Entries(v.Timeline.Items, viewer), Total: v.Timeline.Total, Before: v.Timeline.Before,
 	}
@@ -68,6 +68,38 @@ func fixesOf(pulls []github.LinkedPull) []Fix {
 		out = append(out, Fix{
 			PR: *timeline.RefOf(&p.Ref), Base: p.Base, MergedAt: stamp(p.MergedAt), Checks: checksWord(p.Checks),
 			Review: reviewWord(p.ReviewDecision),
+		})
+	}
+
+	return out
+}
+
+// subIssuesOf converts the issue's sub-issues as the cache keeps them.
+func subIssuesOf(subs []github.SubIssue) []cachedSubIssue {
+	out := make([]cachedSubIssue, 0, len(subs))
+	for i := range subs {
+		sub := &subs[i]
+		out = append(out, cachedSubIssue{
+			Ref: *timeline.RefOf(&sub.Ref), Assignees: textutil.NonNil(sub.Assignees.Logins),
+			AssigneesTotal: sub.Assignees.Total, Total: sub.SubIssues.Total, Done: sub.SubIssues.Completed,
+			ClosedAt: stamp(sub.ClosedAt),
+		})
+	}
+
+	return out
+}
+
+// subIssues are the sub-issues the cache keeps as the sheet shows them, the user's own
+// assignments marked.
+func subIssues(subs []cachedSubIssue, viewer string) []SubIssue {
+	out := make([]SubIssue, 0, len(subs))
+	for i := range subs {
+		sub := &subs[i]
+		total := max(sub.Total, 0)
+		assignees, more := people(sub.Assignees, sub.AssigneesTotal, viewer)
+		out = append(out, SubIssue{
+			Issue: sub.Ref, Assignees: assignees, MoreAssignees: more, SubIssuesTotal: total,
+			SubIssuesDone: min(max(sub.Done, 0), total), ClosedAt: sub.ClosedAt,
 		})
 	}
 
@@ -135,7 +167,7 @@ func build(card StoredIssue, c *cached, lastSeenAt string, gone bool) Issue {
 		State: timeline.StateOpen, Author: card.AuthorLogin, IsBot: strings.EqualFold(card.AuthorType, "Bot"),
 		Mine: isViewer(card.AuthorLogin, card.Viewer), OpenedAt: stamp(card.CreatedAt), UpdatedAt: stamp(card.UpdatedAt),
 		Assigned: card.Assigned, Reactions: []timeline.Reaction{}, Labels: labelsOf(card.Labels),
-		Projects: projectsOf(card.Projects), Assignees: []Person{}, Participants: []Person{}, SubIssues: []timeline.Ref{},
+		Projects: projectsOf(card.Projects), Assignees: []Person{}, Participants: []Person{}, SubIssues: []SubIssue{},
 		SubIssuesTotal: card.SubIssues.Total, SubIssuesDone: card.SubIssues.Completed, Fixes: []Fix{},
 		Mentioned: []timeline.Ref{}, Timeline: timeline.Page{Items: []timeline.Entry{}}, LastSeenAt: lastSeenAt,
 		Seen: Seen{Comments: card.Comments}, Stale: true,
@@ -162,8 +194,8 @@ func (is *Issue) fill(card StoredIssue, c *cached) {
 	is.Type, is.Milestone, is.Parent, is.DuplicateOf = v.Type, v.Milestone, v.Parent, v.DuplicateOf
 	is.Assignees, is.MoreAssignees = people(v.Assignees, v.AssigneesTotal, card.Viewer)
 	is.Participants, is.MoreParticipants = people(v.Participants, v.ParticipantsTotal, card.Viewer)
-	is.SubIssues, is.Fixes = textutil.NonNil(v.SubIssues), textutil.NonNil(v.Fixes)
-	is.MoreFixes, is.Mentioned = max(v.FixCount-len(v.Fixes), 0), mentioned(v.Timeline, v.Fixes)
+	is.SubIssues, is.Fixes = subIssues(v.SubIssues, card.Viewer), textutil.NonNil(v.Fixes)
+	is.MoreFixes, is.Mentioned = max(v.FixCount-len(v.Fixes), 0), mentioned(v)
 	is.Timeline = timeline.Page{Items: timeline.NonNil(v.Timeline), Total: max(v.Total, len(v.Timeline)), Before: v.Before}
 	is.Seen, is.Stale = Seen{Comments: v.Comments, Latest: v.Latest, LatestAt: v.LatestAt}, stale(card, c)
 
@@ -203,15 +235,27 @@ func people(logins []string, total int, viewer string) ([]Person, int) {
 	return out, max(total-len(out), 0)
 }
 
-// mentioned lists the pull requests and issues the timeline says mentioned the issue, each
-// once, in the timeline's order, leaving out the fixes, which the sheet lists on their own.
-func mentioned(items []timeline.Entry, fixes []Fix) []timeline.Ref {
-	listed := make(map[string]bool, len(fixes))
-	for i := range fixes {
-		listed[linkKey(&fixes[i].PR)] = true
+// mentioned lists the pull requests and issues the timeline of the view v says mentioned the
+// issue, each once, in the timeline's order, leaving out those the sheet lists in their own
+// place: the fixes, the sub-issues, the parent, and the issue it duplicates.
+func mentioned(v *cachedView) []timeline.Ref {
+	listed := make(map[string]bool, len(v.Fixes)+len(v.SubIssues)+2)
+	for i := range v.Fixes {
+		listed[linkKey(&v.Fixes[i].PR)] = true
+	}
+
+	for i := range v.SubIssues {
+		listed[linkKey(&v.SubIssues[i].Ref)] = true
+	}
+
+	for _, ref := range []*timeline.Ref{v.Parent, v.DuplicateOf} {
+		if ref != nil {
+			listed[linkKey(ref)] = true
+		}
 	}
 
 	out := []timeline.Ref{}
+	items := v.Timeline
 
 	for i := range items {
 		it := &items[i]

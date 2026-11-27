@@ -39,6 +39,17 @@ marked out of date. It owns `issue_views`, a bounded cache (1 MiB per issue, who
 cut to 16 KiB, then 4 KiB, then emptied, each cut marked, by `timeline.Cut`; 200 issues, 32 MiB, and
 14 days unused in all), pruned in the same transaction that writes.
 
+The read brings the first 25 sub-issues, in GitHub's order, each with its state, its first three
+assignees and how many it has, its own sub-issues' counts, and when it closed, at no extra cost
+(`github.SubIssue`). The sheet shows each as a `SubIssue`: the issue as a `timeline.Ref`, its
+assignees as `Person`s, the user's own marked, `MoreAssignees`, `SubIssuesTotal` and
+`SubIssuesDone` (kept in bounds), and `ClosedAt`. The cache keeps each as a `cachedSubIssue`, which
+embeds the `timeline.Ref`, so its fields sit at the top of the JSON object, as an older build kept a
+sub-issue's ref alone: that build's row still reads, with no assignees, counts, or close time, until
+the next read. `Issue.Mentioned` lists each pull request and issue the timeline read says mentioned
+the issue once, leaving out those the sheet shows in their own place: the fixes, the sub-issues the
+read brought, the parent, and the issue it duplicates.
+
 Unassign me is the inbox's own `Unassign`, which marks the cache out of date as an action does:
 `InboxEdits` (`NewInboxEdits`, apart from the bound `Service`, since only core calls it) has
 `Unassigned` expire the issue's view, which core's `sheetOutcomes` calls for each
