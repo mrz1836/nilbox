@@ -3,6 +3,7 @@
 package procs_test
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"strings"
@@ -22,15 +23,25 @@ func TestEnvOfReadsOneVariableOfARunningProcess(t *testing.T) {
 	// The test binary plays the process, as an agent's own binary would: macOS hides the
 	// environment of its platform binaries, such as /bin/sleep, from a caller that isn't
 	// root.
-	path, fake := testutil.FakeTool(t, "agent", testutil.FakeRun{Sleep: time.Minute})
+	path, fake := testutil.FakeTool(t, "agent", testutil.FakeRun{Stdout: "running\n", Sleep: time.Minute})
 	link := "warp://session/" + strings.Repeat("0a", 16)
 
 	cmd := exec.CommandContext(t.Context(), path, "PROCS_TEST_ONLY_AN_ARGUMENT=x") //nolint:gosec // the fake tool the test made
 
 	cmd.Env = append(os.Environ(), fake,
 		"PROCS_TEST_LINK_X=a longer name", "PROCS_TEST_LINK="+link, "PROCS_TEST_EMPTY=")
+
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
 	require.NoError(t, cmd.Start())
 	t.Cleanup(func() { _ = cmd.Wait() }) // t.Context ends first, which stops it
+
+	// Start returns once the child's exec is under way, which can be before Linux records
+	// where its new environment is: /proc/<pid>/environ reads empty until then. The fake's
+	// first line comes from the program itself, so its environment is in place by then.
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	require.NoError(t, err)
+	require.Equal(t, "running\n", line)
 
 	pid := cmd.Process.Pid
 
