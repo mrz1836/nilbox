@@ -131,23 +131,44 @@ function fixState(fix: IssueFix): string {
   return parts.join(' · ')
 }
 
-// Linked is a linked item on its line: its state's mark, then its name and title.
-function Linked({ linked, repo }: { linked: IssueLinked; repo: string }) {
+// LinkedProps are a linked item, the repository the sheet shows, and whether its title goes
+// under its name (ItemLink's stacked).
+interface LinkedProps {
+  linked: IssueLinked
+  repo: string
+  stacked?: boolean
+}
+
+// Linked is a linked item: its state's mark, lined up with its name, then its name and title.
+function Linked({ linked, repo, stacked = false }: LinkedProps) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <RefMark linked={linked} />
-      <ItemLink linked={linked} from={repo} titled />
+    <span className="flex min-w-0 items-start gap-1.5">
+      <span className="flex h-5 shrink-0 items-center">
+        <RefMark linked={linked} />
+      </span>
+      <ItemLink linked={linked} from={repo} titled stacked={stacked} />
     </span>
   )
 }
 
-// Links lists linked items, each on its line, with its state's mark and its title.
-function Links({ links, repo, label }: { links: readonly IssueLinked[]; repo: string; label?: string }) {
+// Links lists linked items, each on its line, with its state's mark and its title; stacked,
+// each title under its name.
+function Links({
+  links,
+  repo,
+  label,
+  stacked = false,
+}: {
+  links: readonly IssueLinked[]
+  repo: string
+  label?: string
+  stacked?: boolean
+}) {
   return (
     <ul aria-label={label} className="space-y-1 text-sm">
       {links.map((l) => (
         <li key={refText(l)} className="min-w-0">
-          <Linked linked={l} repo={repo} />
+          <Linked linked={l} repo={repo} stacked={stacked} />
         </li>
       ))}
     </ul>
@@ -256,7 +277,7 @@ export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues }: Issu
       {issue.subIssuesTotal > 0 && <SubIssuesLine issue={issue} onShow={onShowSubIssues} />}
       {issue.parent !== null && (
         <Part title="Part of">
-          <Links links={[issue.parent]} repo={issue.repo} />
+          <Links links={[issue.parent]} repo={issue.repo} stacked />
         </Part>
       )}
       <Part title="Development" count={issue.fixes.length + issue.moreFixes}>
@@ -297,7 +318,7 @@ export function IssueSummary({ issue, onEdit, assignees, onShowSubIssues }: Issu
       <Milestone issue={issue} />
       {issue.duplicateOf !== null && (
         <Part title="Duplicate of">
-          <Links links={[issue.duplicateOf]} repo={issue.repo} />
+          <Links links={[issue.duplicateOf]} repo={issue.repo} stacked />
         </Part>
       )}
       <Part title="Participants" count={issue.participants.length + issue.moreParticipants}>

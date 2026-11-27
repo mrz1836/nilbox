@@ -49,7 +49,8 @@ items.
   its card shows them.
 - **The details,** where the issue sits among others first: **Sub-issues** (their progress in
   one line, with **Show**, which opens the Sub-issues tab) and **Part of**, the issue it belongs
-  to; then **Development** (the pull requests that close it once merged, with their state, checks,
+  to, its `owner/repo#n` over its title, which wraps rather than being cut short (as **Duplicate
+  of** shows its issue too); then **Development** (the pull requests that close it once merged, with their state, checks,
   and review, then **Mentioned in**, the pull requests and issues that mentioned it, each once,
   folded under its count past three, leaving out the fixes, the sub-issues, the parent, and the
   issue it duplicates, which show in their own place), assignees, labels, projects, the milestone

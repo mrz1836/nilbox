@@ -198,8 +198,14 @@ describe('IssueSummary', () => {
     await userEvent.click(within(milestone).getByRole('button', { name: '1.5' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/milestone/2')
 
-    expect(screen.getByRole('region', { name: 'Part of' })).toHaveTextContent('#2 Parser')
-    expect(screen.getByRole('region', { name: 'Duplicate of' })).toHaveTextContent('#3')
+    const partOf = within(screen.getByRole('region', { name: 'Part of' })).getByRole('button', { name: '#2 Parser' })
+    expect(partOf, 'the title under the name').toHaveClass('flex-col')
+    expect(
+      within(screen.getByRole('region', { name: 'Duplicate of' })).getByRole('button', { name: '#3 Parser bug' }),
+    ).toHaveClass('flex-col')
+    expect(
+      within(screen.getByRole('region', { name: 'Development' })).getByRole('button', { name: /#14/ }),
+    ).not.toHaveClass('flex-col')
     expect(screen.getByRole('region', { name: 'Participants' })).toHaveTextContent('and 4 more on GitHub')
   })
 
@@ -311,5 +317,36 @@ describe('ItemLink', () => {
     renderAt(<ItemLink linked={issueRef({ repo: 'acme-org/api', title: '' })} from="acme-org/example-repo" titled />)
 
     expect(screen.getByRole('button', { name: 'acme-org/api#3' })).toBeInTheDocument()
+  })
+
+  it('stacks the title under the name, cutting a long repository short but never the number', () => {
+    renderAt(
+      <>
+        <ItemLink
+          linked={issueRef({
+            repo: 'acme-org/a-rather-long-repository-name',
+            number: 363,
+            title: 'Add the people directory',
+          })}
+          from="acme-org/example-repo"
+          titled
+          stacked
+        />
+        <ItemLink linked={issueRef({ number: 2, title: '' })} from="acme-org/example-repo" titled stacked />
+      </>,
+    )
+
+    const link = screen.getByRole('button', {
+      name: 'acme-org/a-rather-long-repository-name#363 Add the people directory',
+    })
+    const [nameLine, title] = [...link.children]
+    expect(nameLine).toHaveTextContent(/^acme-org\/a-rather-long-repository-name#363$/)
+    expect(within(nameLine as HTMLElement).getByText('acme-org/a-rather-long-repository-name')).toHaveClass('truncate')
+    expect(within(nameLine as HTMLElement).getByText('#363')).toHaveClass('shrink-0')
+    expect(title).toHaveTextContent('Add the people directory')
+    expect(title).toHaveClass('line-clamp-3')
+    expect(link).toHaveClass('flex-col')
+
+    expect(screen.getByRole('button', { name: '#2' }).children).toHaveLength(1)
   })
 })
