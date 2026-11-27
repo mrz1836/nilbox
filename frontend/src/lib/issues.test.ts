@@ -1,16 +1,29 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RefState } from '../platform'
-import { closeIssueOffer, details, issue, issueOffer, issueResult, item } from '../test/fixtures'
+import {
+  closeIssueOffer,
+  details,
+  issue,
+  issueOffer,
+  issueRef,
+  issueResult,
+  item,
+  pullRef,
+  subIssue,
+} from '../test/fixtures'
 import {
   changedSince,
+  closedWords,
   closeNote,
   issueHeldBack,
   issueLook,
   issueTone,
   keepsDraft,
+  refLook,
   selectedIssueAction,
   standingTone,
+  subIssueGroups,
   withReply,
   writeFirst,
   type IssueLook,
@@ -35,6 +48,65 @@ describe('issueLook', () => {
       color: 'text-info',
       words: 'Closed as completed',
     })
+  })
+})
+
+describe('refLook', () => {
+  it('marks an issue by its state, colored as issueLook colors it', () => {
+    expect(refLook(issueRef())).toEqual({ mark: 'issue', color: 'text-success', words: 'Open issue' })
+    expect(refLook(issueRef({ state: 'OPEN', stateReason: 'REOPENED' })).mark).toBe('issue')
+    expect(refLook(issueRef({ state: 'CLOSED', stateReason: 'COMPLETED' }))).toEqual({
+      mark: 'issue-done',
+      color: 'text-info',
+      words: 'Closed as completed',
+    })
+    expect(refLook(issueRef({ state: 'CLOSED', stateReason: '' })).mark).toBe('issue-done')
+    expect(refLook(issueRef({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }))).toEqual({
+      mark: 'issue-skipped',
+      color: 'text-muted',
+      words: 'Closed as not planned',
+    })
+    expect(refLook(issueRef({ state: 'CLOSED', stateReason: 'DUPLICATE' }))).toEqual({
+      mark: 'issue-skipped',
+      color: 'text-muted',
+      words: 'Closed as a duplicate',
+    })
+  })
+
+  it('marks a pull request by its state, as a card’s links do', () => {
+    expect(refLook(pullRef())).toEqual({ mark: 'pr', color: 'text-success', words: 'Open pull request' })
+    expect(refLook(pullRef({ draft: true }))).toEqual({ mark: 'pr', color: 'text-muted', words: 'Draft pull request' })
+    expect(refLook(pullRef({ state: 'MERGED' }))).toEqual({
+      mark: 'pr-merged',
+      color: 'text-info',
+      words: 'Merged pull request',
+    })
+    expect(refLook(pullRef({ state: 'CLOSED' }))).toEqual({
+      mark: 'pr-closed',
+      color: 'text-muted',
+      words: 'Closed pull request',
+    })
+  })
+})
+
+describe('subIssueGroups', () => {
+  it('sorts the sub-issues into open and done, each in GitHub’s order', () => {
+    const open20 = subIssue()
+    const done21 = subIssue({ issue: issueRef({ number: 21, state: 'CLOSED', stateReason: 'NOT_PLANNED' }) })
+    const open22 = subIssue({ issue: issueRef({ number: 22 }) })
+    const done23 = subIssue({ issue: issueRef({ number: 23, state: 'CLOSED', stateReason: 'COMPLETED' }) })
+
+    expect(subIssueGroups([open20, done21, open22, done23])).toEqual({ open: [open20, open22], done: [done21, done23] })
+    expect(subIssueGroups([])).toEqual({ open: [], done: [] })
+  })
+})
+
+describe('closedWords', () => {
+  it('says how an issue was closed, when not as completed', () => {
+    expect(closedWords('NOT_PLANNED')).toBe('not planned')
+    expect(closedWords('DUPLICATE')).toBe('duplicate')
+    expect(closedWords('COMPLETED')).toBe('')
+    expect(closedWords('')).toBe('')
   })
 })
 

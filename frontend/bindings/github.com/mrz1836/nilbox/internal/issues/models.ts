@@ -173,15 +173,18 @@ export interface Issue {
     "duplicateOf": timeline$0.Ref | null;
 
     /**
-     * SubIssues are the first sub-issues, of SubIssuesTotal, SubIssuesDone of them done.
+     * SubIssues are the first sub-issues, in GitHub's order, of SubIssuesTotal,
+     * SubIssuesDone of them done.
      */
-    "subIssues": timeline$0.Ref[] | null;
+    "subIssues": SubIssue[] | null;
     "subIssuesTotal": number;
     "subIssuesDone": number;
 
     /**
      * Fixes are the pull requests that close it once merged, MoreFixes how many others;
-     * Mentioned the pull requests and issues that mentioned it, in the timeline read.
+     * Mentioned the pull requests and issues that mentioned it, in the timeline read, but
+     * those the sheet lists in their own place: the fixes, the sub-issues, the parent, and
+     * the issue it duplicates.
      */
     "fixes": Fix[] | null;
     "moreFixes": number;
@@ -416,3 +419,17 @@ export const StandingState = {
     StandingAssigned: "assigned",
     StandingOpen: "open",
 } as const;
+
+/**
+ * SubIssue is one of the issue's sub-issues: the issue, its first assignees and how many
+ * more it has, how far along its own sub-issues are (SubIssuesDone of SubIssuesTotal, both 0
+ * for none), and when it closed, or "".
+ */
+export interface SubIssue {
+    "issue": timeline$0.Ref;
+    "assignees": Person[] | null;
+    "moreAssignees": number;
+    "subIssuesTotal": number;
+    "subIssuesDone": number;
+    "closedAt": string;
+}

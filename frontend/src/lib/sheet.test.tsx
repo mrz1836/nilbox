@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { item } from '../test/fixtures'
 import { emit, listening, send } from '../test/platform'
 import {
+  applyTakingSelfOff,
   cameBy,
   endedState,
   endedText,
@@ -17,6 +18,7 @@ import {
   useEnded,
   useSheetKeys,
   useSheetVisits,
+  useTabPlaces,
   withStep,
   type EndedItem,
   type ProgressEvent,
@@ -416,5 +418,173 @@ describe('useActionProgress', () => {
 
     send('issue:progress', { itemId: 7, step: 'Closing' })
     expect(result.current[0]?.steps).toEqual(['Closing'])
+  })
+})
+
+describe('useTabPlaces', () => {
+  type Tab = 'one' | 'two'
+
+  // Tabbed is a sheet of two tabs, each a scrolling box holding an element to jump to.
+  function Tabbed({ id, onTab }: { id: number; onTab?: (tab: Tab) => void }) {
+    const { tab, chooseTab, jumpTo, scroller } = useTabPlaces<Tab>(id, 'one', onTab)
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            chooseTab('one')
+          }}
+        >
+          one
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            chooseTab('two')
+          }}
+        >
+          two
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            jumpTo('one', 'in-one')
+          }}
+        >
+          jump one
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            jumpTo('two', 'in-two')
+          }}
+        >
+          jump two
+        </button>
+        <p>showing {tab}</p>
+        <div ref={scroller('one')} hidden={tab !== 'one'} data-testid="one">
+          <span id="in-one" />
+        </div>
+        <div ref={scroller('two')} hidden={tab !== 'two'} data-testid="two">
+          <span id="in-two" />
+        </div>
+      </>
+    )
+  }
+
+  // scrolls records each scrollTop set, by the box and its value, and each scrollIntoView,
+  // by the ID of what it shows; tops holds each box's scrollTop.
+  function scrolls() {
+    const log: string[] = []
+    const tops = new WeakMap<Element, number>()
+
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      log.push(`intoView:${this.id}`)
+    })
+    vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(function (this: Element) {
+      return tops.get(this) ?? 0
+    })
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, value: number) {
+      log.push(`${this.getAttribute('data-testid') ?? ''}=${String(value)}`)
+      tops.set(this, value)
+    })
+
+    return { log, tops }
+  }
+
+  it('opens on its tab, and tells each choice of another', async () => {
+    const onTab = vi.fn()
+    render(<Tabbed id={1} onTab={onTab} />)
+
+    expect(screen.getByText('showing one')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+    expect(onTab).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    expect(screen.getByText('showing two')).toBeInTheDocument()
+    expect(onTab).toHaveBeenCalledExactlyOnceWith('two')
+  })
+
+  it('puts a tab back where it was left, but leaves one never left where it is', async () => {
+    const { log, tops } = scrolls()
+    render(<Tabbed id={1} />)
+
+    tops.set(screen.getByTestId('one'), 120)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    expect(log).toEqual([])
+
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+    expect(log).toEqual(['one=120'])
+  })
+
+  it('jumps in the tab shown at once, and in another once it shows', async () => {
+    const { log, tops } = scrolls()
+    render(<Tabbed id={1} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'jump one' }))
+    expect(log).toEqual(['intoView:in-one'])
+
+    tops.set(screen.getByTestId('one'), 80)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    await userEvent.click(screen.getByRole('button', { name: 'jump one' }))
+    expect(screen.getByText('showing one')).toBeInTheDocument()
+    expect(log, 'the jump, not the place left').toEqual(['intoView:in-one', 'intoView:in-one'])
+  })
+
+  it('starts each item’s tabs with no place', async () => {
+    const { log, tops } = scrolls()
+    const { rerender } = render(<Tabbed id={1} />)
+
+    tops.set(screen.getByTestId('one'), 120)
+    await userEvent.click(screen.getByRole('button', { name: 'two' }))
+    rerender(<Tabbed id={2} />)
+    await userEvent.click(screen.getByRole('button', { name: 'one' }))
+
+    expect(log).toEqual([])
+  })
+})
+
+describe('applyTakingSelfOff', () => {
+  it('sends an edit that leaves the user be as it is', async () => {
+    const edit = vi.fn().mockResolvedValue('')
+    const takeSelfOff = vi.fn()
+
+    expect(await applyTakingSelfOff(['octo-new'], ['octo-other'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit).toHaveBeenCalledExactlyOnceWith(['octo-new'], ['octo-other'])
+    expect(takeSelfOff).not.toHaveBeenCalled()
+
+    await applyTakingSelfOff([], ['octo-user'], '', edit, takeSelfOff)
+    expect(edit, 'no user to tell apart').toHaveBeenLastCalledWith([], ['octo-user'])
+    expect(takeSelfOff).not.toHaveBeenCalled()
+  })
+
+  it('takes the user off with their own action, after the rest of the edit, in any case', async () => {
+    const edit = vi.fn().mockResolvedValue('')
+    const takeSelfOff = vi.fn()
+
+    expect(await applyTakingSelfOff(['octo-new'], ['Octo-User', 'octo-other'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit).toHaveBeenCalledExactlyOnceWith(['octo-new'], ['octo-other'])
+    expect(takeSelfOff).toHaveBeenCalledOnce()
+    expect(edit.mock.invocationCallOrder[0]).toBeLessThan(takeSelfOff.mock.invocationCallOrder[0] ?? 0)
+
+    expect(await applyTakingSelfOff([], ['octo-user'], 'octo-user', edit, takeSelfOff)).toBe('')
+    expect(edit, 'nothing else to send').toHaveBeenCalledOnce()
+    expect(takeSelfOff).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops at an edit that failed, leaving the user on', async () => {
+    const takeSelfOff = vi.fn()
+
+    expect(
+      await applyTakingSelfOff(
+        [],
+        ['octo-user', 'octo-other'],
+        'octo-user',
+        vi.fn().mockResolvedValue('GitHub kept octo-other.'),
+        takeSelfOff,
+      ),
+    ).toBe('GitHub kept octo-other.')
+    expect(takeSelfOff).not.toHaveBeenCalled()
   })
 })

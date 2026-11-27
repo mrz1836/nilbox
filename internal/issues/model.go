@@ -145,13 +145,16 @@ type Issue struct {
 	Parent      *timeline.Ref `json:"parent"`
 	DuplicateOf *timeline.Ref `json:"duplicateOf"`
 
-	// SubIssues are the first sub-issues, of SubIssuesTotal, SubIssuesDone of them done.
-	SubIssues      []timeline.Ref `json:"subIssues"`
-	SubIssuesTotal int            `json:"subIssuesTotal"`
-	SubIssuesDone  int            `json:"subIssuesDone"`
+	// SubIssues are the first sub-issues, in GitHub's order, of SubIssuesTotal,
+	// SubIssuesDone of them done.
+	SubIssues      []SubIssue `json:"subIssues"`
+	SubIssuesTotal int        `json:"subIssuesTotal"`
+	SubIssuesDone  int        `json:"subIssuesDone"`
 
 	// Fixes are the pull requests that close it once merged, MoreFixes how many others;
-	// Mentioned the pull requests and issues that mentioned it, in the timeline read.
+	// Mentioned the pull requests and issues that mentioned it, in the timeline read, but
+	// those the sheet lists in their own place: the fixes, the sub-issues, the parent, and
+	// the issue it duplicates.
 	Fixes     []Fix          `json:"fixes"`
 	MoreFixes int            `json:"moreFixes"`
 	Mentioned []timeline.Ref `json:"mentioned"`
@@ -211,6 +214,18 @@ type ProjectField struct {
 type Person struct {
 	Login string `json:"login"`
 	Mine  bool   `json:"mine"`
+}
+
+// SubIssue is one of the issue's sub-issues: the issue, its first assignees and how many
+// more it has, how far along its own sub-issues are (SubIssuesDone of SubIssuesTotal, both 0
+// for none), and when it closed, or "".
+type SubIssue struct {
+	Issue          timeline.Ref `json:"issue"`
+	Assignees      []Person     `json:"assignees"`
+	MoreAssignees  int          `json:"moreAssignees"`
+	SubIssuesTotal int          `json:"subIssuesTotal"`
+	SubIssuesDone  int          `json:"subIssuesDone"`
+	ClosedAt       string       `json:"closedAt"`
 }
 
 // Fix is a pull request that closes the issue once merged: where it merges, when it did,

@@ -29,6 +29,7 @@ async function open(
   assigned: Assigned[],
   candidates: AssigneeCandidates | undefined = assigneeCandidates(),
   edit = vi.fn().mockResolvedValue(''),
+  onUnassignMe?: () => void,
 ) {
   const onLearned = vi.fn()
   const onClose = vi.fn()
@@ -42,6 +43,7 @@ async function open(
       candidates={candidates}
       onLearned={onLearned}
       reads={reads()}
+      onUnassignMe={onUnassignMe}
       ownLock={ownLock}
       onEdit={edit}
       onClose={onClose}
@@ -97,6 +99,50 @@ describe('AssigneePicker', () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled()
     })
+  })
+
+  it('unassigns the user with Unassign me once the rest of the edit went, never through the edit', async () => {
+    const onUnassignMe = vi.fn()
+    const mine = [
+      { login: 'octo-user', mine: true },
+      { login: 'octo-commenter', mine: false },
+    ]
+    const { dialog, edit, onClose } = await open(mine, assigneeCandidates(), undefined, onUnassignMe)
+
+    const me = dialog.getByRole('checkbox', { name: /^octo-user/ })
+    expect(me).toBeEnabled()
+    expect(me.closest('label')).not.toHaveAttribute('title')
+
+    await userEvent.click(me)
+    await userEvent.click(dialog.getByRole('checkbox', { name: /^octo-commenter/ }))
+    await userEvent.click(dialog.getByRole('button', { name: 'Unassign 2' }))
+
+    expect(edit).toHaveBeenCalledExactlyOnceWith([], ['octo-commenter'])
+    expect(onUnassignMe).toHaveBeenCalledOnce()
+    expect(edit.mock.invocationCallOrder[0]).toBeLessThan(onUnassignMe.mock.invocationCallOrder[0] ?? 0)
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled()
+    })
+  })
+
+  it('keeps the user assigned when the rest of the edit fails, and says why', async () => {
+    const onUnassignMe = vi.fn()
+    const { dialog } = await open(
+      [
+        { login: 'octo-user', mine: true },
+        { login: 'octo-commenter', mine: false },
+      ],
+      assigneeCandidates(),
+      vi.fn().mockResolvedValue('GitHub kept octo-commenter assigned.'),
+      onUnassignMe,
+    )
+
+    await userEvent.click(dialog.getByRole('checkbox', { name: /^octo-user/ }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: /^octo-commenter/ }))
+    await userEvent.click(dialog.getByRole('button', { name: 'Unassign 2' }))
+
+    expect(await dialog.findByText('GitHub kept octo-commenter assigned.')).toBeInTheDocument()
+    expect(onUnassignMe).not.toHaveBeenCalled()
   })
 
   it('learns who can be assigned as it opens, when a read is due, and only then', async () => {

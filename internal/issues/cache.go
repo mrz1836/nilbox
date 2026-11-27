@@ -67,9 +67,9 @@ type cachedView struct {
 	Participants      []string `json:"participants"`
 	ParticipantsTotal int      `json:"participantsTotal"`
 
-	SubIssues []timeline.Ref `json:"subIssues"`
-	Fixes     []Fix          `json:"fixes"`
-	FixCount  int            `json:"fixCount"`
+	SubIssues []cachedSubIssue `json:"subIssues"`
+	Fixes     []Fix            `json:"fixes"`
+	FixCount  int              `json:"fixCount"`
 
 	// Comments counts the comments as of the read, Latest and LatestAt name the newest, and
 	// LatestMine says the user wrote it.
@@ -83,6 +83,20 @@ type cachedView struct {
 	Timeline []timeline.Entry `json:"timeline"`
 	Total    int              `json:"total"`
 	Before   string           `json:"before"`
+}
+
+// cachedSubIssue is one of the issue's sub-issues as the cache keeps it: the issue, its
+// fields at the top of the object, as an older build kept the sub-issue's ref alone, so its
+// row still reads, with zeros for the rest until the next read; its first assignees, by
+// login, and how many it has; its own sub-issues' counts; and when it closed, or "".
+type cachedSubIssue struct {
+	timeline.Ref
+
+	Assignees      []string `json:"assignees"`
+	AssigneesTotal int      `json:"assigneesTotal"`
+	Total          int      `json:"total"`
+	Done           int      `json:"done"`
+	ClosedAt       string   `json:"closedAt"`
 }
 
 // cached is one issue's row: its view, when it was read (zero once an action made it out

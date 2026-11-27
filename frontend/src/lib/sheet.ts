@@ -2,7 +2,7 @@
 // among the cards they step through, the openings their hosts hear, their keys, and the
 // steps of an action under way.
 
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { AgentSession, ConversationOrder, InboxItem, ItemResolution, Worktree } from '../platform'
 import { refText } from './format'
@@ -324,6 +324,113 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
       step.onStep()
     }
   })
+}
+
+// TabPlaces are the tabs over a sheet's larger column, each with its own scrolling box,
+// whose place the sheet keeps across a switch: the tab chosen, which starts as the one the
+// sheet opens on; a choice of another, which keeps the place of the one it leaves; a jump to
+// an element in a tab, by ID, once it shows; and the ref each tab's scrolling box takes.
+export interface TabPlaces<T extends string> {
+  tab: T
+  chooseTab: (next: T) => void
+  jumpTo: (at: T, anchor: string) => void
+  scroller: (at: T) => (el: HTMLElement | null) => void
+}
+
+// useTabPlaces keeps the tabs of the sheet showing the item with id: the sheet opens on
+// openOn, and onTab hears each choice, for a window that remembers it. Each item's tabs start
+// with no place, since one left on another isn't this one's. The tab shown goes back to its
+// place, or to where a jump to it goes, once its Activity has shown it. A tab shown for the
+// first time has no place, and is left where its contents put it: a conversation scrolls to
+// what is new as it first shows, in its own layout effect, which runs before this one.
+export function useTabPlaces<T extends string>(id: number, openOn: T, onTab?: (tab: T) => void): TabPlaces<T> {
+  // tab shows at once on a click, and the window remembers it (onTab) behind it.
+  const [tab, setTab] = useState<T>(openOn)
+  const scrollers = useRef<Partial<Record<T, HTMLElement | null>>>({})
+  const places = useRef<Partial<Record<T, number>>>({})
+  // goingTo is where a jump scrolls once the tab it is in shows, by ID.
+  const goingTo = useRef('')
+
+  const chooseTab = (next: T) => {
+    if (next === tab) {
+      return
+    }
+
+    places.current[tab] = scrollers.current[tab]?.scrollTop ?? 0
+    setTab(next)
+    onTab?.(next)
+  }
+
+  const jumpTo = (at: T, anchor: string) => {
+    if (at === tab) {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
+
+      return
+    }
+
+    goingTo.current = anchor
+    chooseTab(at)
+  }
+
+  useLayoutEffect(() => {
+    places.current = {}
+  }, [id])
+
+  useLayoutEffect(() => {
+    const anchor = goingTo.current
+
+    goingTo.current = ''
+
+    const scroller = scrollers.current[tab]
+    const place = places.current[tab]
+
+    if (anchor === '') {
+      if (scroller != null && place !== undefined) {
+        scroller.scrollTop = place
+      }
+    } else {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
+    }
+  }, [tab])
+
+  const scroller = (at: T) => (el: HTMLElement | null) => {
+    scrollers.current[at] = el
+  }
+
+  return { tab, chooseTab, jumpTo, scroller }
+}
+
+// applyTakingSelfOff applies a picker's edit that may take the user (self, their key, as the
+// picker names them) off the item, which no edit does: the user takes themselves off with
+// their own action (takeSelfOff, the sheet's Unassign me or Remove me as reviewer), which
+// takes the item out of their inbox and closes the sheet. The rest of the edit goes first,
+// through edit; once GitHub made all of it, takeSelfOff runs. It resolves with why the edit
+// failed, when it stops there, or ''.
+export async function applyTakingSelfOff(
+  add: readonly string[],
+  remove: readonly string[],
+  self: string,
+  edit: (add: string[], remove: string[]) => Promise<string>,
+  takeSelfOff: () => void,
+): Promise<string> {
+  const isSelf = (key: string) => self !== '' && key.toLowerCase() === self.toLowerCase()
+  const rest = remove.filter((key) => !isSelf(key))
+
+  if (rest.length === remove.length) {
+    return edit([...add], [...remove])
+  }
+
+  if (add.length + rest.length > 0) {
+    const failed = await edit([...add], rest)
+
+    if (failed !== '') {
+      return failed
+    }
+  }
+
+  takeSelfOff()
+
+  return ''
 }
 
 // Progress is an action under way: what it is, the item it acts on, the steps the backend

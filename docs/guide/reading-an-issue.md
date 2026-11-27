@@ -15,7 +15,12 @@ items.
   and where it sits in its list. **←** and **→** step through the list's cards as the [review
   sheet](reviewing-a-pull-request.md)'s do, pull requests included, and the triage buttons,
   **↗**, **✕**, and **Escape** work as there.
-- **The conversation** in the middle, oldest first: the description, rendered from markdown as
+- **Tabs** over the larger column: **Conversation**, with its count of comments, and, while the
+  issue has sub-issues, **Sub-issues**, with how many are done, as in **2/4**. The sheet opens on
+  the conversation. Once you choose Sub-issues, it stays chosen as you step through issues (one
+  without sub-issues shows its conversation, and the next with any its sub-issues), and as you
+  follow a sub-issue and step back; each tab keeps its place while the other shows.
+- **The conversation**, oldest first: the description, rendered from markdown as
   safely as a pull request's, with its reactions; then every comment, with who wrote it and when
   (the full date on hover), **Author**, **You**, and **bot** tags, whether it was edited, **Quote
   reply**, which quotes it into your comment, and **↗**. A comment someone hid is folded, saying
@@ -24,6 +29,16 @@ items.
   by what), reopens, assignments, renames, duplicates, and labels, the ones a person changed at
   once on one line. **Show N earlier entries** reads the part of a long conversation before the
   newest hundred entries, 1 GraphQL point per hundred, only when you click it.
+- **The Sub-issues tab:** how far along they are, as a bar and **2 of 4 done**, then **Open**
+  and **Done** (closed as completed, as not planned, or as a duplicate), each folded under its
+  count, in GitHub's order. Open always starts open, so what's left comes first; Done starts open
+  with up to five and folded past that, and either stays as you open or fold it. Each sub-issue
+  takes a line: its state's mark, its number and title (opening it in its own sheet when it is in
+  your inbox, else on GitHub), how it was closed (**not planned**, **duplicate**) and when once
+  it is done, its own sub-issues' progress as a ring, and up to three of its assignees' pictures,
+  with **+N** for the rest and every name read on hover. The sheet reads the first 25, in the
+  same read as the rest of the issue, and says when GitHub has more (**Open all on GitHub**), or
+  lists some your account can't read.
 - **New since your last visit:** a divider marks what came after the conversation as you last
   opened it, and the sheet scrolls to it once. It goes by GitHub's own times, so your Mac's clock
   can't move it, and your own comments are never new to you.
@@ -32,10 +47,17 @@ items.
   **Assigned to you · opened 3 days ago**, **Locked**, **Closed as not planned by octo-other**,
   or that GitHub can't find it any more. Under it, the issue's worktree and agent session, as
   its card shows them.
-- **The details:** **Development** (the pull requests that close it once merged, with their
-  state, checks, and review, then the ones that mentioned it), assignees, labels, projects, the
-  milestone (its due day, in amber once it has passed, and how far along it is), sub-issues with
-  their progress, the issue it is part of, and who took part.
+- **The details,** where the issue sits among others first: **Sub-issues** (their progress in
+  one line, with **Show**, which opens the Sub-issues tab) and **Part of**, the issue it belongs
+  to, its `owner/repo#n` over its title, which wraps rather than being cut short (as **Duplicate
+  of** shows its issue too); then **Development** (the pull requests that close it once merged, with their state, checks,
+  and review, then **Mentioned in**, the pull requests and issues that mentioned it, each once,
+  folded under its count past three, leaving out the fixes, the sub-issues, the parent, and the
+  issue it duplicates, which show in their own place), assignees, labels, projects, the milestone
+  (its due day, in amber once it has passed, and how far along it is), the issue it duplicates,
+  and who took part. Every linked pull request and issue shows its state as a mark in its color:
+  an issue green while open, blue once done, grey as not planned or a duplicate; a pull request
+  green while open, grey as a draft or closed unmerged, and blue once merged.
 - **Labels and assignees,** with triage access or more to an open issue's repository: **Edit**
   beside **Labels** lists the repository's labels, the first hundred in name order, to filter
   and check, each checked while the issue has it; **Assignees** works as on the review sheet
@@ -46,7 +68,9 @@ items.
   checks every answer, since GitHub ignores a change an account can't make rather than refusing
   it, and reads the issue again once GitHub made any of it; the picker stays open until GitHub
   answers, and a step that failed says why there, while those before it stand. You take
-  yourself off with **Unassign me**, in the action menu, never here.
+  yourself off with **×** beside your own name (shown on hover), by unchecking your own row in the
+  picker, or with **Unassign me** in the action menu: all three work as the card's Unassign me
+  does, the picker's once the rest of what you changed went.
 - **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
 
 ## Links between the sheets

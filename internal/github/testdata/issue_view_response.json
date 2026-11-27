@@ -153,9 +153,18 @@
                         "title": "Handle CRLF endings",
                         "url": "https://github.com/acme-org/example-repo/issues/20",
                         "issueState": "CLOSED",
-                        "stateReason": "COMPLETED",
+                        "stateReason": "NOT_PLANNED",
                         "repository": {
                             "nameWithOwner": "acme-org/example-repo"
+                        },
+                        "closedAt": "2026-11-10T16:45:00Z",
+                        "assignees": {
+                            "totalCount": 0,
+                            "nodes": []
+                        },
+                        "subIssuesSummary": {
+                            "total": 0,
+                            "completed": 0
                         }
                     },
                     {
@@ -167,6 +176,23 @@
                         "stateReason": null,
                         "repository": {
                             "nameWithOwner": "acme-org/example-repo"
+                        },
+                        "closedAt": null,
+                        "assignees": {
+                            "totalCount": 5,
+                            "nodes": [
+                                {
+                                    "login": "octo-user"
+                                },
+                                null,
+                                {
+                                    "login": "octo-bob"
+                                }
+                            ]
+                        },
+                        "subIssuesSummary": {
+                            "total": 3,
+                            "completed": 1
                         }
                     }
                 ]

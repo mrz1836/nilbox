@@ -23,7 +23,14 @@ commits since the user's review marked with the shared `Divider` the conversatio
 `review/SinceYourReview` above the tabs, `lib/commits.ts`), each kept mounted in an `Activity` while
 another shows; the tab is the window's memory (`ui.reviewTab`, which a backup never holds), and so
 is the order both sheets list a conversation in (`ui.conversationOrder`, oldest or newest first,
-under the description), which the inbox shares between them.
+under the description), which the inbox shares between them. The issue sheet shows it in its
+Conversation tab, beside Sub-issues (`issue/SubIssues`, while the issue has any, counted from the
+card before the first read), whose tab only the sheet holds, which the inbox keeps mounted as it
+steps: it opens on Conversation, and an issue without sub-issues shows Conversation without
+changing the tab chosen. Both sheets keep each tab's place across a switch, and start each item's
+afresh, with `useTabPlaces` (`lib/sheet.ts`). `RefMark` marks any linked pull request or issue
+with its state (`refLook`, `lib/issues.ts`), and `Fold` folds a list under its count, open as its
+size says until the user opens or folds it.
 
 Neither sheet shows an item a read of it finds merged or closed on GitHub, as a card can be until
 the inbox's next refresh: `useEnded` (`lib/sheet.ts`) hands it to the sheet's `onEnded` once the
@@ -198,12 +205,15 @@ summary's reviewers offer the edit inline too: a requested person's or team's ro
 the request off, and a reviewer's (not the user's, the author's, or a bot's, which
 `ReviewEntry.mine` and `bot` tell) ↻ to ask them again, each row busy while its edit runs, and with
 no one asked it suggests up to three people to ask in one click, with More… to open the picker.
-The user's own request is never the edit's (Go refuses it, `ErrOwnReviewRequest`, and the picker
-locks their row): while the card says GitHub asks them by name (`reviewRequest` `you`),
-`ReviewSheet`'s `removeMe` puts × on their row and Remove me as reviewer at the action menu's foot
-(`ActionButton`'s `extra`), with or without the right to edit the others. It runs the inbox's own
-edit through the host, as the issue sheet's Unassign me does: `InboxView`'s `removeReviewHere`
-calls `useItemActions`' `removeReviewOn`, the card menu's path, and closes the sheet once GitHub
+The user's own request is never the edit's (Go refuses it, `ErrOwnReviewRequest`): while the card
+says GitHub asks them by name (`reviewRequest` `you`), `ReviewSheet`'s `removeMe` puts × on their
+row and Remove me as reviewer at the action menu's foot (`ActionButton`'s `extra`), with or without
+the right to edit the others, and unlocks their row in the picker, whose Apply sends the rest of
+the edit and then runs it (`applyTakingSelfOff`, `lib/sheet.ts`); without it, the picker locks their
+row. It runs the inbox's own edit through the host, as both sheets' Unassign me does (`onUnassign`,
+from × on the user's own line in Assignees, `AssigneesSection`'s `onUnassignMe`, the assignee
+picker the same way, and the issue sheet's action menu), in the inbox and in Autopilot's sheets
+(`useSheetHost`) alike: `InboxView`'s `removeReviewHere` calls `useItemActions`' `removeReviewOn`, the card menu's path, and closes the sheet once GitHub
 took the user off, the toast saying so; a refusal stays in the sheet as an alert.
 After an edit that GitHub made any of, `ReviewSheet` builds the sheet again through `useReview`'s
 rebuild, which asks GitHub nothing, since the inbox rewrote the card from GitHub's answer, and reads
@@ -216,11 +226,12 @@ the candidates again from the directory, which now ranks the people the user pic
 `Assignees.tsx` (`AssigneesSection`) is both sheets' list of who an item is assigned to, in the
 review summary's small look or the issue details' (`look`): each person's line with their picture
 and "(you)", and, while the user may edit (`AssigneesEditing`), Edit, × on everyone's line but the
-user's (who takes themselves off with Unassign me), a line fading while its edit runs, an inline
+user's, a line fading while its edit runs, an inline
 alert when one fails, and, with no one assigned, up to three one-click chips ("Assign yourself"
 first, then the author, `quickPicks`) and More…. It reads whom to suggest itself
 (`AssigneeReads.candidates`, a local read) and again after each edit. `AssigneePicker.tsx` builds
-the picker on `PickerDialog`: who it is assigned to first, the user's row locked, then the sections
+the picker on `PickerDialog`: who it is assigned to first, the user's row locked unless the sheet
+can take them off (`onUnassignMe`), then the sections
 `lib/assignees.ts` makes (`assigneeGroups`: Suggested, Works on, Can be assigned in, In the owner,
 Found on GitHub), each row's hint saying why. Opened while a read is due, it learns once; while the
 list is cut short (`searchesGitHub`), a pause of 300 ms in typing searches (`useQuery`'s `delay`),

@@ -869,6 +869,54 @@ describe('ReviewSheet', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('takes the user off its assignees from × beside their name, or the picker, and says why it couldn’t', async () => {
+    const assigned = review({
+      canEditAssignees: true,
+      assignees: [
+        { login: 'octo-user', mine: true },
+        { login: 'octo-other', mine: false },
+      ],
+    })
+    platform.openReview.mockResolvedValue(assigned)
+    platform.refreshReview.mockResolvedValue(assigned)
+    const card = item({ id: 1, assigned: true })
+    const onUnassign = vi
+      .fn<(it: InboxItem) => Promise<string>>()
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('GitHub refused it.')
+    renderAt(<Harness item={card} onUnassign={onUnassign} />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Unassign me' }))
+    expect(onUnassign).toHaveBeenCalledExactlyOnceWith(card)
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    })
+
+    // From the picker, the rest of the edit goes first, then Unassign me.
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Edit assignees' }))
+    const picker = within(await screen.findByRole('dialog', { name: 'Assignees' }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-user/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-other/ }))
+    await userEvent.click(picker.getByRole('button', { name: 'Unassign 2' }))
+
+    expect(platform.editAssignees).toHaveBeenCalledExactlyOnceWith({ itemId: 1, add: [], remove: ['octo-other'] })
+    expect(onUnassign).toHaveBeenCalledTimes(2)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t unassign you: GitHub refused it.')
+    await userEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('offers no Unassign me for a pull request the card says isn’t assigned to the user', async () => {
+    platform.refreshReview.mockResolvedValue(review({ assignees: [{ login: 'octo-user', mine: true }] }))
+    renderAt(
+      <Harness item={item({ id: 1, assigned: false })} onUnassign={vi.fn<(it: InboxItem) => Promise<string>>()} />,
+    )
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    expect(within(assignees).queryByRole('button', { name: 'Unassign me' })).not.toBeInTheDocument()
+  })
+
   it('offers no Remove me as reviewer unless GitHub asks the user by name', async () => {
     platform.refreshReview.mockResolvedValue(
       review({

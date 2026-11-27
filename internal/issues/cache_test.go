@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/issues/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/timeline"
@@ -166,6 +167,49 @@ func TestTheCacheRemembersTheVisit(t *testing.T) {
 	got, err = c.load(ctx, id)
 	require.NoError(t, err)
 	assert.Nil(t, got)
+}
+
+func TestTheCacheKeepsEachSubIssue(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	id := storeIssues(t, db, 1, 1)[0]
+	c := newCacheStore(db)
+	ctx := t.Context()
+
+	sub := cachedSubIssue{
+		Kind: item.KindIssue, Repo: exampleRepo, Number: 20, Title: "Handle CRLF", State: timeline.StateClosed,
+		StateReason: timeline.ReasonNotPlanned, URL: "https://github.com/acme-org/example-repo/issues/20",
+		Assignees: []string{octoUser}, AssigneesTotal: 2, Total: 3, Done: 1, ClosedAt: stamp(latestAt),
+	}
+
+	require.NoError(t, c.save(ctx, id, cachedView{SubIssues: []cachedSubIssue{sub}}, testNow))
+
+	got, err := c.load(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, []cachedSubIssue{sub}, got.view.SubIssues)
+
+	encoded, err := store.EncodeJSON(sub)
+	require.NoError(t, err)
+	assert.Contains(t, encoded, `"number":20`, "the sub-issue's fields sit at the top of its object")
+
+	// An older build kept each sub-issue's ref alone: it still reads, with zeros for the
+	// rest until the next read.
+	_, err = db.ExecContext(ctx, `UPDATE issue_views SET view = ? WHERE item_id = ?`,
+		`{"subIssues":[{"kind":"issue","repo":"acme-org/example-repo","number":21,"title":"Old","state":"OPEN"}]}`, id)
+	require.NoError(t, err)
+
+	got, err = c.load(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, []cachedSubIssue{{
+		Kind: item.KindIssue, Repo: exampleRepo, Number: 21, Title: "Old", State: timeline.StateOpen,
+	}}, got.view.SubIssues)
+
+	is := build(storedIssue(), got, "", false)
+	assert.Equal(t, []SubIssue{{
+		Issue:     timeline.Ref{Kind: item.KindIssue, Repo: exampleRepo, Number: 21, Title: "Old", State: timeline.StateOpen},
+		Assignees: []Person{},
+	}}, is.SubIssues)
 }
 
 func TestTheCacheFailsWithItsDatabase(t *testing.T) {

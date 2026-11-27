@@ -778,6 +778,56 @@ describe('WatchingList', () => {
     })
   })
 
+  it('takes the user off a watched issue from its sheet, which closes once GitHub made it', async () => {
+    platform.routineWatching.mockResolvedValue([2])
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size', assigned: true }),
+    ])
+    const read = issue({ id: 2, number: 9, title: 'The widget forgets its size' })
+
+    platform.openIssue.mockResolvedValue(read)
+    platform.refreshIssue.mockResolvedValue(read)
+    render(<Watching />, { wrapper: rows })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'The widget forgets its size' }))
+    const sheet = await screen.findByRole('dialog', { name: 'The widget forgets its size' })
+    await userEvent.click(
+      within(await within(sheet).findByRole('region', { name: 'Assignees' })).getByRole('button', {
+        name: 'Unassign me',
+      }),
+    )
+
+    expect(platform.unassignItem).toHaveBeenCalledWith(2)
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'The widget forgets its size' })).not.toBeInTheDocument()
+    })
+    expect(await screen.findByText('Unassigned you on GitHub')).toBeInTheDocument()
+  })
+
+  it('keeps a watched issue’s sheet open, saying why, when GitHub kept the user on it', async () => {
+    platform.routineWatching.mockResolvedValue([2])
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size', assigned: true }),
+    ])
+    const read = issue({ id: 2, number: 9, title: 'The widget forgets its size' })
+
+    platform.openIssue.mockResolvedValue(read)
+    platform.refreshIssue.mockResolvedValue(read)
+    platform.unassignItem.mockRejectedValue(new Error('GitHub refused it.'))
+    render(<Watching />, { wrapper: rows })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'The widget forgets its size' }))
+    const sheet = await screen.findByRole('dialog', { name: 'The widget forgets its size' })
+    await userEvent.click(
+      within(await within(sheet).findByRole('region', { name: 'Assignees' })).getByRole('button', {
+        name: 'Unassign me',
+      }),
+    )
+
+    expect(await within(sheet).findByText('GitHub refused it.')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
+  })
+
   it('marks a watched item read as its sheet opens, steps away, and closes, and reads the rows again after each mark', async () => {
     // What the backend stores, which the marks change.
     let watched = [

@@ -28,8 +28,8 @@ function Ring({ subIssues }: { subIssues: SubIssues }) {
 }
 
 // SubIssueRing is how far an issue's sub-issues are, as a small ring filled that far and
-// "{done}/{total}", in the success color once all are done.
-function SubIssueRing({ subIssues }: { subIssues: SubIssues }) {
+// "{done}/{total}", in the success color once all are done. It takes an issue with any.
+export function SubIssueRing({ subIssues }: { subIssues: SubIssues }) {
   const { total, completed } = subIssues
   const done = completed === total
 

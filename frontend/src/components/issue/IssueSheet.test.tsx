@@ -16,11 +16,13 @@ import {
   issue,
   issueComment,
   issueOffer,
+  issueRef,
   issueResult,
   issueTimeline,
   item,
   profile,
   prompts,
+  subIssue,
   worktree,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -602,6 +604,51 @@ describe('IssueSheet', () => {
     expect(await screen.findByText('GitHub refused it.')).toBeInTheDocument()
   })
 
+  it('takes the user off the issue from × beside their name in Assignees', async () => {
+    const onUnassign = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('')
+    renderAt(<Harness onUnassign={onUnassign} />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Unassign me' }))
+
+    expect(onUnassign).toHaveBeenCalledExactlyOnceWith(card(1))
+    expect(platform.editIssue, 'not through the edit').not.toHaveBeenCalled()
+  })
+
+  it('takes the user off the issue from the assignee picker, after the rest of the edit', async () => {
+    platform.refreshIssue.mockResolvedValue(
+      issue({
+        assignees: [
+          { login: 'octo-user', mine: true },
+          { login: 'octo-other', mine: false },
+        ],
+      }),
+    )
+    const onUnassign = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('')
+    renderAt(<Harness onUnassign={onUnassign} />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await waitFor(() => {
+      expect(within(assignees).getByRole('button', { name: 'Edit assignees' })).toBeInTheDocument()
+    })
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Edit assignees' }))
+    const picker = within(await screen.findByRole('dialog', { name: 'Assignees' }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-user/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-other/ }))
+    await userEvent.click(picker.getByRole('button', { name: 'Unassign 2' }))
+
+    await waitFor(() => {
+      expect(onUnassign).toHaveBeenCalledExactlyOnceWith(card(1))
+    })
+    expect(platform.editIssue).toHaveBeenCalledExactlyOnceWith({
+      itemId: 1,
+      addLabels: [],
+      removeLabels: [],
+      addAssignees: [],
+      removeAssignees: ['octo-other'],
+    })
+  })
+
   it('offers no unassign for an issue the user isn’t assigned to', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ assigned: false }))
     renderAt(<Harness onUnassign={vi.fn()} />)
@@ -610,6 +657,9 @@ describe('IssueSheet', () => {
     await waitFor(() => {
       expect(screen.queryByRole('menuitem', { name: 'Unassign me' })).not.toBeInTheDocument()
     })
+    expect(
+      within(screen.getByRole('region', { name: 'Assignees' })).queryByRole('button', { name: 'Unassign me' }),
+    ).not.toBeInTheDocument()
   })
 
   it('quotes a comment into the reply', async () => {
@@ -759,5 +809,147 @@ describe('IssueSheet', () => {
     expect(await screen.findByRole('img', { name: 'Closed as not planned' })).toBeInTheDocument()
     expect(screen.getByText('Closed as not planned by octo-other')).toBeInTheDocument()
     expect(screen.getByText('Nothing to do here now.')).toBeInTheDocument()
+  })
+
+  describe('the tabs', () => {
+    // tabOf is the tab whose name starts with name.
+    function tabOf(name: string) {
+      return screen.getByRole('tab', { name: new RegExp(`^${name}`) })
+    }
+
+    // withSubIssues is issue id with two sub-issues, one of them done, of four.
+    function withSubIssues(id = 1) {
+      return issue({
+        id,
+        subIssuesTotal: 4,
+        subIssuesDone: 2,
+        subIssues: [
+          subIssue(),
+          subIssue({
+            issue: issueRef({
+              number: 21,
+              title: 'Handle a missing newline',
+              state: 'CLOSED',
+              stateReason: 'COMPLETED',
+            }),
+          }),
+        ],
+      })
+    }
+
+    // readAs answers every read of an issue with what of says of its ID.
+    function readAs(of: (id: number) => ReturnType<typeof issue>) {
+      platform.openIssue.mockImplementation((id: number) => Promise.resolve(of(id)))
+      platform.refreshIssue.mockImplementation((id: number) => Promise.resolve(of(id)))
+    }
+
+    it('shows the conversation alone for an issue without sub-issues', async () => {
+      renderAt(<Harness />)
+
+      await screen.findByRole('region', { name: 'Conversation' })
+      expect(screen.getAllByRole('tab')).toHaveLength(1)
+      expect(tabOf('Conversation')).toHaveAttribute('aria-selected', 'true')
+      expect(tabOf('Conversation')).toHaveAccessibleName('Conversation 2+')
+    })
+
+    it('shows the Sub-issues tab from the card before the read, then counts both tabs', async () => {
+      const answer = deferred<ReturnType<typeof issue>>()
+      platform.openIssue.mockReturnValue(new Promise(() => undefined))
+      platform.refreshIssue.mockReturnValue(answer.promise)
+      renderAt(<Harness item={item({ ...card(1), details: details({ subIssues: { total: 4, completed: 1 } }) })} />)
+
+      await screen.findByRole('region', { name: 'Reading from GitHub' })
+      expect(tabOf('Conversation')).toHaveAccessibleName('Conversation')
+      expect(tabOf('Sub-issues')).toHaveAccessibleName('Sub-issues 1/4')
+      expect(tabOf('Conversation')).toHaveAttribute('aria-selected', 'true')
+
+      await userEvent.click(tabOf('Sub-issues'))
+      expect(screen.getByRole('tabpanel').querySelector('.skeleton')).not.toBeNull()
+
+      act(() => {
+        answer.resolve(withSubIssues())
+      })
+
+      expect(await screen.findByRole('list', { name: 'Open sub-issues' })).toHaveTextContent('#20 Handle CRLF endings')
+      expect(tabOf('Sub-issues')).toHaveAccessibleName('Sub-issues 2/4')
+      expect(tabOf('Sub-issues')).toHaveAttribute('title', '2 of 4 sub-issues done (50%)')
+      expect(tabOf('Conversation')).toHaveAccessibleName('Conversation 2+')
+      expect(screen.getByRole('list', { name: 'Done sub-issues' })).toHaveTextContent('#21 Handle a missing newline')
+    })
+
+    it('shows the sub-issues from the details', async () => {
+      readAs(() => withSubIssues())
+      renderAt(<Harness />)
+
+      const details = await screen.findByRole('region', { name: 'Sub-issues' })
+      expect(details).toHaveTextContent('2 of 4 done')
+      expect(tabOf('Conversation')).toHaveAttribute('aria-selected', 'true')
+
+      await userEvent.click(within(details).getByRole('button', { name: 'Show' }))
+      expect(tabOf('Sub-issues')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('list', { name: 'Open sub-issues' })).toBeVisible()
+    })
+
+    it('keeps the Sub-issues tab chosen while stepping, showing the conversation of an issue without any', async () => {
+      readAs((id) => (id === 2 ? issue({ id }) : withSubIssues(id)))
+      renderAt(<Harness />)
+
+      await screen.findByRole('list', { name: 'Open sub-issues', hidden: true })
+      await userEvent.click(tabOf('Sub-issues'))
+      expect(tabOf('Sub-issues')).toHaveAttribute('aria-selected', 'true')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      expect(await screen.findByText('2 of 3 in Assigned')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getAllByRole('tab')).toHaveLength(1)
+      })
+      expect(tabOf('Conversation')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('region', { name: 'Conversation' })).toBeVisible()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      expect(await screen.findByText('3 of 3 in Assigned')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(tabOf('Sub-issues')).toHaveAttribute('aria-selected', 'true')
+      })
+
+      // Choosing the conversation is a choice too: the next issue opens on it.
+      await userEvent.click(tabOf('Conversation'))
+      await userEvent.click(screen.getByRole('button', { name: /Previous/ }))
+      await userEvent.click(screen.getByRole('button', { name: /Previous/ }))
+      expect(await screen.findByText('1 of 3 in Assigned')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(tabOf('Sub-issues')).toHaveAttribute('aria-selected', 'false')
+      })
+    })
+
+    it('puts a tab back where it was left, and starts the next issue’s tabs afresh', async () => {
+      const tops = new WeakMap<Element, number>()
+      const scrolls: number[] = []
+      vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(function (this: Element) {
+        return tops.get(this) ?? 0
+      })
+      vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, value: number) {
+        scrolls.push(value)
+        tops.set(this, value)
+      })
+      readAs((id) => withSubIssues(id))
+      renderAt(<Harness />)
+
+      const conversation = await screen.findByRole('main')
+      await screen.findByRole('list', { name: 'Open sub-issues', hidden: true })
+
+      tops.set(conversation, 240)
+      await userEvent.click(tabOf('Sub-issues'))
+      await userEvent.click(tabOf('Conversation'))
+      expect(scrolls.at(-1)).toBe(240)
+
+      await userEvent.click(tabOf('Sub-issues'))
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      await screen.findByText('2 of 3 in Assigned')
+      scrolls.length = 0
+      await userEvent.click(tabOf('Conversation'))
+
+      expect(scrolls).toEqual([])
+    })
   })
 })

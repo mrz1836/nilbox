@@ -822,6 +822,17 @@ export function PullRequestClosedIcon(props: IconProps) {
   )
 }
 
+// IssueNotPlannedIcon stands for an issue closed without being done, as not planned or as a
+// duplicate: a slash through its circle.
+export function IssueNotPlannedIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M6.2 17.8L17.8 6.2" />
+    </Icon>
+  )
+}
+
 // IssueClosedIcon stands for an issue that is done: a check in its circle.
 export function IssueClosedIcon(props: IconProps) {
   return (

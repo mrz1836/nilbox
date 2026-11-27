@@ -71,7 +71,9 @@ const issueViewQueryHead = `query IssueView($id: ID!, $last: Int!) {
 
 // issueViewFragments are what the view reads beyond an inbox card. The newest comment is
 // aliased, since DetailFields asks for the comments' count under their own name, and so
-// are the sub-issues and the closing pull requests, for what they are to the sheet.
+// are the sub-issues and the closing pull requests, for what they are to the sheet. Each
+// sub-issue brings its first three assignees, its own sub-issues' counts, and when it
+// closed (SubIssueFields), which keeps the read at one point.
 const issueViewFragments = `
 fragment IssueViewFields on Issue {
   body lastEditedAt stateReason closedAt locked activeLockReason
@@ -82,7 +84,7 @@ fragment IssueViewFields on Issue {
   parent { ...RefFields }
   assignees(first: 10) { totalCount nodes { login } }
   participants(first: 10) { totalCount nodes { login } }
-  subIssueList: subIssues(first: 25) { nodes { ...RefFields } }
+  subIssueList: subIssues(first: 25) { nodes { ...SubIssueFields } }
   fixes: closedByPullRequestsReferences(first: 10, includeClosedPrs: true) {
     totalCount
     nodes { ...RefFields baseRefName mergedAt reviewDecision statusCheckRollup { state } }
@@ -90,6 +92,12 @@ fragment IssueViewFields on Issue {
   reactionGroups { content reactors { totalCount } }
   lastComment: comments(last: 1) { nodes { id createdAt viewerDidAuthor author { login } } }
   timeline: timelineItems(last: $last, itemTypes: ` + timelineItemTypes + `) { ...TimelineFields }
+}
+
+fragment SubIssueFields on Issue {
+  ...RefFields closedAt
+  assignees(first: 3) { totalCount nodes { login } }
+  subIssuesSummary { total completed }
 }
 ` + timelineFieldsFragment + refFieldsFragment + assigneeFieldsFragment
 
@@ -341,8 +349,9 @@ type IssueView struct {
 	Assignees    People
 	Participants People
 
-	// SubIssues are its first 25 sub-issues; Update.Details.SubIssues counts them all.
-	SubIssues []ItemRef
+	// SubIssues are its first 25 sub-issues, in GitHub's order; Update.Details.SubIssues
+	// counts them all.
+	SubIssues []SubIssue
 
 	// Fixes are the first ten pull requests that close it once merged, closed ones
 	// included, and FixCount how many there are that the viewer can see.
@@ -403,6 +412,16 @@ type ItemRef struct {
 
 	// IsDraft reports a draft pull request.
 	IsDraft bool
+}
+
+// SubIssue is one of an issue's sub-issues: the issue, its first three assignees and how
+// many it has, how far along its own sub-issues are, and when it closed (zero while it is
+// open).
+type SubIssue struct {
+	Ref       ItemRef
+	Assignees People
+	SubIssues SubIssues
+	ClosedAt  time.Time
 }
 
 // LinkedPull is a pull request that closes an issue once it merges: one whose description
@@ -849,7 +868,7 @@ type issueViewNode struct {
 	Assignees    graphQLPeople     `json:"assignees"`
 	Participants graphQLPeople     `json:"participants"`
 	SubIssueList struct {
-		Nodes []*graphQLRef `json:"nodes"`
+		Nodes []*graphQLSubIssue `json:"nodes"`
 	} `json:"subIssueList"`
 	Fixes struct {
 		TotalCount int           `json:"totalCount"`
@@ -880,7 +899,7 @@ func (n *issueViewNode) fill(v *IssueView, self ItemRef) {
 	v.Parent = n.Parent.itemRef()
 	v.Assignees = n.Assignees.people()
 	v.Participants = n.Participants.people()
-	v.SubIssues = itemRefs(n.SubIssueList.Nodes)
+	v.SubIssues = subIssueList(n.SubIssueList.Nodes)
 	v.Fixes = fixes(n.Fixes.Nodes)
 	v.FixCount = shownCount(n.Fixes.TotalCount, len(n.Fixes.Nodes), len(v.Fixes))
 	v.Reactions = reactionsOf(n.ReactionGroups)
@@ -1035,6 +1054,38 @@ func itemRefs(nodes []*graphQLRef) []ItemRef {
 // than were kept.
 func shownCount(total, returned, kept int) int {
 	return max(total-(returned-kept), kept)
+}
+
+// graphQLSubIssue is one of an issue's sub-issues (the SubIssueFields fragment).
+type graphQLSubIssue struct {
+	graphQLRef
+
+	ClosedAt         time.Time        `json:"closedAt"`
+	Assignees        graphQLPeople    `json:"assignees"`
+	SubIssuesSummary graphQLSubIssues `json:"subIssuesSummary"`
+}
+
+// subIssueList converts the sub-issues, in GitHub's order, skipping nulls and anything but
+// an issue.
+func subIssueList(nodes []*graphQLSubIssue) []SubIssue {
+	out := []SubIssue{}
+
+	for _, n := range nodes {
+		if n == nil {
+			continue
+		}
+
+		ref := n.itemRef()
+		if ref == nil || ref.IsPR {
+			continue
+		}
+
+		out = append(out, SubIssue{
+			Ref: *ref, Assignees: n.Assignees.people(), SubIssues: n.SubIssuesSummary.subIssues(), ClosedAt: n.ClosedAt.UTC(),
+		})
+	}
+
+	return out
 }
 
 // graphQLFix is a pull request that closes an issue.

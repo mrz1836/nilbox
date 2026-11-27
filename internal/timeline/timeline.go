@@ -319,16 +319,6 @@ func RefOf(r *github.ItemRef) *Ref {
 	}
 }
 
-// RefsOf converts the pull requests and issues GitHub named, never returning nil.
-func RefsOf(refs []github.ItemRef) []Ref {
-	out := make([]Ref, 0, len(refs))
-	for i := range refs {
-		out = append(out, *RefOf(&refs[i]))
-	}
-
-	return out
-}
-
 // LabelOf converts a label an event names, nil for none.
 func LabelOf(l *github.Label) *Label {
 	if l == nil {

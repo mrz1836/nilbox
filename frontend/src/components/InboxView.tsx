@@ -797,8 +797,8 @@ export function InboxView({
     ended(gone)
   }
 
-  // unassignHere takes the user off an issue from its sheet: the sheet closes and the toast
-  // says so once GitHub made it, and it hears why when it couldn't.
+  // unassignHere takes the user off an issue or a pull request from its sheet: the sheet
+  // closes and the toast says so once GitHub made it, and it hears why when it couldn't.
   const unassignHere = async (it: InboxItem): Promise<string> => {
     const error = await unassignOn(it)
 
@@ -1078,6 +1078,7 @@ export function InboxView({
               onToast={showToast}
               ignoring={ignoring}
               onRemoveReview={removeReviewHere}
+              onUnassign={unassignHere}
             />
           )}
           {sheetProps !== null && sheets && viewing?.kind === 'issue' && (

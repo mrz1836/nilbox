@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -55,6 +55,20 @@ describe('IssueSummary', () => {
     expect(development).toHaveTextContent('open · approved')
     expect(development).toHaveTextContent('Mentioned in')
     expect(development).toHaveTextContent('acme-org/api#9 Crash on start')
+    expect(within(development).getByRole('heading')).toHaveTextContent('Development7')
+
+    // Each linked item shows its state as a mark.
+    const marks = within(development)
+      .getAllByRole('img')
+      .map((m) => m.getAttribute('aria-label'))
+    expect(marks).toEqual([
+      'Draft pull request',
+      'Merged pull request',
+      'Closed pull request',
+      'Open pull request',
+      'Open pull request',
+      'Open issue',
+    ])
 
     await userEvent.click(within(development).getByRole('button', { name: 'and 2 more on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/12')
@@ -70,7 +84,95 @@ describe('IssueSummary', () => {
     expect(screen.queryByRole('region', { name: 'Milestone' })).not.toBeInTheDocument()
   })
 
-  it('shows the projects, the milestone, the sub-issues, the parent, and who took part', async () => {
+  it('folds the mentions away under their count past three', async () => {
+    const mentions = [9, 10, 11, 12].map((n) =>
+      issueRef({ repo: 'acme-org/api', number: n, title: `Mention ${String(n)}` }),
+    )
+    const { rerender } = renderAt(<IssueSummary issue={issue({ mentioned: mentions.slice(0, 3) })} />)
+
+    const mentioned = () => screen.getByText('Mentioned in').closest('details')
+    expect(mentioned()).toHaveProperty('open', true)
+    expect(screen.getByRole('list', { name: 'Mentioned in' }).children).toHaveLength(3)
+
+    rerender(<IssueSummary issue={issue({ mentioned: [...mentions, pullRef({ state: 'MERGED' })] })} />)
+    await waitFor(() => {
+      expect(mentioned()).toHaveProperty('open', false)
+    })
+    expect(mentioned()?.querySelector('summary')).toHaveTextContent('Mentioned in5')
+    expect(
+      within(screen.getByRole('list', { name: 'Mentioned in', hidden: true }))
+        .getAllByRole('img', { hidden: true })
+        .map((m) => m.getAttribute('aria-label')),
+    ).toEqual(['Open issue', 'Open issue', 'Open issue', 'Open issue', 'Merged pull request'])
+
+    await userEvent.click(screen.getByText('Mentioned in'))
+    await waitFor(() => {
+      expect(mentioned()).toHaveProperty('open', true)
+    })
+  })
+
+  it('lists the sub-issues’ progress and the parent first, and shows the sub-issues', async () => {
+    const onShowSubIssues = vi.fn()
+
+    renderAt(
+      <IssueSummary
+        issue={issue({
+          projects: [project()],
+          milestone: {
+            title: '1.5',
+            url: 'https://github.com/acme-org/example-repo/milestone/2',
+            dueOn: '',
+            state: 'OPEN',
+            progress: 40,
+          },
+          subIssuesTotal: 4,
+          subIssuesDone: 2,
+          parent: issueRef({ number: 2, title: 'Parser', state: 'CLOSED', stateReason: 'COMPLETED' }),
+          duplicateOf: issueRef({ number: 3, state: 'CLOSED', stateReason: 'NOT_PLANNED' }),
+        })}
+        onShowSubIssues={onShowSubIssues}
+      />,
+    )
+
+    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Sub-issues',
+      'Part of',
+      'Development',
+      'Assignees',
+      'Labels',
+      'Projects',
+      'Milestone',
+      'Duplicate of',
+      'Participants',
+    ])
+
+    const subIssues = screen.getByRole('region', { name: 'Sub-issues' })
+    expect(subIssues).toHaveTextContent('2 of 4 done')
+    await userEvent.click(within(subIssues).getByRole('button', { name: 'Show' }))
+    expect(onShowSubIssues).toHaveBeenCalledOnce()
+
+    expect(within(screen.getByRole('region', { name: 'Part of' })).getByRole('img')).toHaveAccessibleName(
+      'Closed as completed',
+    )
+    expect(within(screen.getByRole('region', { name: 'Duplicate of' })).getByRole('img')).toHaveAccessibleName(
+      'Closed as not planned',
+    )
+    expect(within(screen.getByRole('region', { name: 'Participants' })).getByRole('heading')).toHaveTextContent(
+      'Participants2',
+    )
+  })
+
+  it('offers no Show without a sub-issues tab to show, and no sub-issues line without any', () => {
+    const { rerender } = renderAt(<IssueSummary issue={issue({ subIssuesTotal: 2, subIssuesDone: 0 })} />)
+
+    expect(screen.getByRole('region', { name: 'Sub-issues' })).toHaveTextContent('0 of 2 done')
+    expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
+
+    rerender(<IssueSummary issue={issue()} onShowSubIssues={vi.fn()} />)
+    expect(screen.queryByRole('region', { name: 'Sub-issues' })).not.toBeInTheDocument()
+  })
+
+  it('shows the projects, the milestone, the parent, and who took part', async () => {
     renderAt(
       <IssueSummary
         issue={issue({
@@ -82,9 +184,6 @@ describe('IssueSummary', () => {
             state: 'OPEN',
             progress: 40,
           },
-          subIssuesTotal: 3,
-          subIssuesDone: 1,
-          subIssues: [issueRef({ number: 20 })],
           parent: issueRef({ number: 2, title: 'Parser' }),
           duplicateOf: issueRef({ number: 3 }),
           moreParticipants: 4,
@@ -99,10 +198,14 @@ describe('IssueSummary', () => {
     await userEvent.click(within(milestone).getByRole('button', { name: '1.5' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/milestone/2')
 
-    expect(screen.getByRole('region', { name: 'Sub-issues' })).toHaveTextContent('1 of 3 sub-issues done')
-    expect(screen.getByRole('button', { name: 'and 2 more on GitHub' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Part of' })).toHaveTextContent('#2 Parser')
-    expect(screen.getByRole('region', { name: 'Duplicate of' })).toHaveTextContent('#3')
+    const partOf = within(screen.getByRole('region', { name: 'Part of' })).getByRole('button', { name: '#2 Parser' })
+    expect(partOf, 'the title under the name').toHaveClass('flex-col')
+    expect(
+      within(screen.getByRole('region', { name: 'Duplicate of' })).getByRole('button', { name: '#3 Parser bug' }),
+    ).toHaveClass('flex-col')
+    expect(
+      within(screen.getByRole('region', { name: 'Development' })).getByRole('button', { name: /#14/ }),
+    ).not.toHaveClass('flex-col')
     expect(screen.getByRole('region', { name: 'Participants' })).toHaveTextContent('and 4 more on GitHub')
   })
 
@@ -214,5 +317,36 @@ describe('ItemLink', () => {
     renderAt(<ItemLink linked={issueRef({ repo: 'acme-org/api', title: '' })} from="acme-org/example-repo" titled />)
 
     expect(screen.getByRole('button', { name: 'acme-org/api#3' })).toBeInTheDocument()
+  })
+
+  it('stacks the title under the name, cutting a long repository short but never the number', () => {
+    renderAt(
+      <>
+        <ItemLink
+          linked={issueRef({
+            repo: 'acme-org/a-rather-long-repository-name',
+            number: 363,
+            title: 'Add the people directory',
+          })}
+          from="acme-org/example-repo"
+          titled
+          stacked
+        />
+        <ItemLink linked={issueRef({ number: 2, title: '' })} from="acme-org/example-repo" titled stacked />
+      </>,
+    )
+
+    const link = screen.getByRole('button', {
+      name: 'acme-org/a-rather-long-repository-name#363 Add the people directory',
+    })
+    const [nameLine, title] = [...link.children]
+    expect(nameLine).toHaveTextContent(/^acme-org\/a-rather-long-repository-name#363$/)
+    expect(within(nameLine as HTMLElement).getByText('acme-org/a-rather-long-repository-name')).toHaveClass('truncate')
+    expect(within(nameLine as HTMLElement).getByText('#363')).toHaveClass('shrink-0')
+    expect(title).toHaveTextContent('Add the people directory')
+    expect(title).toHaveClass('line-clamp-3')
+    expect(link).toHaveClass('flex-col')
+
+    expect(screen.getByRole('button', { name: '#2' }).children).toHaveLength(1)
   })
 })

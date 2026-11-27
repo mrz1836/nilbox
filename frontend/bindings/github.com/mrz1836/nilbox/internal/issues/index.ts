@@ -31,5 +31,6 @@ export type {
     RepoLabels,
     Result,
     Seen,
-    Standing
+    Standing,
+    SubIssue
 } from "./models.js";

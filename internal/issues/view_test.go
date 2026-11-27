@@ -31,7 +31,19 @@ func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
 	v.DuplicateOf = &github.ItemRef{
 		Repo: exampleRepo, Number: 3, State: github.StateClosed, StateReason: github.StateReasonCompleted,
 	}
-	v.SubIssues = []github.ItemRef{{Repo: exampleRepo, Number: 20, State: github.StateOpen}}
+	v.SubIssues = []github.SubIssue{
+		{
+			Ref:       github.ItemRef{Repo: exampleRepo, Number: 20, Title: "Handle CRLF", State: github.StateOpen},
+			Assignees: github.People{Logins: []string{"Octo-User", octoOther}, Total: 4},
+			SubIssues: github.SubIssues{Total: 3, Completed: 1},
+		},
+		{
+			Ref: github.ItemRef{
+				Repo: exampleRepo, Number: 21, State: github.StateClosed, StateReason: github.StateReasonNotPlanned,
+			},
+			ClosedAt: merged,
+		},
+	}
 	v.Fixes = []github.LinkedPull{{Ref: pr14, Base: "main", MergedAt: merged, ReviewDecision: "APPROVED", Checks: "SUCCESS"}}
 	v.FixCount = 3
 	v.LatestComment = &github.CommentMark{ID: "IC_9", CreatedAt: latestAt, Author: "Octo-User"}
@@ -66,7 +78,17 @@ func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
 		State: timeline.StateOpen,
 	}, view.Parent)
 	assert.Equal(t, timeline.ReasonCompleted, view.DuplicateOf.StateReason)
-	assert.Len(t, view.SubIssues, 1)
+	assert.Equal(t, []cachedSubIssue{
+		{
+			Kind: item.KindIssue, Repo: exampleRepo, Number: 20, Title: "Handle CRLF", State: timeline.StateOpen,
+			Assignees: []string{"Octo-User", octoOther}, AssigneesTotal: 4, Total: 3, Done: 1,
+		},
+		{
+			Kind: item.KindIssue, Repo: exampleRepo, Number: 21, State: timeline.StateClosed,
+			StateReason: timeline.ReasonNotPlanned,
+			Assignees:   []string{}, ClosedAt: stamp(merged),
+		},
+	}, view.SubIssues)
 	assert.Equal(t, []Fix{{
 		PR: timeline.Ref{
 			Kind: item.KindPR, Repo: exampleRepo, Number: 14, Title: "Keep the trailing newline",
@@ -116,15 +138,69 @@ func TestMentionedListsEachOnceButTheFixes(t *testing.T) {
 	pr14 := timeline.Ref{Kind: item.KindPR, Repo: exampleRepo, Number: 14}
 	issue9 := timeline.Ref{Kind: item.KindIssue, Repo: "acme-org/api", Number: 9}
 
-	got := mentioned([]timeline.Entry{
-		{Kind: timeline.KindMentioned, Ref: &pr14},
-		{Kind: timeline.KindMentioned, Ref: &issue9},
-		{Kind: timeline.KindLinked, Ref: &timeline.Ref{Repo: exampleRepo, Number: 15}},
-		{Kind: timeline.KindMentioned, Ref: &timeline.Ref{Kind: item.KindIssue, Repo: "ACME-org/API", Number: 9}},
-		{Kind: timeline.KindMentioned},
-	}, []Fix{{PR: pr14}})
+	got := mentioned(&cachedView{
+		Timeline: []timeline.Entry{
+			{Kind: timeline.KindMentioned, Ref: &pr14},
+			{Kind: timeline.KindMentioned, Ref: &issue9},
+			{Kind: timeline.KindLinked, Ref: &timeline.Ref{Repo: exampleRepo, Number: 15}},
+			{Kind: timeline.KindMentioned, Ref: &timeline.Ref{Kind: item.KindIssue, Repo: "ACME-org/API", Number: 9}},
+			{Kind: timeline.KindMentioned},
+		},
+		Fixes: []Fix{{PR: pr14}},
+	})
 
 	assert.Equal(t, []timeline.Ref{issue9}, got)
+}
+
+func TestMentionedLeavesOutWhatHasItsOwnPlace(t *testing.T) {
+	t.Parallel()
+
+	ref := func(number int) timeline.Ref {
+		return timeline.Ref{Kind: item.KindIssue, Repo: exampleRepo, Number: number}
+	}
+	sub20, sub21, parent, duplicate, other := ref(20), ref(21), ref(2), ref(3), ref(9)
+
+	view := &cachedView{
+		Timeline: []timeline.Entry{
+			{Kind: timeline.KindMentioned, Ref: &sub20},
+			{Kind: timeline.KindMentioned, Ref: &parent},
+			{Kind: timeline.KindMentioned, Ref: &other},
+			{Kind: timeline.KindMentioned, Ref: &timeline.Ref{Kind: item.KindIssue, Repo: "ACME-org/Example-Repo", Number: 21}},
+			{Kind: timeline.KindMentioned, Ref: &duplicate},
+		},
+		SubIssues:   []cachedSubIssue{{Ref: sub20}, {Ref: sub21}},
+		Parent:      &parent,
+		DuplicateOf: &duplicate,
+	}
+
+	assert.Equal(t, []timeline.Ref{other}, mentioned(view),
+		"the sub-issues, in any case, the parent, and the issue it duplicates each have their place")
+
+	view.SubIssues, view.Parent, view.DuplicateOf = nil, nil, nil
+	assert.Len(t, mentioned(view), 5, "with none of them, each mention shows")
+}
+
+func TestBuildShowsEachSubIssue(t *testing.T) {
+	t.Parallel()
+
+	card := storedIssue()
+	sub := timeline.Ref{Kind: item.KindIssue, Repo: exampleRepo, Number: 20, State: timeline.StateOpen}
+	read := &cached{view: cachedView{State: timeline.StateOpen, SubIssues: []cachedSubIssue{
+		{Ref: sub, Assignees: []string{"Octo-User", octoOther}, AssigneesTotal: 5, Total: 3, Done: 1},
+		{Ref: sub, Total: 2, Done: 7},
+		{Ref: sub, Total: -1, Done: -1, ClosedAt: "2026-11-10T08:00:00Z"},
+	}}, fetchedAt: testNow}
+
+	is := build(card, read, "", false)
+
+	assert.Equal(t, []SubIssue{
+		{
+			Issue: sub, Assignees: []Person{{Login: "Octo-User", Mine: true}, {Login: octoOther}}, MoreAssignees: 3,
+			SubIssuesTotal: 3, SubIssuesDone: 1,
+		},
+		{Issue: sub, Assignees: []Person{}, SubIssuesTotal: 2, SubIssuesDone: 2},
+		{Issue: sub, Assignees: []Person{}, ClosedAt: "2026-11-10T08:00:00Z"},
+	}, is.SubIssues, "the user's assignment marked, and the counts kept in bounds")
 }
 
 func TestStale(t *testing.T) {

@@ -80,6 +80,8 @@ func TestFetchIssueViewReadsTheSheet(t *testing.T) {
 		assert.Contains(t, req.Query, "fragment TimelineFields on IssueTimelineItemsConnection")
 		assert.Contains(t, req.Query, "timeline: timelineItems(last: $last, itemTypes: "+timelineItemTypes+")")
 		assert.Contains(t, req.Query, "lastComment: comments(last: 1)")
+		assert.Contains(t, req.Query, "subIssueList: subIssues(first: 25) { nodes { ...SubIssueFields } }")
+		assert.Contains(t, req.Query, "fragment SubIssueFields on Issue")
 		assert.NotContains(t, req.Query, "projectItems(", "projects are read only when asked")
 		assert.NotContains(t, req.Query, "enableDuplicate", "GitHub retired the argument")
 		assert.Equal(t, "I_fakeNodeId12", req.Variables.ID)
@@ -123,25 +125,39 @@ func TestFetchIssueViewReadsTheSheet(t *testing.T) {
 	}, view.Milestone)
 	assert.Nil(t, view.DuplicateOf)
 	assert.Equal(t, &ItemRef{
-		Repo: "acme-org/example-repo", Number: 3, Title: "Parser epic", State: StateOpen,
+		Repo: linkedRepo, Number: 3, Title: "Parser epic", State: StateOpen,
 		URL: "https://github.com/acme-org/example-repo/issues/3",
 	}, view.Parent)
 	assert.Equal(t, People{Logins: []string{octoUser, "octo-other"}, Total: 2}, view.Assignees)
 	assert.Len(t, view.Participants.Logins, 10)
 	assert.Equal(t, 12, view.Participants.Total, "the count runs past the logins read")
-	require.Len(t, view.SubIssues, 2)
-	assert.Equal(t, StateReasonCompleted, view.SubIssues[0].StateReason)
+	assert.Equal(t, []SubIssue{
+		{
+			Ref: ItemRef{
+				Repo: linkedRepo, Number: 20, Title: "Handle CRLF endings", State: StateClosed,
+				StateReason: StateReasonNotPlanned, URL: "https://github.com/acme-org/example-repo/issues/20",
+			},
+			Assignees: People{Logins: []string{}}, ClosedAt: at(10, 16, 45),
+		},
+		{
+			Ref: ItemRef{
+				Repo: linkedRepo, Number: 21, Title: "Handle files with no newline", State: StateOpen,
+				URL: "https://github.com/acme-org/example-repo/issues/21",
+			},
+			Assignees: People{Logins: []string{octoUser, "octo-bob"}, Total: 5}, SubIssues: SubIssues{Total: 3, Completed: 1},
+		},
+	}, view.SubIssues, "a null assignee is skipped, and an open sub-issue has no close time")
 	assert.Equal(t, []LinkedPull{
 		{
 			Ref: ItemRef{
-				IsPR: true, Repo: "acme-org/example-repo", Number: 14, Title: "Keep the trailing newline",
+				IsPR: true, Repo: linkedRepo, Number: 14, Title: "Keep the trailing newline",
 				URL: "https://github.com/acme-org/example-repo/pull/14", State: StateOpen, IsDraft: true,
 			},
 			Base: "main", ReviewDecision: "REVIEW_REQUIRED", Checks: "FAILURE",
 		},
 		{
 			Ref: ItemRef{
-				IsPR: true, Repo: "acme-org/example-repo", Number: 15, Title: "Fix the parser on release-1.2",
+				IsPR: true, Repo: linkedRepo, Number: 15, Title: "Fix the parser on release-1.2",
 				URL: "https://github.com/acme-org/example-repo/pull/15", State: StateMerged,
 			},
 			Base: "release-1.2", MergedAt: at(10, 8, 0), ReviewDecision: "APPROVED", Checks: "SUCCESS",
@@ -447,7 +463,7 @@ func TestFetchTimelineSendsTheCursor(t *testing.T) {
 
 	assert.Equal(t, "IC_fakeComment90", page.Items[0].ID)
 	assert.Equal(t, &ItemRef{
-		IsPR: true, Repo: "acme-org/example-repo", Number: 13, Title: "Parse the last line", State: StateMerged,
+		IsPR: true, Repo: linkedRepo, Number: 13, Title: "Parse the last line", State: StateMerged,
 		URL: "https://github.com/acme-org/example-repo/pull/13",
 	}, page.Items[1].Ref, "closed by a pull request")
 	assert.Empty(t, page.Items[1].Commit)
@@ -530,7 +546,7 @@ func TestFetchTimelineAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing.T) {
 func TestTimelineItemsOfAnUnknownSideOrKind(t *testing.T) {
 	t.Parallel()
 
-	self := ItemRef{Repo: "acme-org/example-repo", Number: 12}
+	self := ItemRef{Repo: linkedRepo, Number: 12}
 	other := &graphQLRef{TypeName: typeIssue, Number: 12, Repository: &struct {
 		NameWithOwner string `json:"nameWithOwner"`
 	}{NameWithOwner: "Acme-Org/Example-Repo"}}

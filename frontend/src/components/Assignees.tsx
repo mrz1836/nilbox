@@ -33,17 +33,32 @@ export interface AssigneesSectionProps {
   more: number
   // editing changes who it is assigned to, while the user may; without it, they only show.
   editing?: AssigneesEditing | undefined
+  // onUnassignMe takes the user off it, as the sheet's Unassign me does, from × on their own
+  // line, whether or not they may change the others; without it, their line offers none.
+  onUnassignMe?: (() => void) | undefined
 }
 
 // AssigneesSection lists who an issue or a pull request is assigned to, each in a line with
 // their picture, the user's marked. While the user may change them (editing), it has Edit,
-// which opens the assignee picker, and a line offers × to unassign anyone but the user, who
-// takes themselves off with Unassign me, a line fading while its edit runs; with no one
+// which opens the assignee picker, and a line offers × to unassign anyone but the user, a
+// line fading while its edit runs. The user's own assignment is never the edit's to take
+// off: given onUnassignMe, their line offers × for Unassign me, and unchecking their row in
+// the picker runs it once the rest of the edit went. With no one
 // assigned, it offers its first few suggestions as one-click assignments, the user's first
 // ("Assign yourself"). Whom it suggests it reads from what the app learned, asking GitHub
 // nothing. In the summary's look, a pull request no one is assigned to that the user can't
 // change shows no section.
-export function AssigneesSection({ look, itemId, repo, noun, url, assignees, more, editing }: AssigneesSectionProps) {
+export function AssigneesSection({
+  look,
+  itemId,
+  repo,
+  noun,
+  url,
+  assignees,
+  more,
+  editing,
+  onUnassignMe,
+}: AssigneesSectionProps) {
   const now = useNow()
   const [picking, setPicking] = useState(false)
   // busy is the login whose edit runs, or ''; failed why the last one failed.
@@ -152,6 +167,16 @@ export function AssigneesSection({ look, itemId, repo, noun, url, assignees, mor
                   <XIcon className="size-3" />
                 </RowAction>
               )}
+              {onUnassignMe !== undefined && a.mine && (
+                <RowAction
+                  label="Unassign me"
+                  title={`Take yourself off this ${noun} on GitHub. Uses one REST request.`}
+                  disabled={busy !== ''}
+                  onClick={onUnassignMe}
+                >
+                  <XIcon className="size-3" />
+                </RowAction>
+              )}
             </li>
           ))}
         </ul>
@@ -183,6 +208,7 @@ export function AssigneesSection({ look, itemId, repo, noun, url, assignees, mor
             candidates.set(() => learned)
           }}
           reads={editing.reads}
+          onUnassignMe={onUnassignMe}
           ownLock={editing.ownLock}
           onEdit={async (add, remove) => {
             const why = await editing.onEdit(add, remove)
